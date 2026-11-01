@@ -12,6 +12,10 @@ PY=(uv run --quiet --project "$R" python)
 PYART=(uv run --quiet --project "$R" --group art python)   # the art steps: UnityPy and Pillow (group art)
 # Playwright's browsers: in the repository, outside node_modules (npm ci empties it)
 export PLAYWRIGHT_BROWSERS_PATH="$R/cache/ms-playwright"
+# -ocimfs=0: wasm-opt inlines no function for having one caller (by default it inlines any such function, whatever its
+# size, undoing #[inline(never)]): a loop split into its own function stays one, so V8 tiers it up (docs/PERF.md).
+# wasm-opt reads the wasm's features from the target_features section rustc writes. Its skip key covers these flags.
+WASM_OPT_FLAGS=(-ocimfs=0 -O3)
 
 # name|argument|sets (all: in `all`; default: in a bare ./build.sh)|what it does
 STEPS=(
@@ -135,22 +139,23 @@ step_wasm() {
   need_cargo; need_cmd rustup "https://rustup.rs: adds the wasm target"; need_node; check wasm
   npm_deps
   (cd "$C" && quiet cargo build --release --lib --target wasm32-unknown-unknown)
-  # -ocimfs=0: wasm-opt inlines no function for having one caller (by default it inlines any such function, whatever
-  # its size, undoing #[inline(never)]): a loop split into its own function stays one, so V8 tiers it up
-  # (docs/PERF.md). wasm-opt reads the wasm's features from the target_features section rustc writes.
-  # wasm-opt is nearly all of an unchanged rebuild (about a minute): skipped when the compiled wasm and wasm-opt's
-  # version are those of the last optimised build (webapp/.loopopt.wasm.key, untracked); the example (1.5 s, it
-  # reads the data and today's date) always runs
-  local binaryen key
-  binaryen=$(node -p "require('$W/node_modules/binaryen/package.json').version")
-  key=$({ cat "$RAW_WASM"; printf '%s' "$binaryen"; } | sha256sum | cut -d' ' -f1)
+  # wasm-opt is nearly all of an unchanged rebuild (about a minute): skipped when its key matches the last optimised
+  # build's (webapp/.loopopt.wasm.key, untracked); the example (1.5 s, it reads the data and today's date) always runs
+  local key
+  key=$(wasm_opt_key)
   if [ -f "$W/loopopt.opt.wasm" ] && [ "$(cat "$W/.loopopt.wasm.key" 2>/dev/null)" = "$key" ]; then
-    echo "wasm-opt: the wasm is unchanged, skipped"
+    echo "wasm-opt: the wasm, its flags and wasm-opt are unchanged, skipped"
   else
-    (cd "$W" && npx wasm-opt -ocimfs=0 -O3 "$RAW_WASM" -o loopopt.opt.wasm)
+    (cd "$W" && npx wasm-opt "${WASM_OPT_FLAGS[@]}" "$RAW_WASM" -o loopopt.opt.wasm)
     echo "$key" >"$W/.loopopt.wasm.key"
   fi
   (cd "$W" && node example.mjs)
+}
+# everything wasm-opt's output depends on: the compiled wasm, the flags and binaryen's version
+wasm_opt_key() {
+  local binaryen
+  binaryen=$(node -p "require('$W/node_modules/binaryen/package.json').version")
+  { cat "$RAW_WASM"; printf '%s\n' "${WASM_OPT_FLAGS[@]}" "$binaryen"; } | sha256sum | cut -d' ' -f1
 }
 
 # ---- checks ----
