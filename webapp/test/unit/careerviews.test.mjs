@@ -182,7 +182,7 @@ test('a popup whose content throws reports it once per opening: its close draws 
   assert.equal(reported.length, 1, 'not again on its close');
   openOdds({ title: 'Odds', n: 1, ex: [0.5, 0.5], pAll: 0.5, expected: 0.5 });
   await settle();
-  assert.match(root.querySelector('table.oddtab')?.textContent ?? '', /1\/1/, 'the next odds draw');
+  assert.match(within(root).getByRole('table', { name: 'Odds' }).textContent, /1\/1/, 'the next odds draw');
 });
 
 test('the race schedule, after it failed to draw, draws on its next opening (review-11b 5)', async () => {

@@ -119,6 +119,11 @@ function titleOf(subject: PopSubject) {
   const c = cardOf(subject.cid);
   return c ? cardTitle(c).nm : subject.name;
 }
+// the panel's parts: a note under the name or the advice, the foot (the Owned switch at the left, the GameTora link
+// at the right), the link
+const NOTE = 'text-note text-muted mt-0.5';
+const FOOT = 'flex items-center justify-between gap-3';
+const LINK = 'text-note text-accent font-semibold';
 // a member's panel: one "Owned" switch. When the loop uses a specific outfit, that outfit is what is owned or not
 // (another outfit would be a different trainee); with "any outfit" it is the uma.
 function UmaBody({ subject: { uma, outfit, outfitLabel, outfitNote } }: { subject: PopSubject & { kind: 'uma' } }) {
@@ -139,14 +144,14 @@ function UmaBody({ subject: { uma, outfit, outfitLabel, outfitNote } }: { subjec
     <>
       <div>
         <b>{u.name}</b>
-        <div class="ctt">{outfitLabel}</div>
-        {outfitNote && <div class="onote">{outfitNote}</div>}
+        <div class="text-muted">{outfitLabel}</div>
+        {outfitNote && <div class={NOTE}>{outfitNote}</div>}
       </div>
-      <div class="pfoot">
+      <div class={FOOT}>
         <Switch data-act="uma" checked={owned} onChange={(e) => toggle(e.currentTarget.checked)}>
           Owned
         </Switch>
-        <a class="gtl" href={umaUrl(u, outfit)} target="_blank" rel="noopener">
+        <a class={LINK} href={umaUrl(u, outfit)} target="_blank" rel="noopener">
           GameTora ↗︎
         </a>
       </div>
@@ -165,16 +170,16 @@ function CardBody({ subject: { cid, name, borrowed, end } }: { subject: PopSubje
     <>
       <div>
         <b>{title.nm}</b>
-        {title.ti && <div class="ctt">{title.ti}</div>}
+        {title.ti && <div class="text-muted">{title.ti}</div>}
       </div>
       {borrowed && <div>Borrowed.</div>}
       {gifts.length > 0 && (
-        <div class="pgives">
+        <div class="flex flex-wrap gap-1">
           <Gifts gifts={gifts} />
         </div>
       )}
       {end > 0 && <ChainEnd c={c} link={end} />}
-      <div class="pfoot">
+      <div class={FOOT}>
         {c && !borrowed ? (
           <Switch
             data-act="own"
@@ -190,7 +195,7 @@ function CardBody({ subject: { cid, name, borrowed, end } }: { subject: PopSubje
           <span />
         )}
         {c && (
-          <a class="gtl" href={gametoraUrl(c)} target="_blank" rel="noopener">
+          <a class={LINK} href={gametoraUrl(c)} target="_blank" rel="noopener">
             GameTora ↗︎
           </a>
         )}
@@ -198,13 +203,20 @@ function CardBody({ subject: { cid, name, borrowed, end } }: { subject: PopSubje
     </>
   );
 }
-/** the gifts as the game's small labels */
+/** the gifts as the game's small labels: white in a thin edge, a gold in gold */
 function Gifts({ gifts }: { gifts: CardGift[] }) {
   return (
     <>
       {gifts.map((x) => (
-        <span key={`${x.skill}:${x.note}:${x.tip}`} class={cx('gv', x.gold ? 'g' : '')} title={x.tip}>
-          {x.skill} <small>{x.note}</small>
+        <span
+          key={`${x.skill}:${x.note}:${x.tip}`}
+          class={cx(
+            'text-caption border px-1 py-px leading-tight font-semibold',
+            x.gold ? 'bg-gold-soft text-gold border-gold' : 'border-hint-edge bg-panel text-ink',
+          )}
+          title={x.tip}
+        >
+          {x.skill} <small class="font-medium">{x.note}</small>
         </span>
       ))}
     </>
@@ -230,7 +242,7 @@ function ChainEnd({ c, link }: { c: Card | undefined; link: number }) {
   return (
     <>
       <div>{`Prioritise ${take} in IT: it takes the chain-ending choice at link ${link}.`}</div>
-      <div class="onote">{caveat}</div>
+      <div class={NOTE}>{caveat}</div>
     </>
   );
 }

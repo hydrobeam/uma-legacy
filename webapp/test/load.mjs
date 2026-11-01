@@ -40,7 +40,7 @@ export default async function load(b) {
   // the solver's 7-or-better (1 in 12.1), focus back on the button when it closes
   await pg.locator('#results').getByRole('button', { name: 'Odds', exact: true }).first().click();
   await dialog(pg, 'odds-dlg');
-  const lrows = await pg.$$eval('#odds-dlg .oddtab tbody tr', (l) =>
+  const lrows = await pg.$$eval('#odds-dlg table tbody tr', (l) =>
     l.map((r) => [...r.children].map((c) => c.textContent)),
   );
   const pv = (s) => parseFloat(s) / 100;

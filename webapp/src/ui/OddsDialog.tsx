@@ -35,6 +35,17 @@ export function OddsDialog() {
     </Dialog>
   );
 }
+// the table: a row per count on the game's white cells, the all-n row in the game's gold; each cell kind's whole look
+const ROW = {
+  all: {
+    count: 'bg-gm-gold text-gm-gold-ink border-gm-line rounded-l-md border-y border-l px-2.5 py-1.25 text-left',
+    chance: 'bg-gm-gold text-gm-gold-ink border-gm-line rounded-r-md border-y border-r px-2.5 py-1.25 text-right',
+  },
+  other: {
+    count: 'bg-gm-cell border-gm-line rounded-l-md border-y border-l px-2.5 py-1.25 text-left',
+    chance: 'bg-gm-cell border-gm-line rounded-r-md border-y border-r px-2.5 py-1.25 text-right',
+  },
+} as const;
 function Odds({ spec: { title, n, ex, pAll, expected } }: { spec: OddsSpec }) {
   // n landed first, down to none
   const counts = Array.from({ length: n + 1 }, (_, i) => n - i);
@@ -42,23 +53,30 @@ function Odds({ spec: { title, n, ex, pAll, expected } }: { spec: OddsSpec }) {
     <>
       <DialogTitle id="odds-title">{title}</DialogTitle>
       <DialogBody>
-        <table class="oddtab">
+        <table
+          class="w-full border-separate border-spacing-x-0 border-spacing-y-1 font-bold tabular-nums"
+          aria-labelledby="odds-title"
+        >
           <thead>
             <tr>
-              <th scope="col">Targets landed</th>
-              <th scope="col">Chance</th>
+              <th class="text-note text-gm-ink2 px-2.5 py-1.25 text-left" scope="col">
+                Targets landed
+              </th>
+              <th class="text-note text-gm-ink2 px-2.5 py-1.25 text-right" scope="col">
+                Chance
+              </th>
             </tr>
           </thead>
           <tbody>
             {counts.map((k) => (
-              <tr key={k} class={k === n ? 'all' : undefined}>
-                <th scope="row">{`${k}/${n}`}</th>
-                <td>{pct(k === n ? pAll : ex[k] || 0)}</td>
+              <tr key={k}>
+                <th class={ROW[k === n ? 'all' : 'other'].count} scope="row">{`${k}/${n}`}</th>
+                <td class={ROW[k === n ? 'all' : 'other'].chance}>{pct(k === n ? pAll : ex[k] || 0)}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        <p class="gmdstat">{`${expected.toFixed(2)} of ${n} expected.`}</p>
+        <p class="text-gm-ink2 max-w-[75ch] font-bold">{`${expected.toFixed(2)} of ${n} expected.`}</p>
       </DialogBody>
       <DialogFoot>
         <DialogClose onClick={close} />

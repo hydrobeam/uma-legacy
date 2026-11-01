@@ -143,9 +143,7 @@ function Careers({ loop }: { loop: ResultLoop }) {
               })
         }
       />
-      <div class="afview">
-        <AffTable legs={legacies(career)} caption={`${career.trainee.name}: her six legacies`} />
-      </div>
+      <AffTable legs={legacies(career)} caption={`${career.trainee.name}: her six legacies`} />
     </>
   );
 }

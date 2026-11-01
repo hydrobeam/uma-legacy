@@ -73,12 +73,13 @@ function ExportBody({ made }: { made: string }) {
   return (
     <DialogPanel>
       <DialogHead id="ex-title" title="Export or import" closeId="ex-close" close="Close" onClose={close} />
-      <p>
+      <p class="max-w-[75ch]">
         The text below holds your settings and the results on screen. Copy it to share or to paste into a chat. To load
         someone else's settings, paste their text here and press Load settings.
       </p>
       <textarea
         ref={box}
+        class="border-line bg-bg font-data text-note text-ink w-full rounded-md border p-2"
         id="ex-text"
         rows={12}
         spellcheck={false}
@@ -86,14 +87,14 @@ function ExportBody({ made }: { made: string }) {
         value={text}
         onInput={(e) => setText(e.currentTarget.value)}
       />
-      <div class="row">
+      <div class="flex flex-wrap items-center gap-2">
         <Button id="ex-copy" onClick={copy}>
           Copy
         </Button>
         <Button id="ex-load" onClick={load}>
           Load settings
         </Button>
-        <span class="hint" id="ex-msg">
+        <span class="text-note text-gm-ink2" id="ex-msg">
           {message}
         </span>
       </div>
