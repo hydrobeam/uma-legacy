@@ -15,8 +15,13 @@ export function TargetTile({ group, id, children }: { group: number; id?: string
   return (
     // (the game scales a long name down to fit: `long`)
     <div class={`tgt${gold ? ' gold' : ''}${label.length > 18 ? ' long' : ''}`} id={id} data-g={given ? '2' : '0'}>
-      {/* a plain target's name is on the tile: no hover */}
-      <span class="name" title={gold ? `Gold of ${names.w}, guaranteed by the scenario` : undefined}>
+      {/* a plain target's name is on the tile: no hover. Keyed by gold: Preact sets `title` as a property, so a title
+          taken away would stay as title="" */}
+      <span
+        key={gold ? 'gold' : 'white'}
+        class="name"
+        title={gold ? `Gold of ${names.w}, guaranteed by the scenario` : undefined}
+      >
         <SkillIcon group={group} gold={gold} />
         {label}
       </span>

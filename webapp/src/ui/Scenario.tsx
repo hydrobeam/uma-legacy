@@ -7,7 +7,8 @@
 // Drawn into the template's #scen-dd and #rank-ctl (`mountScenario`, `mountRank`).
 import { render } from 'preact';
 import type { RefObject } from 'preact';
-import { useRef, useState } from 'preact/hooks';
+import { batch } from '@preact/signals';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { $ } from '../dom.js';
 import { RANKS, SKILLICON_GOLD } from '../data.js';
 import type { Scenario } from '../data.js';
@@ -81,11 +82,20 @@ function ScenarioPicker() {
     inside = useRef([menu]).current; // the button and the grid: a click on the label closes it
   useDropdown(open, close, button, inside);
   useFocusChecked(open, menu);
+  // after a pick, the focus goes back to the button once it shows the new scenario (its title is the game tooltip's)
+  const refocus = useRef(false);
+  useLayoutEffect(() => {
+    if (!refocus.current) return;
+    refocus.current = false;
+    button.current?.focus();
+  });
   const sc = scenarioOf(fields.scen.value);
   const pick = (v: string) => {
-    if (v !== fields.scen.peek()) chooseScenario(v);
-    setOpen(false);
-    button.current?.focus();
+    refocus.current = true;
+    batch(() => {
+      if (v !== fields.scen.peek()) chooseScenario(v);
+      setOpen(false);
+    });
   };
   // the focus leaving the picker (the template's #scen-dd, around both) closes it
   const onFocusOut = (e: FocusEvent & { currentTarget: HTMLElement }) => {

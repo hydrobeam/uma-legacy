@@ -97,11 +97,13 @@ function PresetRow({ p, current, onView }: RowProps) {
     </div>
   );
 }
+// the list (its rows drawn only while it is open)
 function PresetList({ onSave, onView }: { onSave: () => void; onView: (name: string) => void }) {
-  const presets = fields.presets.value,
+  const open = listOpen.value,
+    presets = open ? fields.presets.value : [],
     current = fields.targets.value.map((t) => t.group);
   return (
-    <Dialog id="preset-dlg" cls="prdlg" labelledBy="pr-title" open={listOpen.value} onClose={closeList}>
+    <Dialog id="preset-dlg" cls="prdlg" labelledBy="pr-title" open={open} onClose={closeList}>
       <div class="dlg">
         <div class="row between dhead">
           <h3 id="pr-title">Target skill presets</h3>
@@ -110,7 +112,7 @@ function PresetList({ onSave, onView }: { onSave: () => void; onView: (name: str
           </button>
         </div>
         <div class="prlist" id="pr-list">
-          {presets.length ? null : <p class="hint">No presets yet.</p>}
+          {open && !presets.length ? <p class="hint">No presets yet.</p> : null}
           {presets.map((p) => (
             <PresetRow key={p.name} p={p} current={current} onView={onView} />
           ))}
