@@ -91,14 +91,17 @@ export default async function careervets(b) {
     await saved();
     return pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets[0].wins);
   };
-  const arima = pg.locator('#wins-dlg .wbtn[data-ix="22"]'),
+  const arima = pg.locator('#wins-dlg button[data-ix="22"]'),
     had = (await savedWins()).includes(22),
     n0w = (await savedWins()).length;
   if (had) {
     await arima.click();
   }
   const gone = !(await arima.count()) && (await savedWins()).length === n0w - (had ? 1 : 0);
-  await pg.locator('#wins-dlg .ag-add[aria-label="Senior Year, Late Dec: add a G1 win"]').click();
+  await pg
+    .locator('#wins-dlg')
+    .getByRole('button', { name: 'Senior Year, Late Dec: add a G1 win', exact: true })
+    .click();
   await pg.locator('#wins-dlg [data-pop="wins"] button', { hasText: 'Arima Kinen' }).click();
   const winsEdit =
     "career: a veteran's G1 wins: a click removes Arima Kinen, the Senior Late Dec menu adds it back there, saved";
@@ -107,8 +110,8 @@ export default async function careervets(b) {
   check(
     winsEdit,
     gone &&
-      /Late Dec/.test(await arima.evaluate((e) => e.closest('.ag-slot').textContent)) &&
-      (await arima.evaluate((e) => e.closest('.ag-year').classList.contains('y2'))) &&
+      /Late Dec/.test(await arima.evaluate((e) => e.closest('[data-slot]').textContent)) &&
+      (await arima.evaluate((e) => e.closest('[data-year]').dataset.year === '2')) &&
       (await savedWins()).includes(22),
     `had ${had}`,
   );

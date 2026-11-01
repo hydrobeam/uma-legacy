@@ -121,6 +121,11 @@
   --color-trash-slit: #ffffff;
   /* behind a borrowed deck card's art: the friend frame's pink (loop/Results.tsx) */
   --color-friend: #ff669f;
+  /* the race schedule's key: a shared G1's dot (the game's pink badge), an optional one's (its grey) */
+  --color-sched-shared: #f43d88;
+  --color-sched-opt: #9a93a6;
+  /* an empty calendar slot's "+" under the pointer or with its menu open (ui/Agenda.tsx) */
+  --color-plus-hover: rgba(124, 196, 13, 0.12);
 
   --font-ui: "Zen Kaku Gothic New", "Hiragino Sans", "Segoe UI", system-ui, sans-serif;
   --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -196,6 +201,8 @@
      their darker foot */
   --shadow-tab: 0 1px 3px var(--color-gm-shadow);
   --inset-shadow-knob: inset 0 -2px 0 var(--color-gm-green);
+  /* a calendar year's green head: its darker foot */
+  --inset-shadow-rim: inset 0 -3px 0 var(--color-gm-rim);
   /* the setup ribbon's second white stripe, left of the first */
   --shadow-stripe: -11px 0 0 rgba(255, 255, 255, 0.3);
   /* drop shadows (they follow a shape's outline): the wordmark's, the ribbon's chevron, the Enhance art's and its hover
@@ -211,6 +218,8 @@
   --shade-brand-a: drop-shadow(0 0 0.035em var(--color-brand-a-glow)) drop-shadow(0 0 0.035em var(--color-brand-a-glow));
   --shade-outline: drop-shadow(0 1px 0 var(--color-outline)) drop-shadow(0 -1px 0 var(--color-outline))
     drop-shadow(1px 0 0 var(--color-outline)) drop-shadow(-1px 0 0 var(--color-outline));
+  /* the white odds on an optional race's grey badge (ui/Agenda.tsx) */
+  --text-shadow-badge: 0 1px 1px rgba(40, 30, 40, 0.55);
   /* the setup ribbon's white text, outlined in its deeper pink */
   --text-shadow-ribbon: 0 1px 0 var(--color-ribbon-edge), 1px 0 0 var(--color-ribbon-edge),
     -1px 0 0 var(--color-ribbon-edge), 0 -1px 0 var(--color-ribbon-edge), 0 2px 2px var(--color-ribbon-glow);
@@ -250,6 +259,10 @@
      foot round a rounded hole), drawn 3 px outside the art and a 12 px band under it: widths = slice x pink wanted /
      pink in the slice (37 / 10 x 3, 37 / 8 x 3, 75 / 45 x 12) */
   --nine-friend: var(--friend-frame, none) 37 37 75 37 / 11px 14px 20px / 0 stretch;
+  /* the calendar (ui/Agenda.tsx): the grey cells before the career (their face's opacity --alpha-slot-empty), and a
+     race's odds badge, the game's pink pill */
+  --nine-slot-empty: var(--face-slot-empty) 17 19 fill / 8px 9px / 0 stretch;
+  --nine-sched-badge: var(--sched-badge, linear-gradient(#ff5d9e, #f43d88)) 0 40 fill / 0 9px / 0 stretch;
 
   /* the green header bar: diagonal stripes at its left, fading out by a third of the way across */
   --art-bar: linear-gradient(90deg, transparent 0, var(--color-gm-green) 32%),
@@ -272,6 +285,15 @@
   --art-enh-umas: var(--face-enh-umas) center / 100% 100% no-repeat;
   --art-enh-cards: var(--face-enh-cards) center / 100% 100% no-repeat;
   --art-enh-vets: var(--face-enh-vets) center / 100% 100% no-repeat;
+  /* an empty calendar slot's "+" (the game's sprite), and under the pointer or with its menu open */
+  --art-plus: var(--plus, none) center / auto 42% no-repeat;
+  --art-plus-on: var(--plus, none) center / auto 42% no-repeat var(--color-plus-hover);
+  /* a table that scrolls sideways: a shade at an edge with more table beyond it (the covers scroll with the content,
+     the shades don't) */
+  --art-scroll-shade: linear-gradient(to right, var(--color-panel) 30%, transparent) left / 32px 100% no-repeat local,
+    linear-gradient(to left, var(--color-panel) 30%, transparent) right / 32px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, var(--color-shade), transparent) left / 10px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, var(--color-shade), transparent) right / 10px 100% no-repeat scroll;
   /* the game's close cross (a target tile's remove button) */
   --art-close: var(--close, none) center / 10px 10px no-repeat;
   /* a section bar's outline: its right end cut on a slant; the setup ribbon's, at twice the slant */
@@ -340,6 +362,8 @@
     --color-outline-glow: rgba(0, 0, 0, 0.5);
     --face-btn-w: var(--btn-w-dark, var(--btn-w, linear-gradient(#fff, #eceaf2)));
     --face-slot-frame: var(--slot-frame-dark, var(--slot-frame, linear-gradient(#fff, #f1f0f4)));
+    --face-slot-empty: var(--slot-empty-dark, var(--slot-empty, linear-gradient(#e6e6e8, #e6e6e8)));
+    --alpha-slot-empty: 0.9;
     --face-chk-off: var(--chk-off-dark, var(--chk-off, linear-gradient(#fff, #eee)));
     --face-tog-off: var(--tog-off-dark, var(--tog-off, none));
     --art-seg-on: linear-gradient(var(--color-gm-bright), var(--color-gm-bright2));
@@ -382,6 +406,9 @@
   /* the sprites' faces in light mode (the dark block swaps them); read by the --nine-* tokens */
   --face-btn-w: var(--btn-w, linear-gradient(#fff, #eceaf2));
   --face-slot-frame: var(--slot-frame, linear-gradient(#fff, #f1f0f4));
+  --face-slot-empty: var(--slot-empty, linear-gradient(#e6e6e8, #e6e6e8));
+  /* the grey cells' face, as light as the game's screen shows it (dark mode: nearly whole) */
+  --alpha-slot-empty: 0.22;
   --face-chk-off: var(--chk-off, linear-gradient(#fff, #eee));
   --face-tog-off: var(--tog-off, none);
   --face-enh-umas: var(--enh-umas, linear-gradient(#f3f1f8, #dcd8ea));
@@ -419,6 +446,11 @@
 @custom-variant loop (&:where([data-page="loop"] *));
 /* inside a box whose answer is not the setup's (data-stale: career/Layout.tsx's tree, dimmed while a run works) */
 @custom-variant stale (&:where([data-stale] *));
+/* inside a calendar slot (ui/Agenda.tsx, data-slot: its kinds, space-separated): a grey cell before the career, an
+   optional race's, one holding two wins */
+@custom-variant slot-pre (&:where([data-slot~="pre"] *));
+@custom-variant slot-opt (&:where([data-slot~="opt"] *));
+@custom-variant slot-many (&:where([data-slot~="many"] *));
 /* inside an uma's roster tile marked not owned (data-s="out": ui/Roster.tsx), which greys her portrait and name */
 @custom-variant unowned (&:where([data-s="out"] *));
 

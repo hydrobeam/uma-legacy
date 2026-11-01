@@ -195,7 +195,7 @@ export default async function phone(b) {
   await pg.locator('#results').getByRole('button', { name: 'Race schedule', exact: true }).first().click();
   await dialog(pg, 'sched-dlg');
   await expect
-    .soft(pg.locator('#sched-dlg .ag-slot.pre:visible'), 'phone: agenda stacks without the grey Junior cells')
+    .soft(pg.locator('#sched-dlg [data-slot~="pre"]:visible'), 'phone: agenda stacks without the grey Junior cells')
     .toHaveCount(0);
   await pg.evaluate(() => {
     const d = document.querySelector('#sched-dlg .dlg');
@@ -212,7 +212,7 @@ export default async function phone(b) {
   check(
     'phone: the All three table fits the 375 px screen',
     await pg.evaluate(() =>
-      [...document.querySelectorAll('#sched-dlg .tablewrap')].every((w) => w.scrollWidth <= w.clientWidth),
+      [...document.querySelectorAll('#sched-dlg [data-tables]')].every((w) => w.scrollWidth <= w.clientWidth),
     ),
   );
   await pg.keyboard.press('Escape');

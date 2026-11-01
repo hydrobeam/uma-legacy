@@ -1,7 +1,8 @@
 // ---------- the race schedule popup: one tab per member (her races as banner cards, like the game's list), plus all ----------
 // One member (the career page): no "All three" / "All four" tab; `shared` then means a parent won the race (it builds
 // affinity when she is a parent herself). The popup (#sched-dlg) is ui/Dialog's on both pages; Close, Escape and the
-// backdrop close it. Each opening starts on the first member, the Win table folded.
+// backdrop close it. Each opening starts on the first member, the Win table folded. The checks find the key by
+// data-sched-key, the All table's box by data-tables, a member's column head by data-k, a turn's cell by data-when.
 import { batch, signal, untracked } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
@@ -12,7 +13,7 @@ import type { ScheduleCell, ScheduleRow } from '../solver.ts';
 import { pickOutfit } from '../roster.ts';
 import { must } from '../must.ts';
 import type { DeepReadonly } from '../store.ts';
-import { AgendaGrid, RaceFace, WhenBar } from './Agenda.tsx';
+import { AgendaGrid, AgendaSlot, RACE_BOX, RaceFace, WhenBar } from './Agenda.tsx';
 import { Dialog, DialogHead, DialogPanel } from './Dialog.tsx';
 import { SegmentedControl } from './SegmentedControl.tsx';
 import { RenderGuard } from './RenderGuard.tsx';
@@ -131,7 +132,7 @@ function Schedule({ spec: { members, schedule }, close }: { spec: SchedSpec; clo
         }))}
         trail={<SchedKey single={single} hidden={tab === 'all'} />}
       />
-      <div class="sview" id="sched-view" role="tabpanel" aria-labelledby={`stab-${tabKey(tab)}`}>
+      <div class="grid gap-2.5" id="sched-view" role="tabpanel" aria-labelledby={`stab-${tabKey(tab)}`}>
         {tab === 'all' ? (
           <SchedTable members={members} schedule={schedule} outfitOf={outfitOf} />
         ) : (
@@ -141,31 +142,23 @@ function Schedule({ spec: { members, schedule }, close }: { spec: SchedSpec; clo
     </>
   );
 }
-// the key to a member's tab, after the tabs (the "All" table says shared and optional in its own captions)
+// the key to a member's tab, after the tabs (the "All" table says shared and optional in its own captions): a dot in
+// the badge's pink, one in its grey
+const DOT = 'mr-1.25 inline-block size-3 rounded-full align-[-1px]';
 const SchedKey = ({ single, hidden }: { single: boolean; hidden: boolean }) => (
-  <span class="agkey" hidden={hidden}>
-    {single ? (
-      <>
-        <span>
-          <i class="sh" />A parent won it: builds affinity
-        </span>
-        <span>
-          <i class="op" />
-          No parent won it
-        </span>
-      </>
-    ) : (
-      <>
-        <span>
-          <i class="sh" />
-          Shared G1: builds affinity
-        </span>
-        <span>
-          <i class="op" />
-          Optional G1: runs alone, no affinity
-        </span>
-      </>
-    )}
+  <span
+    class="text-note text-ink ml-auto flex flex-wrap items-center gap-x-3.5 gap-y-1"
+    hidden={hidden}
+    data-sched-key=""
+  >
+    <span>
+      <i class={cx(DOT, 'bg-sched-shared')} />
+      {single ? 'A parent won it: builds affinity' : 'Shared G1: builds affinity'}
+    </span>
+    <span>
+      <i class={cx(DOT, 'bg-sched-opt')} />
+      {single ? 'No parent won it' : 'Optional G1: runs alone, no affinity'}
+    </span>
   </span>
 );
 // member m's races on the calendar: the turn, and the win odds of the race run there (in the bar, not over the
@@ -187,10 +180,10 @@ function MemberAgenda({
         const row = schedule.find((x) => x.year === y && cellAt(x, m.k) && slotOf(x.when) === slotIndex),
           c = row ? cellAt(row, m.k) : null;
         return (
-          <div key={turn} class={cx('ag-slot', row ? 'on' : '', row && !row.shared ? 'opt' : '')}>
+          <AgendaSlot key={turn} on={!!row} opt={!!row && !row.shared}>
             {row && c && <RaceCell row={row} c={c} m={m} members={members} single={single} />}
             <WhenBar slotIndex={slotIndex} cell={c} />
-          </div>
+          </AgendaSlot>
         );
       }}
     />
@@ -223,7 +216,8 @@ function RaceCell({
       : ' · alone (no affinity, optional)';
   return (
     <div
-      class={cx('ag-race', row.shared ? '' : 'opt')}
+      class={RACE_BOX}
+      data-race=""
       title={`${names.join(' or ')} · ${why(c) || `win ${shownP(c)}%`}${c.goal ? ' · goal' : ''}${company}`}
     >
       {/* (an "A/B" pair shows A's banner) */}
@@ -231,15 +225,24 @@ function RaceCell({
     </div>
   );
 }
-// the community table, as the Win table panel shows it (13 columns: it scrolls sideways inside the panel on a phone)
+// the community table as it is published, as the Win table panel shows it: a bordered grid, beige heads, the aptitude
+// pairs in the game's grade letters (13 columns: it scrolls sideways inside the panel on a phone)
+const WT_HEAD = 'border-gm-line bg-wt-head text-note border px-2.5 py-2 text-center font-bold whitespace-nowrap';
+const WT_ROW_HEAD = 'border-gm-line bg-wt-head text-note border px-2.5 py-2 text-center font-normal whitespace-nowrap';
+const WT_CELL = 'border-gm-line border px-2.5 py-2 text-center whitespace-nowrap';
 function WinTable({ hidden }: { hidden: boolean }) {
   return (
-    <div class="wintable" id="sched-wintable" hidden={hidden}>
-      <div class="wtscroll">
-        <table>
+    <div
+      class="bg-gm-panel inset-ring-gm-edge text-note mb-2.5 w-fit max-w-full min-w-0 rounded-lg px-2.5 py-2 inset-ring"
+      id="sched-wintable"
+      hidden={hidden}
+    >
+      <div class="overflow-x-auto">
+        <table class="bg-gm-cell text-gm-ink border-collapse tabular-nums">
           <thead>
             <tr>
               <th
+                class={WT_HEAD}
                 scope="col"
                 title="Her distance and surface grades (S counts as A) and the races she has run in a row"
               >
@@ -247,9 +250,9 @@ function WinTable({ hidden }: { hidden: boolean }) {
                 <br />/ Consecutive Races
               </th>
               {TABLE_PAIRS.map(([a, b]) => (
-                <th key={`${a}${b}`} scope="col" title={`${GRADE_LETTER[a]} and ${GRADE_LETTER[b]}`}>
-                  <Grade g={a} />
-                  <Grade g={b} />
+                <th key={`${a}${b}`} class={WT_HEAD} scope="col" title={`${GRADE_LETTER[a]} and ${GRADE_LETTER[b]}`}>
+                  <Grade g={a} size="head" />
+                  <Grade g={b} size="head" />
                 </th>
               ))}
             </tr>
@@ -257,9 +260,11 @@ function WinTable({ hidden }: { hidden: boolean }) {
           <tbody>
             {ROW_PLACES.map((k) => (
               <tr key={k}>
-                <th scope="row">{k === 6 ? '6 or more Races' : `${k} Race${k > 1 ? 's' : ''}`}</th>
+                <th class={WT_ROW_HEAD} scope="row">
+                  {k === 6 ? '6 or more Races' : `${k} Race${k > 1 ? 's' : ''}`}
+                </th>
                 {TABLE_PAIRS.map((pair) => (
-                  <td key={pair.join('')}>{`${tableFigure(pair, k)}%`}</td>
+                  <td key={pair.join('')} class={WT_CELL}>{`${tableFigure(pair, k)}%`}</td>
                 ))}
               </tr>
             ))}
@@ -269,6 +274,21 @@ function WinTable({ hidden }: { hidden: boolean }) {
     </div>
   );
 }
+// the All table's cells, each kind's whole look (on a phone tighter, the Runners column dropped): the heads, the race
+// and turn at the left, the figures at the right (a goal's in the accent, a dot where she doesn't run it in the muted
+// ink), a year's row in small capitals
+const CELL = {
+  head: 'border-line border-b px-2 py-1 text-left whitespace-nowrap max-md:px-0.75',
+  member: 'border-line border-b px-2 py-1 text-right whitespace-nowrap max-md:px-0.75',
+  runnersHead: 'border-line border-b px-2 py-1 text-right whitespace-nowrap max-md:hidden',
+  race: 'border-line border-b px-2 py-1 text-left max-md:px-0.75',
+  when: 'border-line border-b px-2 py-1 text-left whitespace-nowrap max-md:px-0.75',
+  figure: 'border-line border-b px-2 py-1 text-right whitespace-nowrap max-md:px-0.75',
+  goal: 'border-line text-accent border-b px-2 py-1 text-right font-semibold whitespace-nowrap max-md:px-0.75',
+  dot: 'border-line text-muted border-b px-2 py-1 text-right whitespace-nowrap max-md:px-0.75',
+  runners: 'border-line border-b px-2 py-1 text-right whitespace-nowrap max-md:hidden',
+  year: 'text-caption text-muted px-2 pt-2.5 pb-1 text-left font-bold tracking-widest uppercase max-md:px-0.75',
+} as const;
 // the "All three" / "All four" tab: every member's schedule as one table (turns written as on the member tabs, "Early
 // Apr", the year being the group row; the members' columns headed by their portrait and short name, the name dropped to
 // the screen reader on a narrow phone so the table fits)
@@ -283,15 +303,17 @@ function SchedTable(props: {
   const head = (
     <thead>
       <tr>
-        <th>G1</th>
-        <th class="when">When</th>
+        <th class={CELL.head}>G1</th>
+        <th class={CELL.head}>When</th>
         {members.map((x) => (
-          <th key={x.id} class="mh" data-k={x.k}>
-            <UmaAv key={`${x.id}`} uma={x.id} outfit={outfitOf(x)} size={22} />
-            <span class="hn">{x.short || x.name}</span>
+          <th key={x.id} class={CELL.member} data-k={x.k}>
+            <span class="flex flex-col items-end gap-0.5 max-sm:items-center">
+              <UmaAv key={`${x.id}`} uma={x.id} outfit={outfitOf(x)} size={22} />
+              <span class="max-sm:sr-only">{x.short || x.name}</span>
+            </span>
           </th>
         ))}
-        <th>Runners</th>
+        <th class={CELL.runnersHead}>Runners</th>
       </tr>
     </thead>
   );
@@ -304,49 +326,56 @@ function SchedTable(props: {
       return [
         ...(opensYear
           ? [
-              <tr key={`y${r.year}`} class="year">
-                <td colSpan={members.length + 3}>{YEARS[r.year]}</td>
+              <tr key={`y${r.year}`}>
+                <td class={CELL.year} colSpan={members.length + 3}>
+                  {YEARS[r.year]}
+                </td>
               </tr>,
             ]
           : []),
         <tr key={`${r.when}:${r.race}`}>
-          <td>{r.race}</td>
-          <td class="when">{turnLabel(r.when)}</td>
+          <td class={CELL.race}>{r.race}</td>
+          <td class={CELL.when} data-when="">
+            {turnLabel(r.when)}
+          </td>
           {r.cells.map((c, k) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: one cell per member, in the members' order
             <MemberCell key={k} c={c} />
           ))}
-          <td>{`${r.runners}/${members.length}`}</td>
+          <td class={CELL.runners}>{`${r.runners}/${members.length}`}</td>
         </tr>,
       ];
     });
   };
   return (
-    <div class="tablewrap">
-      <table class="sched">
-        <caption>Shared G1s (these build affinity)</caption>
+    // (a shade at an edge with more table beyond it)
+    <div class="art-scroll-shade mt-2 overflow-x-auto" data-tables="">
+      <table class={TABLE}>
+        <caption class={CAPTION}>Shared G1s (these build affinity)</caption>
         {head}
         <tbody>{rows(shared)}</tbody>
       </table>
       {optional.length > 0 && (
-        <table class="sched">
-          <caption>Optional G1s (one runner, no affinity; free to run, skip freely)</caption>
+        <table class={TABLE}>
+          <caption class={CAPTION}>Optional G1s (one runner, no affinity; free to run, skip freely)</caption>
           {head}
           <tbody>{rows(optional)}</tbody>
         </table>
       )}
-      <p class="hint">
+      <p class="text-note text-gm-ink2">
         {`Number = win % at that attempt (aptitude and races in a row included; hover for why). * = goal race. · = not running it. Turns not listed are rest or a goal race that isn't a G1.${schedule.some((r) => r.alts?.length) ? ' A/B = either race at the same odds; every runner must pick the same one.' : ''}`}
       </p>
     </div>
   );
 }
+const TABLE = 'text-note max-md:text-caption w-full border-separate border-spacing-0 tabular-nums';
+const CAPTION = 'caption-top py-1.5 text-left font-bold';
 // a member's cell: her win %, * for a goal race, its reason on hover; · when she doesn't run it
 const MemberCell = ({ c }: { c: ScheduleCell | null }) =>
   c ? (
-    <td class={c.goal ? 'goal' : ''} title={why(c) || undefined}>
+    <td class={c.goal ? CELL.goal : CELL.figure} title={why(c) || undefined}>
       {`${c.goal ? '*' : ''}${shownP(c)}`}
     </td>
   ) : (
-    <td class="dot">·</td>
+    <td class={CELL.dot}>·</td>
   );

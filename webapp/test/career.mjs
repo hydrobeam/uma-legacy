@@ -759,14 +759,14 @@ export default async function career(b) {
       "career: her schedule opens in the planner's schedule window as the game's Scheduled Races: only the races she runs, the three years at once without scrolling, Junior's April to June grey, no plus (nothing to add there), the parent-won legend";
     const nRun = +(await pg.getAttribute('#sched-open', 'title')).match(/She runs (\d+) G1s/)[1],
       sched = pg.locator('#sched-dlg');
-    await expect.soft(sched.locator('.ag-slot.on'), `${name}: a slot per race she runs`).toHaveCount(nRun);
-    await expect.soft(sched.locator('.ag-race'), `${name}: … and only those races`).toHaveCount(nRun);
-    await expect.soft(sched.locator('.ag-race.wbtn'), `${name}: no win buttons`).toHaveCount(0);
-    await expect.soft(sched.locator('.agkey').first(), `${name}: the legend`).toHaveText(/A parent won it/);
+    await expect.soft(sched.locator('[data-slot~="on"]'), `${name}: a slot per race she runs`).toHaveCount(nRun);
+    await expect.soft(sched.locator('[data-race]'), `${name}: … and only those races`).toHaveCount(nRun);
+    await expect.soft(sched.locator('button[data-race]'), `${name}: no win buttons`).toHaveCount(0);
+    await expect.soft(sched.locator('[data-sched-key]').first(), `${name}: the legend`).toHaveText(/A parent won it/);
     await expect.soft(sched.getByRole('tab'), `${name}: one tab`).toHaveCount(1);
-    await expect.soft(sched.locator('.ag-year'), `${name}: three years`).toHaveCount(3);
-    await expect.soft(sched.locator('.ag-slot.pre'), `${name}: Junior's April to June grey`).toHaveCount(12);
-    await expect.soft(sched.locator('.ag-plus, .ag-add'), `${name}: no plus`).toHaveCount(0);
+    await expect.soft(sched.locator('[data-year]'), `${name}: three years`).toHaveCount(3);
+    await expect.soft(sched.locator('[data-slot~="pre"]'), `${name}: Junior's April to June grey`).toHaveCount(12);
+    await expect.soft(sched.locator('button[data-k^="add:"]'), `${name}: no plus`).toHaveCount(0);
     check(
       `${name}: she runs some, and no scrolling`,
       nRun > 0 &&
@@ -789,7 +789,7 @@ export default async function career(b) {
   const vp = pg.viewportSize();
   await pg.setViewportSize({ width: 375, height: 812 });
   const wtPhone = await pg.evaluate(() => {
-    const w = document.querySelector('#sched-wintable .wtscroll'),
+    const w = document.querySelector('#sched-wintable > div'),
       width = (sel) => Math.round(document.querySelector(sel).getBoundingClientRect().width);
     return {
       page: document.documentElement.scrollWidth,
@@ -1581,12 +1581,14 @@ export default async function career(b) {
   }
   await pg.click('#sim-wins');
   await dialog(pg, 'wins-dlg');
-  const wb0 = pg.locator('#wins-dlg .ag-race.wbtn').first(),
+  const wb0 = pg.locator('#wins-dlg button[data-race]').first(),
     wname = (await wb0.getAttribute('aria-label')).replace(/, won: remove$/, '');
-  const nShown = await pg.locator('#wins-dlg .ag-race.wbtn').count();
+  const nShown = await pg.locator('#wins-dlg button[data-race]').count();
   await wb0.click();
   const freed = await pg.evaluate(
-    () => document.activeElement.matches('#wins-dlg .ag-add') && document.activeElement.getAttribute('aria-label'),
+    () =>
+      document.activeElement.matches('#wins-dlg button[data-k^="add:"]') &&
+      document.activeElement.getAttribute('aria-label'),
   );
   {
     const name =
@@ -1596,7 +1598,7 @@ export default async function career(b) {
       nShown === w0 && /: add a G1 win$/.test(freed || '') && (await winsN()) === w0 - 1,
       `wins ${w0} -> ${await winsN()}, ${freed}`,
     );
-    await expect.soft(pg.locator('#wins-dlg .agenda .ag-year'), `${name}: the calendar's years`).toHaveCount(3);
+    await expect.soft(pg.locator('#wins-dlg [data-year]'), `${name}: the calendar's years`).toHaveCount(3);
     await expect.soft(pg.locator('#wins-title'), `${name}: its title`).toHaveText(/G1 wins/);
     await expect.soft(pg.locator('#wins-count'), `${name}: the count`).toHaveText(new RegExp(`^${w0 - 1 || 'No'}\\b`));
   }

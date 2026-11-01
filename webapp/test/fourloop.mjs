@@ -34,7 +34,7 @@ export default async function fourloop(b) {
   await pg.locator('#sched-dlg').getByRole('tab').last().click();
   check(
     'All four: a column per member',
-    (await pg.locator('#sched-dlg table.sched').first().locator('th.mh').count()) === 4,
+    (await pg.locator('#sched-view table').first().locator('th[data-k]').count()) === 4,
   );
   await pg.keyboard.press('Escape');
   await loop.getByRole('button', { name: 'Affinity', exact: true }).click();

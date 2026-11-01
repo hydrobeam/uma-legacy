@@ -142,13 +142,15 @@ export const DialogClose = ({
 );
 
 // ---------- a window's parts ----------
-// its panel: the head stays on top as the body scrolls (scroll), or nothing scrolls but its contents' own lists (fill),
-// the dialog as tall as the screen allows whatever it holds (full)
+// its panel: the head stays on top as the body scrolls (scroll; its one column the dialog's width, so a wide table
+// scrolls inside its own box: Firefox sized an auto column to the table's full width, which the dialog then clipped),
+// or nothing scrolls but its contents' own lists (fill), the dialog as tall as the screen allows whatever it holds
+// (full)
 const panel = tv({
   base: 'bg-gm-panel gap-3.5 p-4.5',
   variants: {
     fit: {
-      scroll: 'grid max-h-[calc(100dvh-48px)] overflow-auto',
+      scroll: 'grid max-h-[calc(100dvh-48px)] grid-cols-1 overflow-auto',
       fill: 'flex max-h-[calc(100dvh-48px)] flex-col overflow-hidden',
       full: 'flex h-[calc(100dvh-48px)] max-h-[calc(100dvh-48px)] flex-col overflow-hidden',
     },

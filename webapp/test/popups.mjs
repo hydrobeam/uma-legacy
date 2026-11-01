@@ -21,7 +21,7 @@ export default async function popups(b) {
       (await pg.locator('#sched-dlg').getByRole('tab').last().innerText()) === 'All three',
   );
   const grids = await pg.evaluate(() =>
-    [...document.querySelectorAll('.ag-grid')].map((g) => {
+    [...document.querySelectorAll('#sched-dlg [data-grid]')].map((g) => {
       const r = g.getBoundingClientRect();
       return Math.round(r.width) + 'x' + Math.round(r.height);
     }),
@@ -29,7 +29,7 @@ export default async function popups(b) {
   check('agenda: three identical year grids', grids.length === 3 && new Set(grids).size === 1, grids.join(' '));
   check(
     "agenda: Junior Year opens with the game's grey cells for April to June",
-    (await pg.locator('#sched-dlg .ag-year.y0 .ag-slot.pre').count()) === 12,
+    (await pg.locator('#sched-dlg [data-year="0"] [data-slot~="pre"]').count()) === 12,
   );
   check(
     'agenda: fits the window without scrolling',
@@ -40,13 +40,14 @@ export default async function popups(b) {
   );
   artCheck(
     'agenda: every race has its banner',
-    (await pg.locator('#sched-dlg .ag-race').count()) === (await pg.locator('#sched-dlg .ag-race img.banner').count()),
+    (await pg.locator('#sched-dlg [data-race]').count()) ===
+      (await pg.locator('#sched-dlg [data-race] img[data-banner]').count()),
   );
   await pg.mouse.move(0, 0); // (off any race: a hovered one's title is held while its balloon shows)
   check(
     'agenda: a race\'s "x% win" sits in its turn bar, its tooltip says why',
     await pg.evaluate(() =>
-      [...document.querySelectorAll('#sched-dlg .ag-slot.on .ag-when')].every(
+      [...document.querySelectorAll('#sched-dlg [data-slot~="on"] [data-turn]')].every(
         (w) =>
           /^(Early|Late) [A-Z][a-z]{2}\d+% win$/.test(w.textContent) &&
           /^\d+% win: 110/.test(w.querySelector('b').title),
@@ -56,27 +57,27 @@ export default async function popups(b) {
   await pg.locator('#sched-dlg').getByRole('tab').last().click();
   check(
     'All three shows the comparison table, a column per member',
-    (await pg.locator('#sched-dlg table.sched').count()) > 0 &&
-      (await pg.locator('#sched-dlg table.sched').first().locator('th.mh').count()) === 3,
+    (await pg.locator('#sched-view table').count()) > 0 &&
+      (await pg.locator('#sched-view table').first().locator('th[data-k]').count()) === 3,
   );
   check(
     'All three: turns written as on the member tabs ("Early Apr"), no shared/optional key',
     (await pg.evaluate(() =>
-      [...document.querySelectorAll('#sched-dlg td.when')].every((t) =>
+      [...document.querySelectorAll('#sched-dlg td[data-when]')].every((t) =>
         /^(Early|Late) [A-Z][a-z]{2}$/.test(t.textContent),
       ),
-    )) && (await pg.locator('#sched-dlg .agkey').isHidden()),
+    )) && (await pg.locator('#sched-dlg [data-sched-key]').isHidden()),
   );
   check(
     'All three: each win % says why on hover, as its note promises',
     await pg.evaluate(() => {
-      const c = [...document.querySelectorAll('#sched-dlg table.sched tbody td')].filter((t) =>
+      const c = [...document.querySelectorAll('#sched-view table tbody td')].filter((t) =>
         /^\*?\d+$/.test(t.textContent),
       );
       return (
         c.length > 0 &&
         c.every((t) => /^\d+% win: 110/.test(t.title)) &&
-        /hover for why/.test(document.querySelector('#sched-dlg .tablewrap .hint').textContent)
+        /hover for why/.test(document.querySelector('#sched-dlg [data-tables] > p').textContent)
       );
     }),
   );
