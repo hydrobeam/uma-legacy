@@ -62,7 +62,6 @@ impl Multi<'_> {
         LoopReport {
             stats,
             top,
-            best: [],
             per_uma: !self.shared,
             foursomes: self.total_foursomes(),
             foursomes_ranked: pass.generated,

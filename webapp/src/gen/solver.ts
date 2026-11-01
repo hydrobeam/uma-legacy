@@ -1253,10 +1253,6 @@ export type LoopReport = {
    */
   top: Array<LoopResult>;
   /**
-   * always empty (an older report's field)
-   */
-  best: [];
-  /**
    * a deck per member (false: one deck for the loop)
    */
   per_uma: boolean;
