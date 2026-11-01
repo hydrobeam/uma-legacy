@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { effect, signal } from '@preact/signals-core';
-import { STAND_MS, createComparison } from '../../src/career/analysis/compare.ts';
+import { STAND_MS, createComparison, savedWhere } from '../../src/career/analysis/compare.ts';
 import * as store from '../../src/career/analysis/state.ts';
 import * as vs from '../../src/veterans/store.ts';
 import { on } from '../../src/store.ts';
@@ -486,4 +486,90 @@ test('an exact comparison after a quick one (cancelled or failed) is killed by t
   q.c.compare();
   assert.equal(q.engine.restarts, 1);
   q.stop();
+});
+
+// ---------- review-9's sabotages the tests missed (N1, N3-N6)
+test('Compare while a comparison runs: the cancel and the new start are one write (N1)', async () => {
+  const p = page();
+  p.c.compare();
+  await flush();
+  const n = p.writes.length;
+  p.c.compare();
+  assert.equal(p.writes.length, n + 1);
+  assert.equal(simulation.peek().state, 'busy');
+  p.stop();
+});
+
+test('a roll draws her G1 wins anew: the wins placed on the last one go (N3)', () => {
+  const p = page();
+  vs.draftRef().edit(() => ({ wins: [3], winAt: { 3: 20 } }));
+  p.c.roll();
+  assert.deepEqual(vs.draft.peek().winAt, {});
+  assert.deepEqual(vs.draft.peek().wins, []);
+  p.stop();
+});
+
+test('an edit during the stand: the exact check behind the quick figures clears the stale mark (N5)', async () => {
+  const p = page();
+  const marks = on([vs.draft], store.draftChanged);
+  p.c.roll();
+  await flush();
+  p.engine.answer(0, { results: [], next: { roll: { y: 2 } } });
+  await flush();
+  vs.draftRef().edit((d) => ({ sparks: { ...d.sparks, 9: 1 } }));
+  assert.equal(simulation.peek().stale, true, 'edited under the quick figures');
+  p.clock.advance(STAND_MS);
+  assert.equal(simulation.peek().refining, true);
+  assert.equal(simulation.peek().stale, false, 'the check works on her as she is now');
+  await flush();
+  await exactAnswers(p, 1);
+  assert.equal(simulation.peek().stale, false, 'its figures are hers');
+  marks();
+  p.stop();
+});
+
+test('a stop of a running comparison: back to idle, the old figures gone (N6)', async () => {
+  const p = page();
+  p.c.compare();
+  await flush();
+  await exactAnswers(p, 0);
+  assert.ok(simulation.peek().r);
+  p.c.compare(); // a second comparison, with the first one's figures still in the record while busy
+  p.c.stop();
+  assert.equal(simulation.peek().state, 'ready');
+  assert.equal(simulation.peek().r, null, 'idle: no figures');
+  p.stop();
+});
+
+test('savedWhere: her as a parent of the next career; a later step named only on the same route (N4)', () => {
+  const pick = (parents, name = 'Next Uma') => ({ trainee: { name }, parents });
+  const route = (sides, careers) => ({ a: 'A', b: 'B', c: 'C', sides, careers });
+  assert.equal(
+    savedWhere({ planNow: null, planWithHer: null, pickA: pick([0, 2]), samePick: false, herIndex: 2 }),
+    'Improves the next career (Next Uma).',
+  );
+  assert.equal(savedWhere({ planNow: null, planWithHer: null, pickA: null, samePick: false, herIndex: 2 }), '');
+  const now = { v0_plan: route(['x', 'y'], [10, 8, 5]) };
+  assert.equal(
+    savedWhere({
+      planNow: now,
+      planWithHer: { v0_plan: route(['x', 'y'], [10, 3, 5]) },
+      pickA: pick([0, 1]),
+      samePick: true,
+      herIndex: 2,
+    }),
+    'Improves a later B career; the next career stays Next Uma.',
+    'the same trio on the same sides: the step that fell most',
+  );
+  assert.equal(
+    savedWhere({
+      planNow: now,
+      planWithHer: { v0_plan: route(['x', 'z'], [10, 3, 5]) },
+      pickA: pick([0, 1]),
+      samePick: false,
+      herIndex: 2,
+    }),
+    'Improves a later career; the next career is Next Uma.',
+    'another side: another route, no step named',
+  );
 });
