@@ -1,38 +1,38 @@
-// ---------- export / import ----------
-import { $, $dialog, $input, $textarea, fmtIn } from '../dom.js';
-import { paintTop } from '../cards.js';
+// ---------- export / import: the text Export shows, and what an import's text may set ----------
+// Values in, values out (the settings, the result on show): Export.tsx shows them and applies an import.
+import { fmtIn } from '../dom.js';
 import { SETTINGS, ERA } from '../saved.ts';
 import { SCENARIOS, RANKS, gameData } from '../data.js';
-import { settings, importSettings, importToEra } from '../settings.ts';
 import { goldGiven, isOwned } from '../job.js';
-import { renderRoster, pickOutfit } from '../roster.js';
-import { renderTargets } from '../targets.js';
+import { pickOutfit } from '../roster.js';
 import { mergePresets } from '../presets.js';
-import { loopView, resultsStale } from './state.ts';
 import { deckHint } from '../odds.js';
-import { paintScen, paintRank, scenarioOf } from '../scenario.js';
+import { scenarioOf } from '../scenario.js';
+/** @import { SettingsView } from '../settings.ts' */
+/** @import { ShownResult } from './types.ts' */
 // a skill group's name at a level (2: its gold's, when it has one)
 const skillName = (group, level) => {
   const names = gameData().skillNames.get(group) || { w: String(group), gd: null };
   return level === 2 ? names.gd || names.w : names.w;
 };
 // the settings in words, for a reader of the export (an import reads `settings`)
-function readableSettings() {
+/** @param {SettingsView} s */
+function readableSettings(s) {
   return {
-    targets: settings.value.targets.map((t) => ({
+    targets: s.targets.map((t) => ({
       skill: skillName(t.group, 1),
       gold: gameData().skillNames.get(t.group)?.gd || null,
-      guaranteed: goldGiven(settings.value.scen, t.group) ? 'gold' : 'no',
+      guaranteed: goldGiven(s.scen, t.group) ? 'gold' : 'no',
     })),
     umas_not_owned: gameData()
-      .umas.filter((u) => !isOwned(u, settings.value))
+      .umas.filter((u) => !isOwned(u, s))
       .map((u) => u.name),
     cards_not_owned: gameData()
-      .cards.filter((c) => settings.value.cardsOff[c.id] === false)
+      .cards.filter((c) => s.cardsOff[c.id] === false)
       .map((c) => c.name),
-    deck: settings.value.perUma !== false ? 'find best deck per uma' : 'find best deck (one for the whole loop)',
+    deck: s.perUma !== false ? 'find best deck per uma' : 'find best deck (one for the whole loop)',
     game_data: ERA === 'gm' ? 'JP, Grand Masters' : 'Global',
-    scenario: scenarioOf(settings.value.scen).name,
+    scenario: scenarioOf(s.scen).name,
   };
 }
 // a loop's odds and members, each with the outfit the result names
@@ -61,12 +61,13 @@ const resultSummary = (top) => ({
       gold: +o.gold.toFixed(3),
     })),
 });
-function exportText() {
-  const saved = Object.fromEntries(SETTINGS.map((k) => [k, settings.value[k]]));
-  const readable = readableSettings();
+// the export: the settings (as saved, and in words) and the result on show (`stale`: it is from other settings)
+/** @param {SettingsView} s @param {import('../store.ts').DeepReadonly<ShownResult> | null} shown @param {boolean} stale */
+export function exportText(s, shown, stale) {
+  const saved = Object.fromEntries(SETTINGS.map((k) => [k, s[k]]));
+  const readable = readableSettings(s);
   /** @type {Record<string, unknown> | null} */
   let results = null;
-  const shown = loopView.value.lastResult;
   if (shown) {
     const { r, meta } = shown;
     results = {
@@ -74,7 +75,7 @@ function exportText() {
       decks: (r.top || []).map(resultSummary),
       decks_searched: r.decks_built,
       proven: r.proven,
-      ...(resultsStale.value && { stale: true }), // from other settings than these
+      ...(stale && { stale: true }), // from other settings than these
     };
   }
   return JSON.stringify(
@@ -112,64 +113,18 @@ const VALID = {
   outfits: (v) => obj(v) && Object.values(v).every((x) => x === false || x === 'req'), // read as owned (dropRequired)
   cardsOff: (v) => obj(v) && Object.values(v).every((x) => x === false),
 };
-// Load: the settings an export carries (those of a known shape; the rest are named and left as they were). Settings for
-// the other data set are stored under its keys and the page reloads into it.
-function loadSettings() {
-  const message = $('ex-msg');
-  try {
-    const parsed = JSON.parse($textarea('ex-text').value);
-    if (!parsed?.settings) throw new Error('no settings');
-    const given = parsed.settings,
-      era = given.era === 'gm' ? 'gm' : 'global';
-    const keys = SETTINGS.filter((k) => k in given),
-      use = keys.filter((k) => VALID[k](given[k], era)),
-      bad = keys.filter((k) => !use.includes(k));
-    if (!use.length) throw new Error('nothing to load');
-    const imported = (k) => (k === 'presets' ? mergePresets(settings.value.presets, given.presets) : given[k]), // presets join yours, never replace them
-      loaded = Object.fromEntries(use.map((k) => [k, imported(k)]));
-    if (era !== ERA) {
-      importToEra(era, loaded);
-      location.reload();
-      return;
-    }
-    importSettings(loaded);
-    paintRank();
-    paintTop();
-    $input('c-peruma').checked = settings.value.perUma !== false;
-    $input('x-auto').checked = settings.value.auto !== false;
-    paintScen();
-    renderRoster();
-    renderTargets();
-    message.textContent = `Settings loaded.${bad.length ? ` Not understood, so left as they were: ${bad.join(', ')}.` : ''}`;
-  } catch {
-    message.textContent = 'That text is not an export from this page.';
-  }
-}
-export function initIO() {
-  $('ex-open').onclick = () => {
-    $textarea('ex-text').value = exportText();
-    $('ex-msg').textContent = '';
-    $dialog('ex-dlg').showModal();
-  };
-  $('ex-close').onclick = () => $dialog('ex-dlg').close();
-  $dialog('ex-dlg').addEventListener('click', (e) => {
-    if (e.target === $dialog('ex-dlg')) $dialog('ex-dlg').close();
-  });
-  $('ex-copy').onclick = () => {
-    const text = $textarea('ex-text');
-    const done = () => {
-      $('ex-msg').textContent = 'Copied.';
-    };
-    const fallback = () => {
-      text.focus();
-      text.select();
-      $('ex-msg').textContent = 'Selected. Press Ctrl+C (or ⌘C) to copy.';
-    };
-    try {
-      navigator.clipboard.writeText(text.value).then(done, fallback);
-    } catch {
-      fallback();
-    }
-  };
-  $('ex-load').onclick = loadSettings;
+// An import: the settings an export's `text` carries, those of a known shape (`bad`: the rest, named and left as they
+// were), for the era it names; presets join `presets` (yours), never replace them. Throws when the text is no export.
+/** @param {string} text @param {SettingsView['presets']} presets @returns {{era: 'gm' | 'global', loaded: Record<string, unknown>, bad: string[]}} */
+export function readImport(text, presets) {
+  const parsed = JSON.parse(text);
+  if (!parsed?.settings) throw new Error('no settings');
+  const given = parsed.settings,
+    era = given.era === 'gm' ? 'gm' : 'global';
+  const keys = SETTINGS.filter((k) => k in given),
+    use = keys.filter((k) => VALID[k](given[k], era)),
+    bad = keys.filter((k) => !use.includes(k));
+  if (!use.length) throw new Error('nothing to load');
+  const imported = (k) => (k === 'presets' ? mergePresets(presets, given.presets) : given[k]);
+  return { era, loaded: Object.fromEntries(use.map((k) => [k, imported(k)])), bad };
 }

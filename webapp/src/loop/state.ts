@@ -1,6 +1,8 @@
-// ---------- the loop page's run state: what its status line, results and Export show, two records in signals ----------
+// ---------- the loop page's run state: what its status line, results and Export show, three records in signals ----------
 // `loopRun`: the search as the status line draws it (running or about to, its phase, its clock). `loopView`: the status
-// line when no search runs, and the result on show. Both are handed out read-only; the run machine (run.ts) changes
+// line when no search runs, and the result on show. `loopDrawn`: the result the results column draws, and the targets
+// it was searched for (the machine draws a result only when its loops differ from those on show). All are handed out
+// read-only; the run machine (run.ts) changes
 // them only through the transitions below, each one write (a batch when it changes both), so an effect wakes once per
 // transition. What nothing draws stays in the machine: its staleness token (`searchId`), `busy` and its timers.
 // `resultsStale` and `headline` derive from the two.
@@ -9,7 +11,8 @@ import type { ReadonlySignal } from '@preact/signals-core';
 import { fmtIn } from '../dom.js';
 import { deepFreeze } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';
-import type { ShownResult, Status } from './types.ts';
+import type { JobTarget } from './job.ts';
+import type { LoopReport, ShownResult, Status } from './types.ts';
 
 /** 'check': the fast result is on screen and the exact check is running */
 export type Phase = 'search' | 'check';
@@ -25,6 +28,10 @@ export interface LoopView {
   status: Status;
   lastResult: ShownResult | null;
 }
+export interface Drawn {
+  r: LoopReport;
+  targets: readonly JobTarget[];
+}
 
 const IDLE: RunState = { searching: false, phase: 'search', startedAt: 0, now: 0 };
 const LOADING: LoopView = { status: { kind: 'loading', text: '' }, lastResult: null };
@@ -38,13 +45,16 @@ const freezeView = (view: DeepReadonly<LoopView>): DeepReadonly<LoopView> =>
   });
 const runRecord = signal<DeepReadonly<RunState>>(Object.freeze(IDLE));
 const viewRecord = signal(freezeView(LOADING));
+const drawnRecord = signal<Readonly<Drawn> | null>(null);
 export const loopRun: ReadonlySignal<DeepReadonly<RunState>> = runRecord;
 export const loopView: ReadonlySignal<DeepReadonly<LoopView>> = viewRecord;
+export const loopDrawn: ReadonlySignal<Readonly<Drawn> | null> = drawnRecord;
 /** back to the page's first state (a test's start) */
 export function initLoopState() {
   batch(() => {
     runRecord.value = Object.freeze(IDLE);
     viewRecord.value = freezeView(LOADING);
+    drawnRecord.value = null;
   });
 }
 
@@ -78,3 +88,7 @@ export const settle = (status: Status, result?: ShownResult) =>
     viewRecord.value = freezeView({ status, lastResult: result ?? viewRecord.peek().lastResult });
     runRecord.value = Object.freeze({ ...runRecord.peek(), searching: false, phase: 'search' });
   });
+/** the results column draws `r` (searched for `targets`) */
+export const draw = (r: LoopReport, targets: readonly JobTarget[]) => {
+  drawnRecord.value = Object.freeze({ r, targets });
+};

@@ -35,7 +35,7 @@ export interface LoopDeps {
   storage: () => Pick<Storage, 'getItem' | 'setItem'>;
   /** the settings now (read when a search or its pause starts) */
   settings: () => SettingsView;
-  /** draws a result (results.js `renderDeck`) */
+  /** draws a result (Results.tsx `drawResult`) */
   render: (r: LoopReport, targets: JobTarget[]) => void;
   /** the "no targets" status's button (presets.js `loadExample`) */
   loadExample: () => void;

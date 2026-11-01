@@ -180,9 +180,13 @@ The solver runs as WebAssembly in a Web Worker (`src/worker.ts`, minified to `as
 it. Each page's entry reacts to a change of setup with one effect (`store.ts` `on`, the only place an effect is made);
 the loop page's run state (the search as the status line draws it, the status and the result on show) is a store too
 (`loop/state.ts`), changed only by the transitions its run machine (`loop/run.ts`, `createRun(deps)`: the engine, clock,
-timers, storage and settings passed in) makes, and its status line redraws on an effect over it. No framework.
+timers, storage and settings passed in) makes. Views are Preact components that read the stores through @preact/signals:
+the loop page's so far, rendered by `loop/main.tsx` into the template's mount points; the rest
+still build their markup with `el()` and `innerHTML`. Dialogs' `showModal`/`close`, measured placement, the game
+tooltip (`gmtip.js`) and the run machines stay imperative by design. Logic modules (`.ts`, `.js`) take values and import
+no component, and only a component's own module looks into what it draws (`test/static.mjs`).
 
-In `src/`, `loop/main.js` and `career.js` are the two pages' entries (the loop page's own modules are in `loop/`); `engine.ts` talks to the worker (the messages both ways typed in `solver.ts`), `job.js` holds the
+In `src/`, `loop/main.tsx` and `career.js` are the two pages' entries (the loop page's own modules are in `loop/`); `engine.ts` talks to the worker (the messages both ways typed in `solver.ts`), `job.js` holds the
 job fields both pages send (from the settings it is given; `loop/job.ts` and `career.js` build their jobs from them), and `statestore.js` keeps the solver's work in
 IndexedDB.
 

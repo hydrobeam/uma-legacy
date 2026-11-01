@@ -52,8 +52,7 @@ __PANEL_ERA__
 __PANEL_ENH__
     </div>
     <div class="rhead" id="rhead">
-        <p class="runnote" id="run-note" role="status" aria-live="polite"></p>
-        <span class="ract" id="r-act"></span>
+        <div id="run-root"></div>
         <label class="sw rauto" title="Automatically search 0.55s after a change"><input type="checkbox" role="switch" id="x-auto" checked>Auto-search</label>
       <label class="sw rper" title="Each uma gets the best deck for her own outfit and targets: better odds than one deck for the whole loop"><input type="checkbox" role="switch" id="c-peruma" checked>Deck per uma</label>
       </div>
@@ -62,8 +61,7 @@ __PANEL_ENH__
   </div>
 
   <main class="rcol" id="rcol" tabindex="-1" aria-label="Results">
-    <span class="rtop"><span id="c-top-l">Results</span>
-          <span class="seg" id="c-top" role="radiogroup" aria-labelledby="c-top-l"><button type="button" role="radio" data-v="1">1</button><button type="button" role="radio" data-v="3" title="Three results: a slower search">3</button></span></span>
+    <span class="rtop" id="rtop"></span>
     <div class="results" id="results"></div>
   </main>
   <button class="runpill" id="run-pill" type="button" hidden></button>
@@ -77,14 +75,9 @@ __PANEL_ENH__
 </div>
 
 __PANEL_DLGUMAS____PANEL_DLGCARDS__
-<dialog id="why-dlg" aria-labelledby="why-title"><div class="dlg" id="why-body"></div></dialog>
+<div id="why-root"></div>
 <dialog id="sched-dlg" aria-labelledby="sched-title"><div class="dlg" id="sched-body"></div></dialog>
-<dialog id="ex-dlg" aria-labelledby="ex-title"><div class="dlg">
-  <div class="row between dhead"><h3 id="ex-title">Export or import</h3><button class="btn" id="ex-close">Close</button></div>
-  <p>The text below holds your settings and the results on screen. Copy it to share or to paste into a chat. To load someone else's settings, paste their text here and press Load settings.</p>
-  <textarea id="ex-text" rows="12" spellcheck="false" aria-label="Exported settings and results"></textarea>
-  <div class="row"><button class="btn" id="ex-copy">Copy</button><button class="btn" id="ex-load">Load settings</button><span class="hint" id="ex-msg"></span></div>
-</div></dialog>
+<div id="ex-root"></div>
 
 <footer class="foot">
   <p class="row"><button class="btn" id="ex-open">Export / import settings</button><span class="hint" id="ver">Version __VERSION__</span></p>

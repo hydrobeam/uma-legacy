@@ -29,7 +29,7 @@ export function gradeEl(g) {
 // build without strips keeps the spinner. The negative delay keeps her stride when a status line is redrawn.
 /** @type {number | null} */
 let runner = null;
-const RUN_CYCLE_MS = 600; // one loop of the strip (the CSS animation's duration)
+export const RUN_CYCLE_MS = 600; // one loop of the strip (the CSS animation's duration)
 const hasRun = (id) => SHIPPED.has(`run:${id}`);
 /** @param {number|null|undefined} id a character id */
 export function setRunner(id) {
@@ -45,9 +45,13 @@ export function setRunnerFrom(ids) {
     // (none picked yet: pick one)
     setRunner(withStrip[Math.floor(Math.random() * withStrip.length)]);
 }
-export function runnerHTML(big = false) {
+// the runner's strip now (one picked at random the first time), or null: none shipped, a spinner instead
+export function runnerSrc() {
   if (runner == null) setRunnerFrom([...SHIPPED].filter((key) => key.startsWith('run:')).map((key) => +key.slice(4)));
-  const src = runner != null && srcFor('run', runner);
+  return runner != null ? srcFor('run', runner) : null;
+}
+export function runnerHTML(big = false) {
+  const src = runnerSrc();
   if (!src) return spinHTML();
   const delay = Math.round(performance.now() % RUN_CYCLE_MS);
   return `<span class="runner${big ? ' big' : ''}" aria-hidden="true" style="background-image:url(${src});animation-delay:-${delay}ms"></span>`;
@@ -65,7 +69,7 @@ export function skillIcon(group, gold = false) {
   return image;
 }
 // two letters for a portrait without art: the first letters of her first two words, else the first two of her one word
-function initials(name) {
+export function initials(name) {
   const words = name
     .replace(/[^A-Za-z .]/g, '')
     .split(/[ .]+/)
@@ -113,7 +117,7 @@ export function umaAv(uma, outfitId, size, eager = false) {
   return disc;
 }
 // a card's type as the text shown without its art
-const KIND_ABBR = {
+export const KIND_ABBR = {
   speed: 'SPD',
   stamina: 'STA',
   power: 'POW',
@@ -123,7 +127,7 @@ const KIND_ABBR = {
   group: 'GRP',
   other: '·',
 };
-const RARITY_CLASS = { 3: 'ssr', 2: 'sr', 1: 'r' };
+export const RARITY_CLASS = { 3: 'ssr', 2: 'sr', 1: 'r' };
 // `titled`: its own hover names (the card's name, its type); off inside a chip whose title says more
 /** @param {import('./data.js').Card|null} c @param {number} size in px @param {boolean} [titled] @returns {HTMLSpanElement} */
 export function cardAv(c, size, titled = true) {
