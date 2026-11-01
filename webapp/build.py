@@ -6,7 +6,7 @@ whole set, as a folder name), so it is served with a one-year immutable cache an
 the pages keep a 5-minute cache and always point at the current names. Favicons (icons.py) sit at the root.
 Served over http(s): the page fetches the wasm, data and images, so it is not meant to be opened as a file."""
 
-import json, subprocess, os, sqlite3, shutil, hashlib, re, io, string
+import json, subprocess, os, shutil, hashlib, re, io, string
 from html import unescape
 import brotli
 from dataclasses import dataclass
@@ -90,21 +90,10 @@ def _icons(f):
 
 
 skill_icons = {"white": _icons("skill_icons.json"), "gold": _icons("skill_icons_gold.json")}
-# schedule rows name their race; the page maps names to race ids for the banners (same 34 G1s in both eras)
-# keyed by both the full name and the chart's short name (pkg/loopopt/src/lib.rs chart_race_name: aliases, else 22 chars)
-CHART_ALIAS = {
-    "Tokyo Yushun (Japanese Derby)": "Japanese Derby",
-    "Asahi Hai Futurity Stakes": "Asahi Hai FS",
-    "Mile Championship Nambu Hai": "MCS Nambu Hai",
-    "Hanshin Juvenile Fillies": "Hanshin JF",
-    "Zen-Nippon Junior Yushun": "Zen-Nippon Jr Yushun",
-}
-race_ids = {}
-for data_dir in (GLOBAL_DATA, JP_DATA):
-    data = json.load(open(os.path.join(data_dir, "data.json")))
-    for race_name, race_id in zip(data["race_names"], data["races"]):
-        race_ids[race_name] = race_id
-        race_ids[CHART_ALIAS.get(race_name, race_name[:22])] = race_id
+# the page's lists, exported from the game data by pkg/loopopt/export/export_page.py (./build.sh data, events, gametora
+# and pb run it): each era's page.json, and page_raceids.json, the race id of each race name and chart name (both eras)
+PAGE_DATA = os.path.join(HERE, "..", "pkg", "loopopt", "data")
+race_ids = json.load(open(os.path.join(PAGE_DATA, "page_raceids.json")))
 
 
 def js(o):
@@ -161,13 +150,6 @@ def low_basis():
     return int(cost), int(bucket[2:])
 
 
-# GameTora's page names for the links (support cards: url_name, e.g. 30067-the-thrones-assemblage; characters: the slug
-# of /characters/<outfit id>-<slug>), tracked (pkg/loopopt/data/gametora_slugs.json, written by gametora.py): no download
-_gts = json.load(open(os.path.join(HERE, "..", "pkg", "loopopt", "data", "gametora_slugs.json")))
-GT_URL = {int(k): v for k, v in _gts["cards"].items()}
-GT_CHAR = {int(k): v for k, v in _gts["chars"].items()}
-
-
 @dataclass
 class EraBundle:
     """JSON strings embedded in page scripts or written as engine assets."""
@@ -179,187 +161,45 @@ class EraBundle:
     career: str
 
 
-class SkillReference(NamedTuple):
-    """Skill group and rarity (1 white, 2 gold) for one localized skill name."""
-
-    group: int
-    rarity: int
-
-
-def release_dates(data_dir):
-    # release dates for the roster's and card picker's default order and the page's hiding of upcoming content;
-    # without master.mdb, id order (everything released) except the tracked upcoming.json's dated outfits and cards
-    mdb = os.path.join(
-        HERE, "..", "game", "jp" if os.path.basename(os.path.normpath(data_dir)) == "jp" else "global", "master.mdb"
-    )
-    release_times = {}
-    if os.path.exists(mdb):
-        con = sqlite3.connect(f"file:{mdb}?mode=ro", uri=True)
-        # an outfit's release = the start of the first gacha it appeared in; else its uma's start date
-        release_times = dict(
-            con.execute("select c.id, c2.start_date from card_data c join chara_data c2 on c2.id = c.chara_id")
-        )
-        release_times.update(
-            con.execute(
-                "select a.card_id, min(d.start_date) from gacha_available a join gacha_data d on d.id = a.gacha_id group by a.card_id"
+def page_lists(data_dir):
+    """The era's page.json: the card picker's cards, the roster, the skill catalog and the career page's tables. Its
+    `inputs` (each file it was made from, with its sha256) must match the files now, or the build stops; one under game/
+    that is absent is skipped, so a checkout without the game files builds from the exported lists."""
+    page = json.load(open(os.path.join(data_dir, "page.json")))
+    for path, digest in page["inputs"].items():
+        source = os.path.join(HERE, "..", path)
+        if path.startswith("game/") and not os.path.exists(source):
+            continue
+        if not os.path.exists(source) or hashlib.sha256(open(source, "rb").read()).hexdigest() != digest:
+            era_name = os.path.basename(os.path.normpath(data_dir))
+            raise SystemExit(
+                f"{path} changed since pkg/loopopt/data/{era_name}/page.json was made: run ./build.sh data"
             )
-        )
-        release_times.update(
-            con.execute("select id, start_date from support_card_data")
-        )  # support cards carry their own date
-        con.close()
-    elif os.path.exists(os.path.join(data_dir, "upcoming.json")):  # Global only: the JP data has nothing upcoming
-        upcoming = json.load(open(os.path.join(data_dir, "upcoming.json")))
-        release_times = {item_id: start for kind in ("outfits", "cards") for item_id, start in upcoming[kind]}
-    return release_times
+    return page
 
 
-def skill_references(skills):
-    """Every name an event reward can carry (the ○ beside a catalog ◎ included): web_skills.json's `names`, with its
-    group and rarity."""
-    return {name: SkillReference(group=group_id, rarity=rarity) for name, (group_id, rarity) in skills["names"].items()}
-
-
-def event_summary(skills_by_name, events):
-    event_skills = {}
-    for card_id, card in events["cards"].items():
-        out = []
-        for key in ("chain", "end"):
-            for link_number, names in card.get(key, []):
-                for reward in names:
-                    skill_name, chance = (reward[0], reward[1]) if isinstance(reward, list) else (reward, 1.0)
-                    if skill_name in skills_by_name:
-                        out.append(
-                            [skills_by_name[skill_name].group, skills_by_name[skill_name].rarity, link_number, chance]
-                        )
-        for skill_name in card.get("always", []):
-            if skill_name in skills_by_name:
-                out.append([skills_by_name[skill_name].group, skills_by_name[skill_name].rarity, 0, 1.0])
-        for skill_name, chance in card.get("chance", []):
-            if skill_name in skills_by_name:
-                out.append([skills_by_name[skill_name].group, skills_by_name[skill_name].rarity, 0, chance])
-        if out:
-            event_skills[int(card_id)] = out
-    return event_skills
-
-
-def chain_ends(skills_by_name, card_events):
-    """The card's chain-ending choices, one per link that has one: the skills on the ending choice ("end") and on the
-    event's other choices ("go"), each [group, rarity]. IT takes the ending choice only for a prioritised skill on it,
-    so the page names it."""
-
-    def references(rewards):
-        names = [reward[0] if isinstance(reward, list) else reward for reward in rewards]
-        return [list(skills_by_name[name]) for name in names if name in skills_by_name]
-
-    continuing = dict(card_events.get("chain", []))  # link -> the skills on its other choices
-    return [
-        {"link": link_number, "end": references(rewards), "go": references(continuing.get(link_number, []))}
-        for link_number, rewards in card_events.get("end", [])
-    ]
-
-
-def era(data_dir, events_file):
-    data = json.load(open(os.path.join(data_dir, "data.json")))
-    skills = json.load(open(os.path.join(data_dir, "web_skills.json")))
-    cards = json.load(open(os.path.join(data_dir, "web_cards.json")))
-    events = json.load(open(os.path.join(data_dir, events_file)))
-    release_times = release_dates(data_dir)
-    skills_by_name = skill_references(skills)
-    event_skills = event_summary(skills_by_name, events)
-    ui_cards = []
-    for card in cards["cards"]:
-        # pals, group cards, R cards (no chain events: hints only, no chain slot) and SR/SSR cards with chains
-        if not card["pal"] and card["links"] == 0 and card["rarity"] != 1:
-            continue
-        if not card["pal"] and card["links"] > 0 and card["rarity"] < 2:
-            continue
-        ui_cards.append(
-            {
-                "id": card["id"],
-                "name": card["name"],
-                "rar": card["rarity"],
-                "pal": card["pal"],
-                "kind": card.get("kind", ""),
-                "rel": release_times.get(card["id"], card["id"]),
-                "gt": GT_URL.get(card["id"]),
-                "whites": card["whites"],
-                "ev": event_skills.get(card["id"], []),
-                **(
-                    {"pri": pri} if (pri := events["cards"].get(str(card["id"]), {}).get("prioritise")) else {}
-                ),  # skills to prioritise for IT to take the event choice the model credits
-                **(
-                    {"end": ends}
-                    if (ends := chain_ends(skills_by_name, events["cards"].get(str(card["id"]), {})))
-                    else {}
-                ),
-                **(
-                    {"ban": ban}
-                    if (ban := [scenario for scenario, ids in cards.get("restrict", {}).items() if card["id"] in ids])
-                    else {}
-                ),
-            }
-        )  # scenarios that bar it from the deck
-    umas = [
+def era(data_dir):
+    page = page_lists(data_dir)
+    export = lambda name: json.load(open(os.path.join(data_dir, name)))
+    # the solver's data, as text: the era's exports themselves
+    engine = js(
         {
-            "id": uma["id"],
-            "name": uma["name"],
-            "gt": GT_CHAR.get(uma["id"]),
-            **({"apt": uma["apt"]} if uma.get("apt") else {}),
-            "outfits": [
-                {"id": card[0], "label": card[1], "rel": release_times.get(card[0], card[0])}
-                for card in skills["cards"].get(str(uma["id"]), [])
-            ],
+            "data": export("data.json"),
+            "skills": export("web_skills.json"),
+            "cards": export("web_cards.json"),
+            "events": export("card_events.json"),
         }
-        for uma in data["umas"]
-    ]
-    engine = js({"data": data, "skills": skills, "cards": cards, "events": events})
-    # the career page's veteran import: spark factor group -> skill group, win saddle -> race index, race names by index
-    career_tables = json.load(open(os.path.join(data_dir, "career.json")))
-    # and the turns each G1 is held at (0-71: year x 24 + half-month; Classic and Senior runnings share one race index)
-    race_turns = [
-        sorted(
-            {
-                turn_index
-                for uma in data["umas"]
-                for turn_index, choices in enumerate(uma["turns"])
-                for choice in choices
-                if choice["race"] == race_index
-            }
-        )
-        for race_index in range(len(data["race_names"]))
-    ]
-    # skill groups something besides inheritance can give: a card's hints or events, an outfit's own skills (the career
-    # planner's sample veterans carry only the targets outside this: the ones a loop must inherit)
-    sourced = sorted(
-        {group_id for card in cards["cards"] for group_id in card["whites"]}
-        | {event[0] for card_events in event_skills.values() for event in card_events}
-        | {group_id for outfits in skills["cards"].values() for outfit in outfits for group_id, _ in outfit[2]}
     )
-    career = js(
-        {
-            "factors": career_tables["factors"],
-            "saddles": career_tables["saddles"],
-            "pinks": career_tables["pinks"],
-            "blues": career_tables.get("blues", {}),
-            "uniques": career_tables.get("uniques", {}),
-            "races": data["race_names"],
-            "race_cat": data["race_cat"],  # each race's distance (0-3 sprint to long) and ground (1 turf, 2 dirt)
-            "race_ground": data["race_ground"],
-            "race_turns": race_turns,
-            "mobs": [m for m in career_tables.get("mobs", []) if f"mob:{m[0]}" in image_catalog.keys],
-            "sourced": sourced,
-            "ranks": career_tables.get("ranks", []),
-            # GM era: the spark factors Global has, the only ones uma.moe (a Global site) can list
-            **({} if data_dir == GLOBAL_DATA else {"moe": sorted(map(int, global_factors))}),
-        }
-    )  # only mobs with a portrait (the samples draw from them)
-    return EraBundle(cards=js(ui_cards), umas=js(umas), skills=js(skills["skills"]), engine=engine, career=career)
+    career = page["career"]
+    # only mobs with a portrait (the samples draw from them)
+    career["mobs"] = [mob for mob in career["mobs"] if f"mob:{mob[0]}" in image_catalog.keys]
+    return EraBundle(
+        cards=js(page["cards"]), umas=js(page["umas"]), skills=js(page["skills"]), engine=engine, career=js(career)
+    )
 
 
-global_factors = json.load(open(os.path.join(GLOBAL_DATA, "career.json")))["factors"]
-global_era = era(GLOBAL_DATA, "card_events.json")
-gm_era = era(JP_DATA, "card_events.json")  # GM era: pal first-year date events left out, as in Global
+global_era = era(GLOBAL_DATA)
+gm_era = era(JP_DATA)  # GM era: pal first-year date events left out of its card_events.json, as in Global
 # the page scripts: src/main.js, src/career.js and the modules they import, each bundled into one minified IIFE (esbuild
 # from node_modules: npm ci); also the solver's worker script, src/worker.ts, minified and wrapped the same way
 # (JSX compiles to Preact's jsx() calls, imported from preact/jsx-runtime)

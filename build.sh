@@ -89,6 +89,11 @@ quiet() {
 }
 
 # ---- the data ----
+# the page's lists for both eras (export/export_page.py): run by every step that writes one of their inputs, so the
+# tracked page.json never lags them (webapp/build.py refuses one that does)
+export_page() {
+  (cd "$C/export" && "${PY[@]}" export_page.py global && "${PY[@]}" export_page.py jp)
+}
 step_data() {
   need_uv; need "$GLOBAL_MDB" "$JP_MDB"; check data
   local era script
@@ -98,20 +103,24 @@ step_data() {
     done
   done
   (cd "$C/export" && "${PY[@]}" upcoming.py global)
+  export_page
 }
 step_gametora() {
   need_uv; check gametora
   "${PY[@]}" "$C/export/gametora.py" ${GAMETORA_LATEST:+--latest}
+  export_page
 }
 step_events() {
   need_uv; need "$GLOBAL_MDB" "$JP_MDB"; check events
   step_gametora
   (cd "$C/export" && "${PY[@]}" build_card_events.py global && "${PY[@]}" build_card_events.py jp)
+  export_page
 }
 step_pb() {
   need_uv; need_cargo; check pb
   build_solver
   "${PY[@]}" "$C/export/add_pb.py" "$BIN" "$C/data/global/data.json" "$C/data/jp/data.json"
+  export_page
 }
 
 # ---- the solver ----

@@ -80,7 +80,7 @@ SLUGS = os.path.join(H, "..", "data", "gametora_slugs.json")
 
 
 def write_slugs():
-    """GameTora's page names, for the page's links (webapp/build.py reads them): per support card its url_name (e.g.
+    """GameTora's page names, for the page's links (export_page.py reads them): per support card its url_name (e.g.
     30067-the-thrones-assemblage, /supports/<url_name>), per character the slug of her character pages
     (/characters/<outfit id>-<slug>), taken from her support cards' url_name"""
     cards = load("support-cards")

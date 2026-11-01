@@ -136,13 +136,13 @@ const slugOf = (name) =>
     .replace(/[.']/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
-// GameTora's character page: /characters/<outfit id>-<slug>, the slug from her support cards' url_name (build.py),
-// else made from her name; with "any outfit" her original outfit (<chara id>01)
+// GameTora's character page: /characters/<outfit id>-<slug>, the slug from her support cards' url_name
+// (export_page.py), else made from her name; with "any outfit" her original outfit (<chara id>01)
 function umaUrl(u, outfitId) {
   return `https://gametora.com/umamusume/characters/${outfitId || u.id * 100 + 1}-${u.gt || slugOf(u.name)}`;
 }
-// GameTora's card page, by the url_name in its own card list (build.py; group cards have names a slug can't guess).
-// Fallback for a card missing from that list: id + character name, lowercase, punctuation dropped.
+// GameTora's card page, by the url_name in its own card list (export_page.py; group cards have names a slug can't
+// guess); for a card missing from that list, id + character name, lowercase, punctuation dropped.
 function gametoraUrl(c) {
   const page = c.gt || `${c.id}-${slugOf(c.name.replace(/^\[.*?\]\s*/, ''))}`; // the name without its [title]
   return `https://gametora.com/umamusume/supports/${page}`;

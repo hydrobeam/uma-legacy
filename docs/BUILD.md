@@ -84,13 +84,13 @@ it stops; the `art` step instead says what it skipped.
 |---|---|
 | `all` | `data events native pb wasm art page` |
 | `art` | `images` and `runners`, each when its game files are in `game/global/` (skipped with a note otherwise); part of the default build |
-| `data` | the Global and Grand Masters-era exports from `master.mdb`: `base.json` (roster and aptitudes), `data.json`, `web_skills.json`, `web_cards.json` (with the scenario card bans), `career.json` (the veteran import's spark-factor and win-saddle tables), `upcoming.json` |
-| `gametora` | GameTora's pinned data files into `cache/gametora/`; `GAMETORA_LATEST=1` moves the pins to the newest versions first; it also rewrites `pkg/loopopt/data/gametora_slugs.json`, the page's links to GameTora (tracked, so `page` downloads nothing). Run by `events` |
-| `events` | each era's card event file from GameTora's files plus the hand-entered entries (pal first-year dates left out, as IT never fires them) |
+| `data` | the Global and Grand Masters-era exports from `master.mdb`: `base.json` (roster and aptitudes), `data.json`, `web_skills.json`, `web_cards.json` (with the scenario card bans), `career.json` (the veteran import's spark-factor and win-saddle tables), `upcoming.json`, then the page's lists (`page.json`, below) |
+| `gametora` | GameTora's pinned data files into `cache/gametora/`; `GAMETORA_LATEST=1` moves the pins to the newest versions first; it also rewrites `pkg/loopopt/data/gametora_slugs.json`, the page's links to GameTora (tracked, so `page` downloads nothing), then the page's lists. Run by `events` |
+| `events` | each era's card event file from GameTora's files plus the hand-entered entries (pal first-year dates left out, as IT never fires them), then the page's lists |
 | `native` | the release binary, clippy (as `lint` runs it), then `cargo test --release` |
 | `lint` | every check below runs whatever the others found, and the step ends by naming the ones that failed: `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`shellcheck-py`, dev group); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); `val/test_validation.py` (planval's and the comparisons' gates on a fake solver, 3 s; it had gone four days failing unnoticed when nothing ran it); `biome check` on the page's JS (lint and formatting in one pass: 2-space indent, single quotes, 120 columns) with warnings as errors (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line); TypeScript's checker, three times: the page's TypeScript, strict (`webapp/tsconfig.json`), its plain JS (`webapp/tsconfig.js.json`: checkJs with strictNullChecks, not yet the rest of strict; the records are JSDoc typedefs), and the solver's worker with a worker's globals (`webapp/tsconfig.worker.json`, strict); `webapp/test/static.mjs`, what the browser suite can't see going stale: CSS classes no script, template or `build.py` names (a name built from parts is listed in its `BUILT` with where), exports no other file uses, `localStorage` writes of a copy not read from storage after the function's last `await` (one tab's write then erases another's), and ids a module looks up by name that a page holding the module lacks (one that may miss on purpose is listed in its `MAY_BE_MISSING`, under each page where it may, with why), with reports that never fail it (ids nothing names, panels no page uses, imports against the layer order, `@ts-expect-error` markers); the page's node tests (`webapp/test/unit/`) |
 | `hooks` | `git config core.hooksPath .githooks`: the tracked pre-commit hook (see *Rust style*); once per clone |
-| `pb` | the release solver (cargo's build, a no-op on an unchanged tree), then each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files; it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
+| `pb` | the release solver (cargo's build, a no-op on an unchanged tree), then each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files, then the page's lists (`data.json` is one of their inputs); it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
 | `wasm` | the wasm32 build (stable; rebuilding std with `-Z build-std` was measured on 2026-10-31 to change neither the output nor the speed, and under 2 KB of size), `wasm-opt -O3 -ocimfs=0` (no inlining of single-caller functions, so long loops stay in functions V8 optimises: `docs/PERF.md`, *In the page*), then `webapp/example.json` (the result shown before the first search). `wasm-opt` (about a minute) is skipped when the compiled wasm, its flags (`WASM_OPT_FLAGS`, the one list the command also reads) and wasm-opt's version match its last run (`webapp/.loopopt.wasm.key`); the example always runs |
 | `page` | `webapp/dist/` (see *The page*) |
 | `images` | game art into `webapp/img/` (see *Art*); only new ids unless `IMAGES_FORCE=1` |
@@ -127,6 +127,12 @@ Put the new `master.mdb` files in `game/`, then `./build.sh data events pb`, val
   read and decoded in one place, `pkg/loopopt/export/gametora.py` (its docstring holds their format); the builders turn
   events into card entries with `event_choices.py`, and `val/event_audit.py` and `val/secret_events.py` read them through
   it too. After touching them, `uv run val/event_audit.py` should say "every target hint is accounted for".
+- The page's lists (the card picker's cards, the roster with release dates, the skill catalog, the career page's tables)
+  are exported too: `pkg/loopopt/export/export_page.py` writes each era's `page.json` and the shared
+  `page_raceids.json` (race names to race ids) from the other exports, `gametora_slugs.json` and `master.mdb` (the
+  release dates; without it, `upcoming.json`'s and id order). `data`, `gametora`, `events` and `pb` end by running it,
+  since each writes one of its inputs. `page.json` records the sha256 of every file it was made from, and the page
+  build stops ("run ./build.sh data") when one has changed since; a `master.mdb` absent from the checkout is skipped.
 - New characters' art comes from `./build.sh images` (and `runners`); without it they show initials.
 
 ## Art
@@ -143,7 +149,10 @@ search works (a spinner when a build has none). How the pipeline works and what 
 
 ## The page
 
-`webapp/build.py` assembles `webapp/dist/`:
+`webapp/build.py` assembles `webapp/dist/`. It prepares no game data: the page's lists are each era's exported
+`page.json` (*Data updates*), refused when a file they were made from has changed since; the build adds only what
+depends on the tree it runs in, the research constants (`research/results.json`, read as `build.rs` reads them) and
+the career tables' mobs cut to those with a portrait in `webapp/img/`. It writes:
 - `index.html` (the career planner, the front page; an old `/career` link redirects there), `loop.html` (`/loop`, the
   loop planner) and `about.html` (`/about`, "How this works", which holds
   the model text), from their templates. Shared markup lives in `panels.template.html`, blocks marked
@@ -393,11 +402,12 @@ webapp/              the page: templates, src/ (styles and modules), worker, bui
 pkg/loopopt/         the Rust solver (src/, its module map in docs/SOLVER.md; tests/; build.rs takes the training-hint
                      constants from research/results.json)
 pkg/loopopt/export/  Python exporters, one set for both eras (`global` or `jp` argument; era.py)
-pkg/loopopt/data/    the solver's data: global/ and jp/ (the Grand Masters era: the JP game database cut at L'Arc's
-                     launch), each with data.json, web_skills.json, web_cards.json, career.json, card_events.json,
-                     base.json and manual.json (hand-entered card events), plus upcoming.json for Global; and the
-                     files both eras share, event_shares.json, gametora.json (GameTora's pinned versions) and
-                     gametora_slugs.json (the page's links to GameTora)
+pkg/loopopt/data/    the solver's and the page's data: global/ and jp/ (the Grand Masters era: the JP game database
+                     cut at L'Arc's launch), each with data.json, web_skills.json, web_cards.json, career.json,
+                     card_events.json, base.json, manual.json (hand-entered card events) and page.json (the page's
+                     lists, export_page.py), plus upcoming.json for Global; and the files both eras share,
+                     event_shares.json, gametora.json (GameTora's pinned versions), gametora_slugs.json (the page's
+                     links to GameTora) and page_raceids.json
 val/                 validation: jobs/ (the job files), jobs.json and slow.json (which run), reference outputs, checks;
                      plan/ and sim/ (the career planner's and the policy simulator's jobs and references)
 research/            scripts computing RESEARCH.md's numbers; RESEARCH.md is rendered from docs/RESEARCH.template.md (`./build.sh research`; research/README.md)

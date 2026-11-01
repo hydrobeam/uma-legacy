@@ -11,7 +11,7 @@ const has = (id) => id in BUNDLED || !!$(id);
 // the solver's worker script.
 export const ASSETS = parse('data-assets');
 /**
- * A support card (build.py `ui_cards`).
+ * A support card (pkg/loopopt/export/export_page.py, its `cards`).
  * @typedef {object} Card
  * @property {number} id
  * @property {string} name "[Title] Character"
@@ -28,7 +28,7 @@ export const ASSETS = parse('data-assets');
  * @property {string[]} [ban] scenarios that do not allow it
  */
 /**
- * A story event's choice that ends the card's chain (build.py `chain_ends`). IT takes it only when a skill on it is
+ * A story event's choice that ends the card's chain (export_page.py `chain_ends`). IT takes it only when a skill on it is
  * prioritised.
  * @typedef {object} ChainEnd
  * @property {number} link the story-event link
@@ -51,7 +51,8 @@ export const ASSETS = parse('data-assets');
  */
 /** @typedef {{w: string, gd: string | null}} SkillNames a skill group's white name and its gold's (null: none) */
 /**
- * The career page's tables (build.py `era()`, `career`; the planner page has them only in the GM era).
+ * The career page's tables (export_page.py `career`, its mobs cut to those with a portrait by build.py; the planner
+ * page has them only in the GM era).
  * @typedef {object} CareerTables
  * @property {Record<number, number>} factors  a white spark's factor group -> its skill group
  * @property {Record<number, number>} saddles  a saddle (a won title) -> its G1 race's index; titles of several races
