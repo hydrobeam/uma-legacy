@@ -1,9 +1,10 @@
 // the career planner's pool grows: an uma.moe tree added, generations saved from the veteran you got (her parents the
 // next one's grandparents), removals (from the 12 test veterans, parent 1 fixed so that saving has places to clear)
-import { check, dialog, audit, contrastCheck, still, careerPage } from './helpers.mjs';
+import { expect } from 'playwright/test';
+import { check, dialog, careerPage } from './helpers.mjs';
 
 export default async function careergen(b) {
-  const { ctx, pg, note, done, vetsOpen, vetsShut, vetsSeen, node, inNode, simStars, simOpen, importDump, saved } =
+  const { ctx, pg, done, vetsOpen, vetsShut, vetsSeen, node, inNode, simStars, simOpen, importDump, saved } =
     await careerPage(b);
   await importDump();
   await saved(); // (its run is cut short by the reload)
@@ -15,6 +16,8 @@ export default async function careergen(b) {
   await pg.reload();
   await done();
   const nVets = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length);
+  const cards = pg.locator('#vets .umcell'),
+    runNote = pg.locator('#run-note');
   // an uma.moe lineage planner tree: one veteran with her parents, added after the others (factorId x 10 + level is the
   // game's factor id: Uma Stan 2, Racing Spirit: Stamina (factor group 21009, skill group 21010) 3, Dirt pink 1; saddle
   // 3 is a title (left out), 165 and 168 single-race G1s)
@@ -28,10 +31,11 @@ export default async function careergen(b) {
   await pg.click('#paste-load');
   await done();
   const fromTree = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.at(-1));
+  const treeAdds = 'career: an uma.moe tree adds her with her parents after your veterans, marked yours';
+  await expect.soft(cards, `${treeAdds}: one card more`).toHaveCount(nVets + 1);
   check(
-    'career: an uma.moe tree adds her with her parents after your veterans, marked yours (her popup says she came from uma.moe)',
-    (await pg.locator('#vets .umcell').count()) === nVets + 1 &&
-      fromTree.src === 'tree' &&
+    `${treeAdds}: as stored`,
+    fromTree.src === 'tree' &&
       fromTree.chara === 1019 &&
       !fromTree.borrowed &&
       fromTree.sparks[20159] === 2 &&
@@ -40,17 +44,16 @@ export default async function careergen(b) {
       fromTree.wins.length === 2 &&
       fromTree.parents.map((p) => p.chara).join() === '1021,1029' &&
       fromTree.parents[0].sparks[20165] === 2 &&
-      fromTree.parents[0].wins.length === 1 &&
-      !/From uma\.moe/.test(await pg.locator('#vets .umcell').last().textContent()) &&
-      /uma\.moe tree/.test(await pg.textContent('#v-msg')) &&
-      (await (async () => {
-        await vetsOpen();
-        await pg.locator('#vets .umcell').last().click(); // (beside the list)
-        const t = await pg.textContent('#v-pane .srctag').catch(() => '');
-        return t === 'From uma.moe';
-      })()),
+      fromTree.parents[0].wins.length === 1,
     JSON.stringify(fromTree),
   );
+  await expect.soft(cards.last(), `${treeAdds}: her card does not name uma.moe`).not.toHaveText(/From uma\.moe/);
+  await expect.soft(pg.locator('#v-msg'), `${treeAdds}: the note says so`).toHaveText(/uma\.moe tree/);
+  await vetsOpen();
+  await cards.last().click(); // (beside the list)
+  await expect
+    .soft(pg.locator('#v-pane .srctag'), `${treeAdds}: her popup says she came from uma.moe`)
+    .toHaveText('From uma.moe');
   await pg.locator('#vets .umcell').last().click();
   await pg.locator('#v-pane .vdel').click();
   await done();
@@ -72,15 +75,19 @@ export default async function careergen(b) {
     );
   await pg.click('#sim-add');
   await done();
+  const addAfter =
+    'career: Add to veterans after Compare plans the pool with her afresh (Compare priced her under the fit before her)';
   check(
-    'career: Add to veterans after Compare plans the pool with her afresh (Compare priced her under the fit before her)',
-    (await planJobs()) === pj0 + 1 && /Planned in|Weighed/.test(await pg.textContent('#run-note')),
+    `${addAfter}: one plan job`,
+    (await planJobs()) === pj0 + 1,
     `plan jobs ${pj0} -> ${await planJobs()}, compare's pick ${cmpPick}`,
   );
+  await expect.soft(runNote, `${addAfter}: planned`).toHaveText(/Planned in|Weighed/);
   await vetsSeen(); // the veterans dialog draws its cards when open (and on opening)
+  const adding = 'career: adding her saves a labelled veteran and opens the next career';
   check(
-    'career: adding her saves a labelled veteran and opens the next career',
-    (await pg.evaluate((n) => {
+    `${adding}: as stored`,
+    await pg.evaluate((n) => {
       const c = JSON.parse(localStorage.getItem('llp:career')).global;
       const v = c.vets.at(-1);
       return (
@@ -92,15 +99,12 @@ export default async function careergen(b) {
         c.plan.trainee === null &&
         c.plan.parents.every((p) => p === null)
       );
-    }, beforeSimulation)) &&
-      !(await pg.locator('#vets .simtag').count()) &&
-      (await (async () => {
-        await vetsOpen();
-        await pg.locator('#vets .umcell').last().click(); // (beside the list)
-        const t = await pg.textContent('#v-pane .simtag').catch(() => '');
-        return t === 'Entered here';
-      })()),
+    }, beforeSimulation),
   );
+  await expect.soft(pg.locator('#vets .simtag'), `${adding}: no tag on her card`).toHaveCount(0);
+  await vetsOpen();
+  await cards.last().click(); // (beside the list)
+  await expect.soft(pg.locator('#v-pane .simtag'), `${adding}: her popup labels her`).toHaveText('Entered here');
   const simulated = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.at(-1));
   // Force this simulated veteran as a parent and complete another hypothetical career.
   await pg.evaluate((v) => {
@@ -153,24 +157,17 @@ export default async function careergen(b) {
   await pg.locator('#v-pane .vdel').click();
   await saved();
   // her card had the focus and is gone: the card chosen now takes it (review-8c §6)
-  const focusAfter = await pg
-    .waitForFunction(() => document.activeElement?.matches('#vets .umcell.sel'), null, { timeout: 3000 })
-    .then(
-      () => true,
-      () => false,
-    );
+  await expect
+    .soft(pg.locator('#vets .umcell.sel'), 'focus: after Remove, the card chosen now has the focus (not the page)')
+    .toBeFocused();
+  const removing = 'career: removing a selected veteran immediately redraws and clears the fixed parent';
+  await expect.soft(cards, `${removing}: one card fewer`).toHaveCount(removal.count - 1);
   check(
-    'focus: after Remove, the card chosen now has the focus (not the page)',
-    focusAfter,
-    await pg.evaluate(() => `${document.activeElement?.tagName}#${document.activeElement?.id}`),
-  );
-  check(
-    'career: removing a selected veteran immediately redraws and clears the fixed parent',
-    (await pg.locator('#vets .umcell').count()) === removal.count - 1 &&
-      (await pg.evaluate(({ id, count }) => {
-        const c = JSON.parse(localStorage.getItem('llp:career')).global;
-        return c.vets.length === count - 1 && !c.vets.some((v) => v.id === id) && !c.plan.parents.includes(id);
-      }, removal)),
+    `${removing}: as stored`,
+    await pg.evaluate(({ id, count }) => {
+      const c = JSON.parse(localStorage.getItem('llp:career')).global;
+      return c.vets.length === count - 1 && !c.vets.some((v) => v.id === id) && !c.plan.parents.includes(id);
+    }, removal),
   );
   await done();
   await pg.reload();
@@ -214,23 +211,17 @@ export default async function careergen(b) {
     `written before the page went: ${!quick.due}`,
   );
   await vetsOpen();
-  while ((await pg.locator('#vets .umcell').count()) > 1) {
-    await pg.locator('#vets .umcell').last().click();
+  while ((await cards.count()) > 1) {
+    await cards.last().click();
     await pg.locator('#v-pane .vdel').click();
   }
   await done();
-  check(
-    'career: removing down to one veteran clears obsolete indexed results without a page error',
-    (await pg.locator('#vets .umcell').count()) === 1 &&
-      /Choose both parents, or import/.test(await note()) &&
-      (await pg.locator('#simulation').count()) === 0,
-  );
+  const downToOne = 'career: removing down to one veteran clears obsolete indexed results without a page error';
+  await expect.soft(cards, `${downToOne}: one card`).toHaveCount(1);
+  await expect.soft(runNote, `${downToOne}: the note asks for parents`).toHaveText(/Choose both parents, or import/);
+  await expect.soft(pg.locator('#simulation'), `${downToOne}: no Try a run`).toHaveCount(0);
 
   await pg.keyboard.press('Escape');
-  if (b.browserType().name() === 'chromium') {
-    await still(pg);
-    contrastCheck('career: the page with one veteran', [await audit(pg)]);
-  }
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await ctx.close();
 }

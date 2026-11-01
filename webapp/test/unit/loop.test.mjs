@@ -1,10 +1,9 @@
 // The loop page's run machine (src/loop/run.ts), its run state (loop/state.ts) and its job (loop/job.ts), on the fake
 // page (fakepage.mjs) with a fake engine (each job a promise the test settles; interim answers the test sends), a fake
-// clock and timers, and a Map for localStorage. node --test 'test/unit/*.test.*' (in webapp)
-import './fakepage.mjs';
+// clock and timers, and a Map for localStorage. npx vitest run (in webapp)
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { test } from 'node:test';
+import { test, vi } from 'vitest';
 import { loadData } from '../../src/data.ts';
 import { fmtIn } from '../../src/dom.ts';
 import { gameData } from '../../src/data.ts';
@@ -29,6 +28,8 @@ import {
 import { on } from '../../src/store.ts';
 import { FIXTURES } from './loopfixtures.mjs';
 import { fakeClock, flush, memory } from './fakes.mjs';
+
+vi.mock('#page-data', () => import('./fakepage.mjs'));
 
 await loadData(null);
 const GOLDEN = JSON.parse(fs.readFileSync(new URL('./loopgolden.json', import.meta.url), 'utf8'));

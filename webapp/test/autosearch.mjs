@@ -1,4 +1,5 @@
-import { check, open, settle, note } from './helpers.mjs';
+import { expect } from 'playwright/test';
+import { check, open, openEditor, closeEditor, settle, note } from './helpers.mjs';
 
 // The status line's live region (#run-note, role status): the node the parser made, its text then (empty: the region
 // exists before its first message, so that message is a change a screen reader announces) and every text it shows after
@@ -28,6 +29,11 @@ const liveRegion = (pg) =>
 
 export default async function autosearch(b) {
   const pg = await open(b, { init: watchLiveRegion });
+  const runNote = pg.locator('#run-note'),
+    loops = pg.locator('#results .loop');
+  // the status line's text as drawn
+  const noteIs = (text, what, timeout) => expect.soft(runNote, what).toHaveText(text, { useInnerText: true, timeout });
+  const done = /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/;
   const first = await liveRegion(pg);
   check(
     'the status line is a live region from load: empty before the first search, whose "Searching…" and result are changes to it',
@@ -39,14 +45,12 @@ export default async function autosearch(b) {
     JSON.stringify(first),
   );
   // auto-search off: a change waits for the Search button; back on, it searches
-  check('auto-search is on by default', await pg.locator('#x-auto').isChecked());
+  await expect.soft(pg.locator('#x-auto'), 'auto-search is on by default').toBeChecked();
   await pg.click('#x-auto');
   const n0 = await pg.evaluate(() => window.__runs.length);
-  check(
-    'switching auto-search off leaves the results as they are (not out of date)',
-    /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)) &&
-      !(await pg.evaluate(() => document.getElementById('results').classList.contains('stale'))),
-  );
+  const off = 'switching auto-search off leaves the results as they are (not out of date)';
+  await noteIs(done, off);
+  await expect.soft(pg.locator('#results'), `${off}: not dimmed`).not.toContainClass('stale');
   // P5: a card un-owned in the picker greys its card in the result on show at once, the same element (auto-search
   // off: that result stays); owned again, it is not greyed
   const tile = await pg.evaluate(() => {
@@ -58,6 +62,7 @@ export default async function autosearch(b) {
       return name === shown || name.startsWith(`${shown} `);
     });
   });
+  await openEditor(pg, 'cards');
   await pg.locator('#cards .ct').nth(tile).click();
   const greyed = await pg.evaluate(() => window.__chip.isConnected && window.__chip.classList.contains('off'));
   await pg.locator('#cards .ct').nth(tile).click();
@@ -69,13 +74,12 @@ export default async function autosearch(b) {
     `tile ${tile}, greyed ${greyed}`,
   );
   await pg.locator('#cards .ct').nth(6).click();
-  await pg.waitForTimeout(1300);
-  check(
-    'auto-search off: a change does not search, the status says to press Search',
-    (await pg.evaluate(() => window.__runs.length)) === n0 &&
-      /press Search/.test(await note(pg)) &&
-      (await pg.locator('#r-act button', { hasText: 'Search' }).count()) === 1,
-  );
+  await pg.waitForTimeout(1300); // past the pause a change would search after
+  await closeEditor(pg, 'cards');
+  const waits = 'auto-search off: a change does not search, the status says to press Search';
+  check(waits, (await pg.evaluate(() => window.__runs.length)) === n0);
+  await noteIs(/press Search/, `${waits}: the status`);
+  await expect.soft(pg.locator('#r-act button', { hasText: 'Search' }), `${waits}: the button`).toHaveCount(1);
   // Export pairs these settings with the result on show, which is from before the change: it says so
   await pg.click('#ex-open');
   const exported = JSON.parse(await pg.inputValue('#ex-text')).results;
@@ -87,12 +91,11 @@ export default async function autosearch(b) {
   );
   await pg.locator('#r-act button', { hasText: 'Search' }).click();
   await settle(pg);
-  check(
-    '… the Search button runs it',
-    (await pg.evaluate(() => window.__runs.length)) === n0 + 1 &&
-      /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)),
-  );
+  check('… the Search button runs it', (await pg.evaluate(() => window.__runs.length)) === n0 + 1);
+  await noteIs(done, '… the Search button runs it: the status');
+  await openEditor(pg, 'cards');
   await pg.locator('#cards .ct').nth(6).click();
+  await closeEditor(pg, 'cards');
   await pg.click('#x-auto');
   await settle(pg);
   check('… turning it back on searches the change', (await pg.evaluate(() => window.__runs.length)) === n0 + 2);
@@ -102,21 +105,11 @@ export default async function autosearch(b) {
       b.click();
     }),
   ); // five changes inside one pause
-  check('a change shows "Searching…"', /Searching/.test(await note(pg)));
+  await noteIs(/Searching/, 'a change shows "Searching…"');
   // the fast pass is drawn first, with the status saying the exact check is still running
-  const checking = await pg
-    .waitForFunction(() => /Checking the exact odds/.test(document.getElementById('run-note').textContent), null, {
-      timeout: 30000,
-    })
-    .then(
-      () => true,
-      () => false,
-    );
-  check(
-    'the first pass shows while the exact check runs',
-    checking && (await pg.locator('#results .loop').count()) > 0,
-    await note(pg),
-  );
+  const firstPass = 'the first pass shows while the exact check runs';
+  await noteIs(/Checking the exact odds/, firstPass, 30_000);
+  await expect.soft(loops, `${firstPass}: the results`).not.toHaveCount(0);
   await settle(pg);
   check('a burst of 5 changes is one search on the same worker', (await pg.evaluate(() => window.__made)) === made0);
   // a search changed mid-run (3 results, one shared deck; its replies held so it is still running however fast it
@@ -132,7 +125,7 @@ export default async function autosearch(b) {
     r0,
   ); // the slow search itself is running (not a quick job from the first change alone)
   const k0 = await pg.evaluate(() => window.__killed);
-  check('old results stay visible while searching', (await pg.locator('#results .loop').count()) > 0);
+  await expect.soft(loops, 'old results stay visible while searching').not.toHaveCount(0);
   await pg.waitForFunction(
     () => /(Searching|Checking the exact odds)…\s*\d+ s/.test(document.getElementById('run-note').textContent),
     null,
@@ -149,22 +142,16 @@ export default async function autosearch(b) {
   await pg.click('#c-top [data-v="1"]');
   await settle(pg);
   check('a change mid-search restarts the worker', (await pg.evaluate(() => window.__killed)) > k0);
-  check('the restarted search finishes', /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)));
+  await noteIs(done, 'the restarted search finishes');
   // the focus on a deck card panel's Owned switch when the card is un-owned: its search draws a new result, which
   // closes the panel, and the focus goes to the results column (not the page top)
   await pg.locator('.deck .dc:not(.bor)').first().click();
   await pg.locator('.cpop input[role=switch]').focus();
   await pg.keyboard.press('Space');
   await settle(pg);
-  const refocused = await pg.evaluate(() => ({
-    active: document.activeElement?.id || document.activeElement?.tagName,
-    panelHidden: document.querySelector('.cpop').hidden,
-  }));
-  check(
-    'a result drawn while the focus is in its panel: the focus goes to the results column',
-    refocused.active === 'rcol' && refocused.panelHidden,
-    JSON.stringify(refocused),
-  );
+  const refocus = 'a result drawn while the focus is in its panel: the focus goes to the results column';
+  await expect.soft(pg.locator('#rcol'), refocus).toBeFocused();
+  await expect.soft(pg.locator('.cpop').first(), `${refocus}: the panel closed`).toBeHidden();
   // a reload shows the kept result as done at once: its line is a change to the region the page loaded with
   await pg.reload();
   await settle(pg);

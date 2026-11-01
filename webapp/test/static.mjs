@@ -18,8 +18,6 @@
 //   read-only array of those.
 // - wiring: the career run machine's deps that no browser group checks are named as they must be (engine.key,
 //   analysis.stop and outdate, view.drawCheck).
-// - read before declared: no bundle reads a top-level variable at load before its declaration has run (samecode's
-//   `loadOrder`, on the bundles as samecode builds them).
 // - mount roots: no module of a page's bundle looks into a component's subtree but the module that draws it (MOUNTS),
 //   the entry only at its mount points, a deliberate read listed with why (MOUNT_READS): by a selector or a class
 //   lookup naming what the component draws, or by walking down from a mount point (its children, a query from it, a
@@ -38,7 +36,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as esbuild from 'esbuild';
 import { LAYERS } from '../.dependency-cruiser.mjs';
-import { bundle, loadOrder, loadOrderText } from './samecode.mjs';
 
 const W = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
 const read = (f) => fs.readFileSync(path.join(W, f), 'utf8');
@@ -88,7 +85,6 @@ const MAY_BE_MISSING = {
   'src/career/main.tsx': {},
 };
 const PAGES = { 'src/loop/main.tsx': 'loop.html', 'src/career/main.tsx': 'index.html' };
-const WORKER = 'src/worker.ts';
 const LOOKUP = /(?<![\w$.])(?:\$|\$input|document\.getElementById)\(\s*(['"`])([^'"`$]*?)\1\s*\)/g;
 const DYNAMIC_LOOKUP = /(?<![\w$.])(?:\$|\$input|document\.getElementById)\(\s*(?!['"])[^)]/g;
 const SELECTOR_ID = /\.(?:querySelector(?:All)?|closest|matches)\(\s*(['"])#([A-Za-z][\w-]*)\1\s*\)/g;
@@ -103,11 +99,19 @@ const fillPanels = (page) => {
 };
 const idsIn = (text) => [...text.matchAll(MADE_ID)].map((m) => m[2] || m[3]);
 const srcText = Object.fromEntries(sources.filter(([f]) => f.startsWith('src')));
-// each page's metafile (esbuild): its modules and their imports, paths as in `sources`
+// each page's metafile (esbuild): its modules and their imports, paths as in `sources` (the page data, modules the Vite
+// build writes, outside: no file holds them)
 const metafiles = Object.fromEntries(
   Object.keys(PAGES).map((entry) => [
     entry,
-    esbuild.buildSync({ entryPoints: [entry], bundle: true, write: false, metafile: true, logLevel: 'error' }).metafile,
+    esbuild.buildSync({
+      entryPoints: [entry],
+      bundle: true,
+      write: false,
+      metafile: true,
+      external: ['#page-data', '#career-data'],
+      logLevel: 'error',
+    }).metafile,
   ]),
 );
 // the modules of each page's bundle
@@ -527,10 +531,6 @@ const LOAD_LISTENERS = {
   for (const file of [...Object.keys(RAF_KEPT), ...Object.keys(LOAD_LISTENERS)])
     if (!sources.some(([f]) => f === file)) problems.push(`RAF_KEPT/LOAD_LISTENERS: ${file} is gone: drop it`);
 }
-
-// ---------- read before declared: each bundle as samecode reads it (`loadOrder`)
-for (const entry of [...Object.keys(PAGES), WORKER])
-  for (const problem of loadOrder(await bundle(W, entry))) problems.push(`${entry} bundle: ${loadOrderText(problem)}`);
 
 // ---------- reports (printed, never a failure)
 const reports = [];

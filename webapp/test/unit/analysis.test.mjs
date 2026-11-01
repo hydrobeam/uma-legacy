@@ -4,9 +4,9 @@
 // is read by an effect (`writes`): every late reply of a stale chain writes nothing, the 0.8 s timers start nothing
 // after a stop, each phase is one write, the run machine's hooks and a comparison never interleave their writes, the
 // same career keeps her draft (F6), quick and exact share one baseline (F5), and Compare keeps a plan only for a refit.
-// node --test 'test/unit/*.test.*' (in webapp)
+// npx vitest run (in webapp)
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { effect, signal } from '@preact/signals-core';
 import { STAND_MS, createComparison, savedWhere } from '../../src/career/analysis/compare.ts';
 import * as store from '../../src/career/analysis/state.ts';

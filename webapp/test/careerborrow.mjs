@@ -1,10 +1,11 @@
 // Borrowed parent (Career setup) on the 12 test veterans with the plan's first pick's parent made borrowed: Not this
 // career and Never send borrowed_parent ('later', 'never'; Allowed sends none), are saved with the settings, and leave
 // every career the planner offers without a borrowed parent; a borrowed parent you chose is blocked, also after a reload
+import { expect } from 'playwright/test';
 import { check, dialog, careerPage } from './helpers.mjs';
 
 export default async function careerborrow(b) {
-  const { ctx, pg, note, done, planned, vetsOpen, vetsShut, node, inNode, importDump } = await careerPage(b);
+  const { ctx, pg, done, planned, vetsOpen, vetsShut, node, inNode, importDump } = await careerPage(b);
   await importDump();
   await done();
   await planned();
@@ -19,12 +20,11 @@ export default async function careerborrow(b) {
       r?.parents.some((i) => p.job.legacies[i].borrowed),
     ).length;
   const exported = async () => {
-    await pg.evaluate(() => document.getElementById('set-vets').close()); // (Export is on the page, under the dialog)
+    await vetsShut(); // (Export is on the page, under the dialog)
     await pg.click('#v-export');
     await dialog(pg, 'vx-dlg');
     const x = JSON.parse(await pg.inputValue('#vx-text'));
     await pg.locator('#vx-dlg .dclose').click();
-    await vetsShut();
     return x;
   };
   const bi = (await lastPlan()).r.next.choice.parents[0],
@@ -124,7 +124,9 @@ export default async function careerborrow(b) {
   await pg.click('#bp button[data-v="never"]');
   await done();
   const blockedNote = /is borrowed, and Borrowed parent is set to Never: choose one of your veterans/;
-  const n1 = await note();
+  const blocked =
+    'career: a borrowed parent you chose is blocked when borrowing is off, and the parent picker greys her out';
+  await expect.soft(pg.locator('#run-note'), `${blocked}: the note`).toHaveText(blockedNote);
   await node('node:p0');
   await inNode(/^(Choose|Change) parent$/).click();
   await dialog(pg, 'vpick-dlg');
@@ -133,18 +135,14 @@ export default async function careerborrow(b) {
     .nth(bj)
     .evaluate((b) => b.disabled && /Can't: borrowed/.test(b.textContent));
   await pg.locator('#vpick-dlg .dclose').click();
-  check(
-    'career: a borrowed parent you chose is blocked when borrowing is off, and the parent picker greys her out',
-    blockedNote.test(n1) && greyed,
-    n1,
-  );
+  check(`${blocked}: greyed`, greyed);
   await pg.reload();
   await done();
-  check(
-    'career: … after a reload the choice and the block stand',
-    (await pressed()) === 'never' && blockedNote.test(await note()),
-    await note(),
-  );
+  const stands = 'career: … after a reload the choice and the block stand';
+  await expect
+    .soft(pg.locator('#bp button[aria-pressed="true"]'), `${stands}: Never`)
+    .toHaveAttribute('data-v', 'never');
+  await expect.soft(pg.locator('#run-note'), `${stands}: the note`).toHaveText(blockedNote);
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await ctx.close();
 }

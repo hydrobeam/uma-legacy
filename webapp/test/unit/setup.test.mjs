@@ -1,77 +1,40 @@
-// The shared setup editors (ui/Presets, ui/Targets) on happy-dom's document, bundled with esbuild as the page
-// bundles them: what each edit stores. Presets by name: Load, Overwrite, a rename, a rename onto a taken name, Delete
+// @vitest-environment happy-dom
+// The shared setup editors (ui/Presets, ui/Targets) on happy-dom's document, compiled as the page's build compiles
+// them: what each edit stores. Presets by name: Load, Overwrite, a rename, a rename onto a taken name, Delete
 // after a rename (review-11a F1); a target's removal and where the focus goes after it; the rank's ? keeps its click
 // (F2); a sort menu over a stored value it doesn't list (F3); two presets of one name in storage (F4); the
 // editors redraw for the settings they show only (F6); their lists' keys are unique (F7, preact/debug's check); two
 // picks of a pill row in one task (careerrun's edit and its undoing) both count.
-// node --test 'test/unit/*.test.*' (in webapp)
-import './fakepage.mjs';
+// npx vitest run (in webapp)
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test, vi } from 'vitest';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import * as esbuild from 'esbuild';
-import { GlobalRegistrator } from '@happy-dom/global-registrator';
+import 'preact/debug';
+import '@preact/signals';
+import { h, options, render } from 'preact';
+import * as S from '../../src/settings.ts';
+import * as P from '../../src/presets.ts';
+import { PresetDialogs, openPresets } from '../../src/ui/Presets.tsx';
+import { setupViews } from '../../src/ui/Setup.tsx';
+import { renderGuarded } from '../../src/ui/RenderGuard.tsx';
+import { SettingsSort, SortMenu } from '../../src/ui/SortMenu.tsx';
+import { gameData, loadData } from '../../src/data.ts';
+import { SKILLS, UMAS } from './fakepage.mjs';
 
-GlobalRegistrator.register({ width: 1440, height: 900 });
+vi.mock('#page-data', () => import('./fakepage.mjs'));
+
 document.documentElement.className = 'game'; // (the planner pages' class)
-
-const WEBAPP = fileURLToPath(new URL('../..', import.meta.url));
+const WEBAPP = path.join(import.meta.dirname, '..', '..');
 // the editors' mount points: the setup partials both planner pages hold (vite.config.mjs fills them in)
 const SETUP_PARTIALS = ['era', 'scen', 'rank', 'enh', 'skills', 'dlgumas', 'dlgcards'];
 document.body.innerHTML = SETUP_PARTIALS.map((p) =>
   fs.readFileSync(path.join(WEBAPP, 'partials', `${p}.hbs`), 'utf8'),
 ).join('');
-const built = await esbuild.build({
-  stdin: {
-    contents: `
-      import 'preact/debug';
-      import '@preact/signals';
-      export * as settings from './src/settings.ts';
-      export * as presets from './src/presets.ts';
-      export { PresetDialogs, openPresets } from './src/ui/Presets.tsx';
-      export { setupViews } from './src/ui/Setup.tsx';
-      export { renderGuarded } from './src/ui/RenderGuard.tsx';
-      export { SettingsSort, SortMenu } from './src/ui/SortMenu.tsx';
-      export { h, options, render } from 'preact';
-      export { gameData, loadData } from './src/data.ts';`,
-    resolveDir: WEBAPP,
-    loader: 'js',
-  },
-  bundle: true,
-  write: false,
-  format: 'esm',
-  jsx: 'automatic',
-  jsxImportSource: 'preact',
-  logLevel: 'silent',
-});
-// (imported from a file, so a failure's stack names its lines)
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llp-setup-')),
-  file = path.join(dir, 'setup.mjs');
-fs.writeFileSync(file, built.outputFiles[0].text);
-const page = await import(pathToFileURL(file).href);
-fs.rmSync(dir, { recursive: true });
-const {
-  settings: S,
-  presets: P,
-  PresetDialogs,
-  openPresets,
-  setupViews,
-  renderGuarded,
-  SettingsSort,
-  SortMenu,
-  h,
-  options,
-  render,
-  gameData,
-  loadData,
-} = page;
 // two skills of one white name (the GM era's two "Pressure" skills)
-globalThis.__LLP_DATA['data-skills'].push([20301, 'Pressure', null], [20302, 'Pressure', null]);
+SKILLS.push([20301, 'Pressure', null], [20302, 'Pressure', null]);
 // the outfits' labels the Umas panel shows (the fake page's outfits have none)
-for (const u of globalThis.__LLP_DATA['data-umas']) for (const o of u.outfits || []) o.label = `[Outfit ${o.id}]`;
+for (const u of UMAS) for (const o of u.outfits || []) o.label = `[Outfit ${o.id}]`;
 await loadData(null);
 
 const KEY = 'llp:settings';

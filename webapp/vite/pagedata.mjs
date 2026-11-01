@@ -47,16 +47,19 @@ function era(dir, imageKeys) {
   return { page, engine: JSON.stringify(engine) };
 }
 
+// the data modules' ids: Vite's own resolver would look for them as package.json imports
+const resolveId = (id) => (id === PAGE_DATA || id === CAREER_DATA ? `\0${id}` : null);
+/** The data modules' names alone, for the node tests (vite.config.mjs), each of which mocks them with its own data. */
+export const pageDataIds = () => ({ name: 'llp-page-data-ids', enforce: 'pre', resolveId });
+
 /** The plugin. `catalog`: the images' (images.mjs `imageCatalog`); `imgDir`: webapp/img; `wasm`: the solver's path
  * from the root, as Vite imports it; `solverPages`: the pages that start the solver (their file names). */
 export function pageData({ catalog, imgDir, wasm, solverPages }) {
   const files = {};
   return {
     name: 'llp-page-data',
-    enforce: 'pre', // its specifiers before Vite's resolver, which would follow package.json's imports to the tests' data
-    resolveId(id) {
-      return id === PAGE_DATA || id === CAREER_DATA ? `\0${id}` : null;
-    },
+    enforce: 'pre',
+    resolveId,
     buildStart() {
       const keys = new Set(catalog.keys);
       const global = era('global', keys),

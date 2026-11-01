@@ -1,60 +1,30 @@
-// The career page's views on happy-dom's document, bundled with esbuild as the page bundles them: a view that
+// @vitest-environment happy-dom
+// The career page's views on happy-dom's document, compiled as the page's build compiles them: a view that
 // throws while drawing (review-8c 3: the render guard, ui/RenderGuard.tsx under career/view/Guard.tsx); the veterans
 // dialog's lists and pane (review-10 2-4).
-// node --test 'test/unit/*.test.*' (in webapp)
-import './fakepage.mjs';
+// npx vitest run (in webapp)
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import * as esbuild from 'esbuild';
+import { test, vi } from 'vitest';
+import '@preact/signals';
+import { h, options, render } from 'preact';
+import * as vs from '../../src/veterans/store.ts';
+import { NodeDialog } from '../../src/career/view/NodeDialog.tsx';
+import { closeNode, nodeOpen, openNode, pickerClosed, pickerFor } from '../../src/career/view/dialogs.ts';
+import { on } from '../../src/store.ts';
+import { sayRenderErrors } from '../../src/ui/RenderGuard.tsx';
+import { answer, loadFails } from '../../src/career/state.ts';
+import { PoolBody, PoolHead } from '../../src/career/view/Pool.tsx';
+import { choose, openPool, poolClosed } from '../../src/career/view/poolState.ts';
+import { OddsDialog, openOdds } from '../../src/ui/OddsDialog.tsx';
+import { ScheduleDialog, openSched, schedOpened } from '../../src/ui/Schedule.tsx';
+import { Guard } from '../../src/career/view/Guard.tsx';
+import { loadData } from '../../src/data.ts';
 import { memory } from './fakes.mjs';
-import { GlobalRegistrator } from '@happy-dom/global-registrator';
 
-GlobalRegistrator.register({ width: 1440, height: 900 });
+vi.mock('#page-data', () => import('./fakepage.mjs'));
+
 document.documentElement.className = 'game'; // (the planner pages' class)
-
-const WEBAPP = fileURLToPath(new URL('../..', import.meta.url));
-const built = await esbuild.build({
-  stdin: {
-    contents: `
-      import '@preact/signals';
-      export * as store from './src/veterans/store.ts';
-      export { NodeDialog } from './src/career/view/NodeDialog.tsx';
-      export { openNode, closeNode, nodeOpen, pickerFor, pickerClosed } from './src/career/view/dialogs.ts';
-      export { on } from './src/store.ts';
-      export { sayRenderErrors } from './src/ui/RenderGuard.tsx';
-      export { answer, loadFails } from './src/career/state.ts';
-      export { PoolBody, PoolHead } from './src/career/view/Pool.tsx';
-      export { openPool, poolClosed, choose } from './src/career/view/poolState.ts';
-      export { OddsDialog, openOdds } from './src/ui/OddsDialog.tsx';
-      export { ScheduleDialog, openSched, schedOpened } from './src/ui/Schedule.tsx';
-      export { Guard } from './src/career/view/Guard.tsx';
-      export { h, render, options } from 'preact';
-      export { loadData } from './src/data.ts';`,
-    resolveDir: WEBAPP,
-    loader: 'js',
-  },
-  bundle: true,
-  write: false,
-  format: 'esm',
-  jsx: 'automatic',
-  jsxImportSource: 'preact',
-  logLevel: 'silent',
-});
-// (imported from a file, so a failure's stack names its lines)
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llp-careerviews-')),
-  file = path.join(dir, 'careerviews.mjs');
-fs.writeFileSync(file, built.outputFiles[0].text);
-const page = await import(pathToFileURL(file).href);
-fs.rmSync(dir, { recursive: true });
-const { store: vs, NodeDialog, openNode, closeNode, sayRenderErrors, h, render, options, loadData } = page;
-const { PoolBody, PoolHead, openPool, poolClosed, choose, answer, loadFails, OddsDialog, openOdds } = page;
-const { ScheduleDialog, openSched, schedOpened, Guard, nodeOpen, pickerFor, pickerClosed, on } = page;
-globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: {}, uniques: {}, races: [] };
-await loadData(globalThis.__LLP_DATA['data-career']);
+await loadData({ blues: {}, pinks: {}, uniques: {}, races: [] });
 
 const settle = async () => {
   for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));

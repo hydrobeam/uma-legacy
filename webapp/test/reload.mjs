@@ -1,4 +1,5 @@
-import { check, open, settle, odds } from './helpers.mjs';
+import { expect } from 'playwright/test';
+import { check, open, openEditor, closeEditor, settle, odds } from './helpers.mjs';
 
 export default async function reload(b) {
   // a reload with non-default settings shows their last result from the first frame (not the default example), and
@@ -28,13 +29,12 @@ export default async function reload(b) {
     seen.join(' | ') + ' · default ' + def,
   );
   // the saved result of these settings counts as done: no search runs, the status is its own "Checked …" line
-  await pg.waitForTimeout(1500);
-  check(
-    'reload: the saved result is done, no search runs',
-    (await pg.evaluate(() => !window.__runs.some((j) => j.cmd === 'deck'))) &&
-      /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await pg.locator('#run-note').innerText()),
-    await pg.locator('#run-note').innerText(),
-  );
+  await pg.waitForTimeout(1500); // long enough for a search to have started
+  const kept = 'reload: the saved result is done, no search runs';
+  check(kept, await pg.evaluate(() => !window.__runs.some((j) => j.cmd === 'deck')));
+  await expect
+    .soft(pg.locator('#run-note'), `${kept}: the status`)
+    .toHaveText(/^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/, { useInnerText: true });
   // the same search run again (auto-search off, an edit and its undoing, then Search: a button search always runs)
   // answers the result on show, which stays as drawn
   await pg.click('#x-auto');
@@ -42,8 +42,10 @@ export default async function reload(b) {
     window.__drawn = document.querySelector('#results .loop .odds');
   });
   const runs = await pg.evaluate(() => window.__runs.length);
+  await openEditor(pg, 'cards');
   await pg.locator('#cards .ct').nth(6).click();
   await pg.locator('#cards .ct').nth(6).click();
+  await closeEditor(pg, 'cards');
   await pg.locator('#r-act button', { hasText: 'Search' }).click();
   await settle(pg);
   check(
@@ -55,10 +57,8 @@ export default async function reload(b) {
   const runsBefore = await pg.evaluate(() => window.__runs.length);
   await pg.click('#rank button[data-v="0.50,0.45,0.05"]');
   await settle(pg);
-  check(
-    'reload: … and the next edit searches',
-    (await pg.evaluate(() => window.__runs.length)) > runsBefore && (await odds(pg)) === def,
-  );
+  check('reload: … and the next edit searches', (await pg.evaluate(() => window.__runs.length)) > runsBefore);
+  await expect.soft(pg.locator('#results .loop .odds').first(), "reload: … the default's odds again").toHaveText(def);
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await ctx.close();
 }

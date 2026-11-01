@@ -1,9 +1,11 @@
-import { check, open, settle, pickScen, CARD_ART, json } from './helpers.mjs';
+import { expect } from 'playwright/test';
+import { check, open, openEditor, settle, pickScen, CARD_ART, json } from './helpers.mjs';
 
 export default async function cards(b) {
   const pg = await open(b);
-  const secs = await pg.evaluate(() => [...document.querySelectorAll('#cards .cgroup h3')].map((h) => h.textContent));
-  check('card sections SSR, SR, R in that order', secs.join(',') === 'SSR,SR,R', secs.join(','));
+  await expect
+    .soft(pg.locator('#cards .cgroup h3'), 'card sections SSR, SR, R in that order')
+    .toHaveText(['SSR', 'SR', 'R']);
   const notes = await pg.evaluate(() =>
     [...document.querySelectorAll('#cards .gv')].map((g) => [g.querySelector('small').textContent, g.title]),
   );
@@ -26,25 +28,17 @@ export default async function cards(b) {
     ),
   );
   // the game bans Team Sirius from Unity Cup and Grand Concert decks: the picker says so and no result deck holds it
-  const sirius = () =>
-    pg.evaluate(() => {
-      const t = [...document.querySelectorAll('#cards .ct')].find((x) => /Team Sirius/.test(x.textContent));
-      return t ? t.querySelector('.cban')?.textContent || '' : null;
-    });
-  check(
-    'Team Sirius: "Not allowed in Unity Cup" in the card picker',
-    (await sirius()) === 'Not allowed in Unity Cup',
-    String(await sirius()),
-  );
-  check(
-    '… and in no Unity Cup result deck',
-    await pg.evaluate(() => ![...document.querySelectorAll('#results .dc')].some((d) => d.dataset.cid === '30081')),
-  );
+  const sirius = pg.locator('#cards .ct', { hasText: 'Team Sirius' });
+  await expect.soft(sirius, 'Team Sirius: in the card picker').toHaveCount(1);
+  await expect
+    .soft(sirius.locator('.cban'), 'Team Sirius: "Not allowed in Unity Cup" in the card picker')
+    .toHaveText('Not allowed in Unity Cup');
+  await expect.soft(pg.locator('#results .dc[data-cid="30081"]'), '… and in no Unity Cup result deck').toHaveCount(0);
   await pickScen(pg, 'ura'); // the picker follows at once; the search is not awaited
-  check('Team Sirius allowed again in URA Finale', (await sirius()) === '');
+  await expect.soft(sirius.locator('.cban'), 'Team Sirius allowed again in URA Finale').toHaveCount(0);
   await pickScen(pg, 'unity');
   await settle(pg);
-  await pg.editor('#cards');
+  await openEditor(pg, 'cards');
   const sep = await pg.evaluate(() => {
     const c = document.getElementById('cards'),
       r = c.previousElementSibling.getBoundingClientRect(),
@@ -56,31 +50,31 @@ export default async function cards(b) {
     sep.gap >= 10 && sep.pad >= 5,
     JSON.stringify(sep),
   );
-  check('default card sort: release, newest first', (await pg.locator('#cs').innerText()) === 'Release ↓');
+  await expect.soft(pg.locator('#cs'), 'default card sort: release, newest first').toHaveText('Release ↓');
   const tile = pg.locator('#cards .ct').first();
   const img = await tile.evaluate((t) => {
     t.__img = t.querySelector('img');
     return !!t.__img;
   });
   await tile.click();
+  await expect.soft(tile, 'toggling a card: not owned').toHaveAttribute('aria-pressed', 'false');
   check(
     'toggling a card keeps its image element (no flicker)',
-    img &&
-      (await tile.evaluate((t) => t.querySelector('img') === t.__img && t.getAttribute('aria-pressed') === 'false')),
+    img && (await tile.evaluate((t) => t.querySelector('img') === t.__img)),
   );
   await tile.click();
   // R cards are left out (no setting): the R section holds only the R pals
   const rpals = (await json(pg, 'data-cards')).filter((c) => c.rar === 1 && c.pal).length;
-  const rCount = () =>
-    pg.evaluate(() => {
-      const g = [...document.querySelectorAll('#cards .cgroup')].find((x) => x.querySelector('h3').textContent === 'R');
-      return g ? g.querySelectorAll('.ct').length : 0;
-    });
-  check(
-    'R cards are left out, with no switch; the R section keeps the R pals',
-    (await pg.locator('#x-rcards').count()) === 0 && (await rCount()) === rpals,
-    (await rCount()) + ' of ' + rpals,
-  );
+  await expect.soft(pg.locator('#x-rcards'), 'R cards are left out, with no switch').toHaveCount(0);
+  await expect
+    .soft(
+      pg
+        .locator('#cards .cgroup')
+        .filter({ has: pg.locator('h3', { hasText: /^R$/ }) })
+        .locator('.ct'),
+      '… the R section keeps the R pals',
+    )
+    .toHaveCount(rpals);
   check(
     'every card image carries its type icon',
     (await pg.locator('#cards .ct .cav.art').count()) === (await pg.locator('#cards .ct .ctype').count()),

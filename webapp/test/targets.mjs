@@ -1,3 +1,4 @@
+import { expect } from 'playwright/test';
 import { check, open, json } from './helpers.mjs';
 
 export default async function targets(b) {
@@ -6,7 +7,6 @@ export default async function targets(b) {
   const skl = await json(pg, 'data-skills'),
     gold = (g) => skl.find((x) => x[0] === g)[2];
   // the add box sits above the list, two targets per row
-  await pg.editor('#targets');
   const lay = await pg.evaluate(() => {
     const t = [...document.querySelectorAll('#targets .tgt')].map((e) => e.getBoundingClientRect());
     return {
@@ -16,29 +16,19 @@ export default async function targets(b) {
     };
   });
   check('targets: add box first, two per row', lay.addFirst && lay.rows === Math.ceil(lay.n / 2), JSON.stringify(lay));
-  check(
-    'a gold the scenario guarantees shows as the gold itself, in gold',
-    (await pg.locator('#g-20049 .name').innerText()).trim() === gold(20049) &&
-      (await pg.locator('#g-20049').evaluate((e) => e.classList.contains('gold'))),
-    await pg.locator('#g-20049').innerText(),
-  );
+  const tgts = pg.locator('#targets .tgt'),
+    addBox = pg.locator('#t-add'),
+    golden = 'a gold the scenario guarantees shows as the gold itself, in gold';
+  await expect.soft(pg.locator('#g-20049 .name'), golden).toHaveText(gold(20049));
+  await expect.soft(pg.locator('#g-20049'), `${golden}: its class`).toHaveClass(/\bgold\b/);
   await pg.locator('#targets .x').nth(2).focus();
   await pg.keyboard.press('Enter');
-  check(
-    'removing a target by keyboard moves the focus to the next remove button',
-    (await pg.locator('#targets .tgt').count()) === 7 &&
-      (await pg.evaluate(
-        () =>
-          document.activeElement.classList.contains('x') &&
-          [...document.querySelectorAll('#targets .x')].indexOf(document.activeElement) === 2,
-      )),
-  );
+  const removed = 'removing a target by keyboard moves the focus to the next remove button';
+  await expect.soft(tgts, `${removed}: one fewer`).toHaveCount(7);
+  await expect.soft(pg.locator('#targets .x').nth(2), removed).toBeFocused();
   for (let i = 0; i < 7; i++) await pg.keyboard.press('Enter');
-  check(
-    '… and to the add box after the last one',
-    (await pg.locator('#targets .tgt').count()) === 0 &&
-      (await pg.evaluate(() => document.activeElement.id === 't-add')),
-  );
+  await expect.soft(tgts, '… and to the add box after the last one: none left').toHaveCount(0);
+  await expect.soft(addBox, '… and to the add box after the last one').toBeFocused();
   await pg.fill('#t-add', 'corner');
   const first = await pg.locator('#t-sugg button').first().innerText();
   await pg.keyboard.press('ArrowDown');
@@ -54,28 +44,23 @@ export default async function targets(b) {
   );
   await pg.keyboard.press('ArrowDown');
   await pg.keyboard.press('Escape');
-  check(
-    'Escape on a suggestion closes the list and returns to the box',
-    (await pg.locator('#t-sugg').isHidden()) && (await pg.evaluate(() => document.activeElement.id === 't-add')),
-  );
+  await expect.soft(pg.locator('#t-sugg'), 'Escape on a suggestion closes the list').toBeHidden();
+  await expect.soft(addBox, '… and returns to the box').toBeFocused();
   await pg.fill('#t-add', 'corner');
   await pg.keyboard.press('Enter');
-  check(
-    'Enter adds the first match and keeps the focus in the box',
-    (await pg.locator('#targets .tgt').count()) === 1 &&
-      (await pg.locator('#targets .tgt').innerText()).includes(first.split(' → ')[0]) &&
-      (await pg.evaluate(() => document.activeElement.id === 't-add')),
-    first,
-  );
-  await pg.fill('#t-add', first.split(' → ')[0].slice(0, 8));
-  check(
-    'a skill already listed: "… is already a target"',
-    (await pg.locator('#t-sugg .snote').allInnerTexts()).some(
-      (t) => t === first.split(' → ')[0] + ' is already a target',
-    ),
-  );
+  const white = first.split(' → ')[0];
+  await expect.soft(tgts, 'Enter adds the first match').toHaveCount(1);
+  await expect.soft(tgts, `Enter adds the first match (${first})`).toContainText(white);
+  await expect.soft(addBox, '… and keeps the focus in the box').toBeFocused();
+  await pg.fill('#t-add', white.slice(0, 8));
+  await expect
+    .soft(
+      pg.locator('#t-sugg .snote', { hasText: `${white} is already a target` }).first(),
+      'a skill already listed: "… is already a target"',
+    )
+    .toHaveText(`${white} is already a target`);
   await pg.fill('#t-add', 'zzqx');
-  check('no match: "No skill matches"', /^No skill matches/.test(await pg.locator('#t-sugg').innerText()));
+  await expect.soft(pg.locator('#t-sugg'), 'no match: "No skill matches"').toHaveText(/^No skill matches/);
   // a gold matched by its own name shows with its white
   const g = skl.find(
     (x) =>
@@ -84,11 +69,9 @@ export default async function targets(b) {
       !skl.some((y) => y !== x && (y[1] + (y[2] || '')).toLowerCase().includes(x[2].toLowerCase())),
   );
   await pg.fill('#t-add', g[2]);
-  check(
-    'a match on the gold\'s name shows "white → gold"',
-    (await pg.locator('#t-sugg button').first().innerText()) === g[1] + ' → ' + g[2],
-    g[1] + ' → ' + g[2],
-  );
+  await expect
+    .soft(pg.locator('#t-sugg button').first(), 'a match on the gold\'s name shows "white → gold"')
+    .toHaveText(g[1] + ' → ' + g[2], { useInnerText: true });
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await pg.context().close();
 }

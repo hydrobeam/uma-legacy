@@ -1,9 +1,9 @@
 // The career answer store (src/career/state.ts) and the robustness check on its plan (src/career/run.ts `checkPhase`),
 // on made-up reports: each transition copies on write; the check knows its plan by id, so its own writes keep it
 // running and a new plan or run stops it; the check reaches every place the plan is kept; an effect wakes only for
-// the signals it names. node --test 'test/unit/*.test.*' (in webapp)
+// the signals it names. npx vitest run (in webapp)
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { on } from '../../src/store.ts';
 import * as store from '../../src/career/state.ts';
 import {
