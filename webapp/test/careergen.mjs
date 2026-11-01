@@ -182,7 +182,14 @@ export default async function careergen(b) {
     dispatchEvent(new PageTransitionEvent('pagehide'));
     return { id, due, flushed: !stored().some((v) => v.id === id) };
   });
-  await Promise.all([pg.waitForEvent('load'), pg.evaluate(() => location.reload()).catch(() => {})]);
+  await Promise.all([
+    pg.waitForEvent('load'),
+    pg
+      .evaluate(() => location.reload())
+      .catch(() => {
+        // the reload ends the evaluate's context: its rejection is expected
+      }),
+  ]);
   await done();
   check(
     'career: an edit followed at once by a reload is kept (written as the page goes)',

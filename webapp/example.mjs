@@ -3,7 +3,12 @@
 import fs from 'node:fs';
 const DATA = '../pkg/loopopt/data/global/';
 const { instance } = await WebAssembly.instantiate(fs.readFileSync('loopopt.opt.wasm'), {
-  env: { clock_ms: () => performance.now(), progress: () => {} },
+  env: {
+    clock_ms: () => performance.now(),
+    progress: () => {
+      // no progress to show: the example is computed offline
+    },
+  },
 });
 const solver = instance.exports;
 const encoder = new TextEncoder(),

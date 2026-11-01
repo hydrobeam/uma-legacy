@@ -26,7 +26,9 @@ function loadSaved() {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY));
     if (saved && saved.v === SETTINGS_VERSION) return saved;
-  } catch {}
+  } catch {
+    // storage blocked or the saved settings unreadable: the defaults
+  }
   return { v: SETTINGS_VERSION, era: 'global' };
 }
 export const SAVED = loadSaved();
@@ -41,5 +43,7 @@ export function persist(parts = []) {
   if (SAVED.era !== ERA) stored.era = SAVED.era;
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(stored));
-  } catch {}
+  } catch {
+    // storage blocked or full: the settings last for this visit only
+  }
 }

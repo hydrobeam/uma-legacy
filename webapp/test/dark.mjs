@@ -17,12 +17,16 @@ export default async function dark(b) {
   await pg.emulateMedia({ colorScheme: 'light' });
   await pg
     .waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'light', null, { timeout: 3000 })
-    .catch(() => {}); // the change event arrives asynchronously
+    .catch(() => {
+      // the change event arrives asynchronously; the check below reports a timeout
+    });
   check('dark: … and follows the system when it changes', (await theme()) === 'light');
   await pg.emulateMedia({ colorScheme: 'dark' });
   await pg
     .waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'dark', null, { timeout: 3000 })
-    .catch(() => {});
+    .catch(() => {
+      // as above
+    });
   await pg.click('#theme-btn');
   check(
     'dark: the header button switches to light and remembers it',

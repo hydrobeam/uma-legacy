@@ -212,7 +212,9 @@ function editorAware(pg) {
     loc
       .first()
       .evaluate(ensureEditor)
-      .catch(() => {});
+      .catch(() => {
+        // no editor to open: the action that follows fails with its own message
+      });
   const wrap = (loc) =>
     new Proxy(loc, {
       get(t, k) {
@@ -630,7 +632,9 @@ export async function careerPage(b) {
     // then: careerphone checks that)
     try {
       if (localStorage.getItem('llp:setup-folded') === null) localStorage.setItem('llp:setup-folded', '0');
-    } catch {}
+    } catch {
+      // storage blocked: the page opens with its own default
+    }
     const W = window.Worker;
     window.__careerJobs = [];
     window.__careerResults = [];

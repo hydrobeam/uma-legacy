@@ -78,7 +78,11 @@ function settleBeforeLeaving(pg) {
   for (const k of ['reload', 'goto']) {
     const leave = pg[k].bind(pg);
     pg[k] = async (...args) => {
-      await pg.evaluate(() => window.__llpSolverQuiet?.()).catch(() => {});
+      await pg
+        .evaluate(() => window.__llpSolverQuiet?.())
+        .catch(() => {
+          // a page already gone or not the planner's: nothing to settle
+        });
       return leave(...args);
     };
   }

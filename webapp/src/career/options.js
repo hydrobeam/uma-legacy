@@ -104,7 +104,9 @@ function useBtn(r, places = plan) {
     if ((r.alternative || r.pair_search) && r.career) {
       try {
         chosen.career = { places: placesKey(), id: r.career, setup: chosenSetup(buildJob()) };
-      } catch {}
+      } catch {
+        // settings that make no job (Blocked): nothing is chosen
+      }
     }
     changed();
   });

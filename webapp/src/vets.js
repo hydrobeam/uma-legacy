@@ -55,7 +55,9 @@ function loadAll() {
       for (const era of ['global', 'gm']) if (Array.isArray(saved[era])) upgraded[era] = { vets: saved[era] };
       return upgraded;
     }
-  } catch {}
+  } catch {
+    // storage blocked or the veterans unreadable: none
+  }
   return { v: STORAGE_VERSION };
 }
 const MINE = loadAll()[ERA] || {};
@@ -108,7 +110,9 @@ export function persist() {
   };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
-  } catch {}
+  } catch {
+    // storage blocked or full: the edit lasts for this visit only
+  }
 }
 export function persistSoon() {
   rev++;
@@ -132,7 +136,9 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') flushPersist();
 });
 
-let onChange = () => {};
+let onChange = () => {
+  // replaced by the career page's onVetsChange
+};
 export function onVetsChange(fn) {
   onChange = fn;
 }

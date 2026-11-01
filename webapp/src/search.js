@@ -245,7 +245,9 @@ export function firstResult() {
       doneStatus = doneText(kept.r, kept.ms); // the search of these settings, finished before: done, nothing to rerun
       return { r: kept.r, ms: kept.ms, targets: built.targets, status: doneStatus };
     }
-  } catch {}
+  } catch {
+    // storage blocked or the kept result unreadable: none to show
+  }
   if (ERA === 'global' && key === defaultKey()) {
     shown = { key, r: null, example: true };
     return { r: EXAMPLE, example: true, targets: built.targets };
@@ -325,7 +327,9 @@ export async function doSearch(auto = false) {
       doneStatus = ui.status;
       try {
         localStorage.setItem(lastResultKey(), JSON.stringify({ key, ms: answer.ms, r: answer.r }));
-      } catch {}
+      } catch {
+        // storage blocked or full: the result is not kept for a reload
+      }
     }
   } catch (e) {
     if (thisSearch !== searchId) return;

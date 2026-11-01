@@ -18,7 +18,9 @@ export default async function settings(b) {
             gm: { roster: { 1002: 'out' } },
           }),
         );
-      } catch {}
+      } catch {
+        // storage blocked: the check below fails
+      }
     },
   });
   check(
@@ -98,7 +100,9 @@ export default async function settings(b) {
             gm: {},
           }),
         );
-      } catch {}
+      } catch {
+        // storage blocked: the check below fails
+      }
     },
   });
   check(

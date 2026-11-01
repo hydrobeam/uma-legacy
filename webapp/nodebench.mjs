@@ -9,7 +9,12 @@ const DATA = new URL(era === 'gm' ? 'pkg/loopopt/data/jp/' : 'pkg/loopopt/data/g
 const encoder = new TextEncoder(),
   decoder = new TextDecoder();
 const { instance } = await WebAssembly.instantiate(fs.readFileSync(wasmPath), {
-  env: { clock_ms: () => performance.now(), progress: () => {} },
+  env: {
+    clock_ms: () => performance.now(),
+    progress: () => {
+      // no progress to show: the benchmark times the whole job
+    },
+  },
 });
 const solver = instance.exports;
 // one solver call (`entry`: init or call): the request's JSON copied into the solver's memory, its JSON answer read back

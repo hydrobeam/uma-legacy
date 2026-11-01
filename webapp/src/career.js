@@ -587,7 +587,9 @@ function dropStaleChosen() {
   let applies = false;
   try {
     applies = buildJob().career === chosen.career.id;
-  } catch {}
+  } catch {
+    // settings that make no job (Blocked): the chosen career no longer applies
+  }
   if (applies) return;
   chosenDropped = {
     places: chosen.career.places,
@@ -698,7 +700,9 @@ export const runJob = async (job, progress, background = false) => {
 // (the loop members kept per setup until the plan stopped running the loop planner's search: the old store goes)
 try {
   localStorage.removeItem('llp:loops');
-} catch {}
+} catch {
+  // storage blocked: nothing was kept to remove
+}
 // A run: the search, then (with the trainee's place left to the planner) the plan, both on the one worker; the answer
 // is drawn once, at the end. Two solver jobs: the plan's reuses the search's (the solver keeps its last search, so the
 // plan job does none of that work again; a second job costs a few ms), and the page knows which phase is at work
@@ -1923,7 +1927,9 @@ function renderPool() {
     let chosen = null;
     try {
       chosen = localStorage.getItem('llp:setup-folded');
-    } catch {}
+    } catch {
+      // storage blocked: as if no fold was chosen
+    }
     if (chosen === null) {
       folded = true;
       paintFold();
@@ -2131,7 +2137,9 @@ function initFold() {
     folded = !folded;
     try {
       localStorage.setItem('llp:setup-folded', folded ? '1' : '0');
-    } catch {}
+    } catch {
+      // storage blocked: the fold holds for this visit only
+    }
     paintFold();
   });
   paintFold();
@@ -2145,7 +2153,9 @@ function exportVets() {
   let job = null;
   try {
     job = buildJob();
-  } catch {}
+  } catch {
+    // settings that make no job (Blocked): the export carries none
+  }
   // (uma.moe's listings are uma.moe's, not yours: left out, their trainers with them)
   const veterans = vets.filter((v) => v.src !== 'umamoe');
   const data = { app: EXPORT_APP, version: 1, era: ERA, exported: new Date().toISOString(), veterans, plan, job };
@@ -2165,7 +2175,9 @@ function copyExport() {
     let ok = false;
     try {
       ok = document.execCommand('copy');
-    } catch {}
+    } catch {
+      // the old copy command refused: ok stays false and the text stays selected
+    }
     msg(ok ? 'Copied.' : `Could not copy${why ? ` (${why})` : ''}. The text is selected: press Ctrl+C (or ⌘C).`);
   };
   if (!navigator.clipboard?.writeText) {

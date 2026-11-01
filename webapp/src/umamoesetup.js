@@ -237,7 +237,9 @@ export function initUmamoe(c) {
     sortBy = k;
     try {
       localStorage.setItem(SORT_KEY, `${k}${reversed ? ':rev' : ''}`);
-    } catch {}
+    } catch {
+      // storage blocked: the sort lasts for this visit only
+    }
     paintUmamoe();
   });
   $input('um-full').onchange = () => {

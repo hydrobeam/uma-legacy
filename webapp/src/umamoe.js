@@ -40,14 +40,18 @@ export const fullTrainers = () => {
 export function setFullTrainers(on) {
   try {
     localStorage.setItem('llp:umamoe-full', on ? '1' : '0');
-  } catch {}
+  } catch {
+    // storage blocked: the choice lasts for this visit only
+  }
 }
 /** @param {string} key an empty key forgets it */
 export function saveKey(key) {
   try {
     if (key) localStorage.setItem(KEY_STORE, key);
     else localStorage.removeItem(KEY_STORE);
-  } catch {}
+  } catch {
+    // storage blocked: the key lasts for this visit only
+  }
 }
 
 // the factor groups of each target skill group (CAREER.factors: factor group -> skill group); a target no white spark
@@ -83,7 +87,9 @@ function loadCache() {
   try {
     const c = JSON.parse(localStorage.getItem(CACHE_STORE));
     if (c && typeof c === 'object') return c;
-  } catch {}
+  } catch {
+    // storage blocked or the cache unreadable: no answers kept
+  }
   return {};
 }
 // one answer added to the kept ones as stored now (another search or tab may have added one meanwhile)
@@ -95,7 +101,9 @@ function storeCache(id, entry) {
     .slice(0, CACHE_KEEP);
   try {
     localStorage.setItem(CACHE_STORE, JSON.stringify(Object.fromEntries(kept)));
-  } catch {}
+  } catch {
+    // storage blocked or full: the answer is not kept
+  }
 }
 
 // the reason a search failed, in words for the page; `badKey`: uma.moe refused the key itself

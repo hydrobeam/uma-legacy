@@ -73,7 +73,9 @@ let nextKillAt = null;
 export function nextKill() {
   if (!nextKillAt) {
     /** @type {(value?: unknown) => void} */
-    let resolve = () => {};
+    let resolve = () => {
+      // replaced by the promise's resolve below, before anyone can call it
+    };
     const promise = new Promise((r) => {
       resolve = r;
     });
@@ -93,7 +95,10 @@ function killEngine() {
   nextKillAt = null;
 }
 // the worker compiled and loaded without a job (a reload that shows a saved result still wants the next search quick)
-export const warmEngine = () => startEngine().catch(() => {});
+export const warmEngine = () =>
+  startEngine().catch(() => {
+    // a failed start is reported by the job that next needs the engine
+  });
 // a superseded or stopped job's worker goes and the next one starts loading at once, during the pause before the next search
 export function restartEngine() {
   killEngine();
@@ -143,7 +148,11 @@ function startEngine() {
       else starting.postMessage({ type: 'init', module, data });
     }, reject);
   });
-  ready = ready.then(() => restore().catch(() => {})); // the last session's kept work, before the first job
+  ready = ready.then(() =>
+    restore().catch(() => {
+      // no kept work to restore, or it can't be read: the worker starts empty
+    }),
+  ); // the last session's kept work, before the first job
   ready.catch(() => {
     if (gen !== engineGen) return;
     ready = null;
@@ -237,7 +246,11 @@ export function run(job, interim, progress, background = false) {
     () => {
       started();
       // a kill while it waited: it never answers, as a job in flight then (`nextKill`)
-      return gen === engineGen ? post(gate(job), interim, progress, background) : new Promise(() => {});
+      return gen === engineGen
+        ? post(gate(job), interim, progress, background)
+        : new Promise(() => {
+            // never settles: a job after a kill never answers (nextKill)
+          });
     },
     (e) => {
       started();
