@@ -15,10 +15,14 @@ export function umaState(u) {
     ? 'out'
     : mark;
 }
-// one tile's ownership: the uma's mark, else the outfit's (o null: an uma without outfits in the data)
-/** @param {Uma} u @param {Outfit | null} o @returns {'own'|'out'} */
-export const tileState = (u, o) =>
-  settings.value.roster[u.id] === 'out' || (o && settings.value.outfits[o.id] === false) ? 'out' : 'own';
+// one tile's ownership under the marks `owned`: the uma's mark, else the outfit's (o null: an uma without outfits in
+// the data)
+/**
+ * @param {Uma} u @param {Outfit | null} o @param {Pick<import('./settings.ts').SettingsView, 'roster' | 'outfits'>} owned
+ * @returns {'own'|'out'}
+ */
+export const tileState = (u, o, owned) =>
+  owned.roster[u.id] === 'out' || (o && owned.outfits[o.id] === false) ? 'out' : 'own';
 // her tiles' outfits: one tile per outfit, or a single tile (null) when the data lists none
 /** @param {Uma} u @returns {(Outfit | null)[]} */
 export const tileOutfits = (u) => (u.outfits?.length ? u.outfits : [null]);
@@ -57,7 +61,7 @@ export const rosterCounts = computed(() => {
   for (const u of umas)
     for (const o of tileOutfits(u)) {
       outfits++;
-      if (s.roster[u.id] !== 'out' && !(o && s.outfits[o.id] === false)) outfitsOwned++;
+      if (tileState(u, o, s) === 'own') outfitsOwned++;
     }
   return { umasOwned: umas.filter((u) => isOwned(u, s)).length, umas: umas.length, outfitsOwned, outfits };
 });
@@ -66,7 +70,7 @@ export const rosterCounts = computed(() => {
 export function toggleTile(u, o) {
   const roster = { ...settings.value.roster },
     outfits = { ...settings.value.outfits };
-  if (tileState(u, o) === 'own') {
+  if (tileState(u, o, settings.value) === 'own') {
     if (o) outfits[o.id] = false;
     else roster[u.id] = 'out';
   } else if (!o) delete roster[u.id];

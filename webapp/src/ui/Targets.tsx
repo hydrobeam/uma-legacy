@@ -18,7 +18,7 @@ function TargetAdder({ input }: { input: RefObject<HTMLInputElement | null> }) {
   const [typed, setTyped] = useState(''),
     [shown, setShown] = useState(false),
     list = useRef<HTMLDivElement>(null);
-  const offer = suggest(typed);
+  const offer = suggest(typed, fields.targets.value);
   useLayoutEffect(() => {
     if (!shown) return;
     const onClick = (e: MouseEvent) => {

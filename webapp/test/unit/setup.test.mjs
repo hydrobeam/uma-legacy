@@ -1,7 +1,8 @@
 // The shared setup editors (ui/Presets, ui/Targets) on a fake document (fakedom.mjs), bundled with esbuild as the page
 // bundles them: what each edit stores. Presets by name: Load, Overwrite, a rename, a rename onto a taken name, Delete
 // after a rename (review-11a F1); a target's removal and where the focus goes after it; the rank's ? keeps its click
-// (F2); a sort menu over a stored value it doesn't list (F3); two presets of one name in storage (F4).
+// (F2); a sort menu over a stored value it doesn't list (F3); two presets of one name in storage (F4); the
+// editors redraw for the settings they show only (F6).
 // node --test 'test/unit/*.test.*' (in webapp)
 import './fakepage.mjs';
 import './fakedom.mjs';
@@ -24,8 +25,9 @@ const built = await esbuild.build({
       export { mountTargets } from './src/ui/Targets.tsx';
       export { mountRank } from './src/ui/Scenario.tsx';
       export { SettingsSort, SortMenu } from './src/ui/SortMenu.tsx';
-      export { h, render } from 'preact';
-      export { loadData } from './src/data.js';`,
+      export { mountRoster } from './src/ui/Roster.tsx';
+      export { h, options, render } from 'preact';
+      export { gameData, loadData } from './src/data.js';`,
     resolveDir: WEBAPP,
     loader: 'js',
   },
@@ -51,10 +53,15 @@ const {
   mountRank,
   SettingsSort,
   SortMenu,
+  mountRoster,
   h,
+  options,
   render,
+  gameData,
   loadData,
 } = page;
+// the outfits' labels the Umas panel shows (the fake page's outfits have none)
+for (const u of globalThis.__LLP_DATA['data-umas']) for (const o of u.outfits || []) o.label = `[Outfit ${o.id}]`;
 await loadData();
 
 const KEY = 'llp:settings';
@@ -248,4 +255,44 @@ test('two presets of one name in storage (a hand-edit): the first is kept, so Ov
   ]);
   P.deletePreset('X');
   assert.deepEqual(stored().presets, [{ name: 'Y', groups: [20166] }]);
+});
+
+test('a commit of a setting the editors do not show redraws none of them and re-runs no roster tile', async () => {
+  fresh({});
+  mountRoster(false);
+  mountTargets();
+  await settle();
+  type(byId(document.getElementById('skills-panel'), 't-add'), 'sk'); // the suggestions listed
+  await settle();
+  // the components drawn from here on (Preact's hook, chained to the signals' own), and each tile's reads of her id
+  const drawn = [],
+    chained = options.diffed;
+  options.diffed = (vnode) => {
+    if (typeof vnode.type === 'function') drawn.push(vnode.type.name);
+    chained?.(vnode);
+  };
+  let idReads = 0,
+    readsAfter = -1;
+  for (const u of gameData().umas) {
+    const id = u.id;
+    Object.defineProperty(u, 'id', {
+      get: () => {
+        idReads++;
+        return id;
+      },
+      configurable: true,
+    });
+  }
+  try {
+    S.setRank('0.20,0.70,0.10');
+    await settle();
+    readsAfter = idReads;
+  } finally {
+    options.diffed = chained;
+    for (const u of gameData().umas) Object.defineProperty(u, 'id', { value: u.id, writable: true, enumerable: true });
+  }
+  assert.deepEqual(drawn, [], 'no editor redrawn');
+  assert.equal(readsAfter, 0, "no tile's state re-read");
+  render(null, document.getElementById('umas-panel'));
+  render(null, document.getElementById('skills-panel'));
 });

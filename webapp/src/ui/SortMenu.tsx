@@ -6,7 +6,7 @@
 // `SettingsSort` is the umas' and the cards' menu, Release or Name, kept in the settings.
 import type { RefObject } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { settings, setSort } from '../settings.ts';
+import { fields, setSort } from '../settings.ts';
 import { must } from '../must.ts';
 
 // While `open`: a click outside every element of `inside` closes it, and so does Escape, which also returns the focus
@@ -166,8 +166,8 @@ const HOW: Record<string, string> = {
 };
 /** `prefix`: the settings' sort keys ('r': rsort, rdir; 'c': csort, cdir); a pick is saved, and starts no search */
 export function SettingsSort({ prefix, id, what }: { prefix: 'r' | 'c'; id: string; what: string }) {
-  const s = settings.value,
-    [savedSort, savedDir] = prefix === 'r' ? [s.rsort, s.rdir] : [s.csort, s.cdir];
+  const [savedSort, savedDir] =
+    prefix === 'r' ? [fields.rsort.value, fields.rdir.value] : [fields.csort.value, fields.cdir.value];
   // read as the lists order by them: by name only for 'name', descending only for 'desc' (a hand-edited stored value is
   // neither)
   const sortBy = savedSort === 'name' ? 'name' : 'rel',

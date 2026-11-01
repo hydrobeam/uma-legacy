@@ -43,7 +43,8 @@ function RosterTile({ u, o, eager }: { u: Uma; o: Outfit | null; eager: boolean 
   const who = u.name + (o ? ` ${o.label}` : ''),
     name = u.name.toLowerCase(),
     outfit = o ? o.label.toLowerCase() : '';
-  const mark = useComputed(() => tileState(u, o)),
+  // (the computeds read props: right because each tile is keyed by her outfit, so its props never change)
+  const mark = useComputed(() => tileState(u, o, { roster: fields.roster.value, outfits: fields.outfits.value })),
     label = useComputed(() => `${who}: ${STATE_LABEL[mark.value]}`),
     hidden = useComputed(() => !!query.value && !name.includes(query.value) && !outfit.includes(query.value));
   return (
