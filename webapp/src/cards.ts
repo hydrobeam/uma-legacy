@@ -4,6 +4,7 @@ import { computed } from '@preact/signals';
 import { esc } from './dom.js';
 import { gameData } from './data.js';
 import { fields, settings, setOwned } from './settings.ts';
+import { must } from './must.ts';
 import type { Card } from './data.js';
 const RARITY = { 1: 'R', 2: 'SR', 3: 'SSR' };
 const BORROWED = /\(borrowed\)$/; // a deck names its borrowed card with this suffix
@@ -40,22 +41,19 @@ export function cardGives(c: Card, groups: ReadonlySet<number>): CardGift[] {
   for (const group of c.whites)
     if (groups.has(group))
       out.push({
-        // @ts-expect-error a group missing from the catalog is named by its number, not a string
-        skill: (gameData().skillNames.get(group) || { w: group }).w,
+        skill: skillName(group, 1),
         note: 'hint',
         tip: 'Hinted when training with this card',
         gold: false,
       });
   for (const [group, level, link, p] of c.ev) {
     if (!groups.has(group)) continue;
-    const names = gameData().skillNames.get(group) || { w: group, gd: group },
-      part = share(p);
+    const part = share(p);
     const note = (link ? `${ordinal(link)} event` : 'event') + (part ? ` · ${part}` : '');
     const tip =
       (link ? `Its ${ordinal(link)} story event (they come in order)` : 'One of its events') +
       (part ? `, ${part} of the time` : '');
-    // @ts-expect-error the gold's name may be null in the catalog's type; a missing group is named by its number
-    out.push({ skill: level === 2 ? names.gd : names.w, note, tip, gold: level === 2 });
+    out.push({ skill: skillName(group, level), note, tip, gold: level === 2 });
   }
   return out;
 }
@@ -79,13 +77,13 @@ export function chainEndAt(c: Card | undefined, link: number): ChainEndAdvice {
     take: named(choice?.end)
       .map((x) => x.name)
       .join(' or '),
-    // @ts-expect-error skillName's gold name may be null in the catalog's type
     others: named(choice?.go),
   };
 }
-const skillName = (group: number, level: number) => {
+// a skill's name at a level (2: its gold's); a group missing from the catalog is named by its number
+const skillName = (group: number, level: number): string => {
   const names = gameData().skillNames.get(group) || { w: String(group), gd: String(group) };
-  return level === 2 ? names.gd : names.w;
+  return level === 2 ? must(names.gd, 'a skill given at gold has a gold name (export_page.py skills)') : names.w;
 };
 // a chain-ending deck card's caption: the skill that makes IT take the ending choice
 export const chainEndNote = (c: Card | undefined, link: number) => {
