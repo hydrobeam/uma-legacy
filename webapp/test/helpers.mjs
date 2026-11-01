@@ -452,7 +452,7 @@ export async function careerPage(b) {
         who: document.querySelector('#tree [data-node="trainee"] [data-nm]')?.textContent || '',
         draft: document.querySelector('#simulation .ud')
           ? 'v:' +
-            [...document.querySelectorAll('#simulation .simskills .vskb')]
+            [...document.querySelectorAll('#simulation [aria-label="Her sparks"] [data-bar]')]
               .map((b) => b.getAttribute('aria-label'))
               .join('|')
           : '',
@@ -500,7 +500,7 @@ export async function careerPage(b) {
         '/' +
         (document.querySelector('#simulation .ud')
           ? 'v:' +
-            [...document.querySelectorAll('#simulation .simskills .vskb')]
+            [...document.querySelectorAll('#simulation [aria-label="Her sparks"] [data-bar]')]
               .map((b) => b.getAttribute('aria-label'))
               .join('|')
           : ''),
@@ -567,7 +567,7 @@ export async function careerPage(b) {
     await simOpen();
     const loc = pg.locator('[data-k="sim:s20159"]');
     if (!(await loc.count())) {
-      await pg.locator('#simulation .vskadd').click();
+      await pg.locator('#simulation [data-k$=":add"]').click();
       await pg.locator('#add-pop .addsk', { hasText: 'Uma Stan' }).click();
     }
     for (let i = 0; i < 3; i++) {

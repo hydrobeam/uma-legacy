@@ -234,10 +234,14 @@ export default async function careerumamoe(b) {
   await pg.locator('#um-list [data-vet]').first().click();
   await dialog(pg, 'node-dlg');
   const tag = await pg.locator('#node-dlg [data-src="umamoe"]').textContent(),
-    sparks = await pg.$$eval('#node-dlg .udrow.me .vsk:not(.pink)', (l) => l.map((c) => c.classList.contains('off')));
+    sparks = await pg.$$eval('#node-dlg [data-row="me"] [data-spark="white"]', (l) =>
+      l.map((c) => c.hasAttribute('data-off')),
+    );
   const popupCopy = await pg.locator('#node-dlg button', { hasText: 'Copy ID' }).count(),
     editable = await pg
-      .locator('#node-dlg [data-face], #node-dlg button[data-k$=":wins"], #node-dlg .vskadd, #node-dlg button.vskb')
+      .locator(
+        '#node-dlg [data-face], #node-dlg button[data-k$=":wins"], #node-dlg [data-k$=":add"], #node-dlg button[data-bar]',
+      )
       .count();
   await closeNode();
   check(
@@ -386,7 +390,7 @@ export default async function careerumamoe(b) {
     }));
   const tabsBefore = await stored();
   await globalTab.click('#v-toggle');
-  await globalTab.locator('#v-pane .udrow.me .vsk:not(.pink) .vskb').first().click();
+  await globalTab.locator('#v-pane [data-row="me"] [data-spark="white"] [data-bar]').first().click();
   await globalTab.evaluate(() => document.querySelector('#rank button[data-v="ss_and_up"]').click());
   await globalTab.evaluate(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r))));
   await globalTab.close();

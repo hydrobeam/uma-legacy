@@ -244,19 +244,16 @@ function VeteranView({ id, pane = false }: { id: string; pane?: boolean }) {
           </Button>
         </div>
       )}
-      {/* (`ud`: details.ts fitSparks finds her spark names by it) */}
-      <div class="ud">
-        <InspView
-          nd={v}
-          parents={v.parents}
-          k={`v${v.id}`}
-          at={at}
-          targets={targets}
-          parentKey={(j) => `v${v.id}g${j}`}
-          parentAt={(j) => parentRef(id, j)}
-          readOnly={!edit}
-        />
-      </div>
+      <InspView
+        nd={v}
+        parents={v.parents}
+        k={`v${v.id}`}
+        at={at}
+        targets={targets}
+        parentKey={(j) => `v${v.id}g${j}`}
+        parentAt={(j) => parentRef(id, j)}
+        readOnly={!edit}
+      />
       <div class="grid gap-1.5">
         {parentsPlaced(v.parents).map(([g, j]) => {
           const lab = `Parent ${j + 1} of #${i + 1}`;
@@ -384,18 +381,16 @@ function parentNode(k: number, r: CareerReport | null): NodeShown {
           <Wins nd={v} at={vetRef(v.id)} who={umaName(v.chara)} k={`p${k}`} edit={!listed(v)} />
           {v.lender && <CopyId key={v.id} v={v} />}
         </div>
-        <div class="ud">
-          <InspView
-            nd={v}
-            parents={v.parents}
-            k={`p${k}`}
-            at={vetRef(v.id)}
-            targets={settings.value.targets.map((t) => t.group)}
-            parentKey={(j) => `p${k}g${j}`}
-            parentAt={(j) => parentRef(v.id, j)}
-            readOnly={listed(v)}
-          />
-        </div>
+        <InspView
+          nd={v}
+          parents={v.parents}
+          k={`p${k}`}
+          at={vetRef(v.id)}
+          targets={settings.value.targets.map((t) => t.group)}
+          parentKey={(j) => `p${k}g${j}`}
+          parentAt={(j) => parentRef(v.id, j)}
+          readOnly={listed(v)}
+        />
       </>
     ),
     acts,
@@ -417,16 +412,14 @@ function grandparentNode(k: number, j: ParentPlace, r: CareerReport | null): Nod
           <div class={NAME}>{g.chara ? umaName(g.chara) : 'Unknown: pick her'}</div>
           <Wins nd={g} at={gAt} who={umaName(g.chara)} k={`p${k}g${j}`} edit={edit} />
         </div>
-        <div class="ud">
-          <InspView
-            nd={g}
-            parents={[]}
-            k={`p${k}g${j}`}
-            at={gAt}
-            targets={settings.value.targets.map((t) => t.group)}
-            readOnly={!edit}
-          />
-        </div>
+        <InspView
+          nd={g}
+          parents={[]}
+          k={`p${k}g${j}`}
+          at={gAt}
+          targets={settings.value.targets.map((t) => t.group)}
+          readOnly={!edit}
+        />
       </>
     ),
   };

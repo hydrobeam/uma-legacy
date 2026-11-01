@@ -21,7 +21,7 @@ export default async function careervets(b) {
   });
   await pg.click('#vet-1');
   await pg.click('#vet-0'); // (a wide dialog: she shows beside the list)
-  const chip = pg.locator('#v-pane .udrow.me .vsk:not(.pink) .vskb').first(),
+  const chip = pg.locator('#v-pane  [data-row="me"] [data-spark="white"] [data-bar]').first(),
     ckey = await chip.getAttribute('data-k');
   const stars = async () =>
     +(await pg.locator(`#v-pane [data-k="${ckey}"]`).getAttribute('aria-label')).match(/(\d) star/)[1];
@@ -29,7 +29,7 @@ export default async function careervets(b) {
   await chip.click();
   check(
     "career: a veteran's card shows her sparks and her parents' as bars beside the list; editing one keeps the result on screen until the new one is ready",
-    (await pg.locator('#v-pane .udrow.par').count()) === 2 &&
+    (await pg.locator('#v-pane [data-row="parent"]').count()) === 2 &&
       toteBefore === 1 &&
       (await pg.locator('#odds-open').count()) === 1 &&
       (await pg.locator('#tree [data-ghost]').count()) === 3,
@@ -56,32 +56,40 @@ export default async function careervets(b) {
     'career: … and the change is saved',
     await pg.evaluate(() => /"sparks"/.test(localStorage.getItem('llp:career'))),
   );
-  const skills = pg.locator('#v-pane .udrow.me .vsk:not(.pink)'),
+  const skills = pg.locator('#v-pane [data-row="me"] [data-spark="white"]'),
     n0 = await skills.count();
-  const first = await pg.locator('#v-pane .udrow.me .vsk:not(.pink) .vskb').first().getAttribute('aria-label');
-  await pg.locator('#v-pane .udrow.me .vsk:not(.pink)').first().hover();
-  const vis = await pg
-    .locator('#v-pane .udrow.me .vsk:not(.pink) .vskx')
+  const first = await pg
+    .locator('#v-pane  [data-row="me"] [data-spark="white"] [data-bar]')
     .first()
+    .getAttribute('aria-label');
+  await pg.locator('#v-pane [data-row="me"] [data-spark="white"]').first().hover();
+  const vis = await pg
+    .locator('#v-pane [data-row="me"] [data-spark="white"]')
+    .first()
+    .getByRole('button', { name: /^Remove / })
     .evaluate((e) => getComputedStyle(e).visibility);
-  await pg.locator('#v-pane .udrow.me .vsk:not(.pink) .vskx').first().click();
+  await pg
+    .locator('#v-pane [data-row="me"] [data-spark="white"]')
+    .first()
+    .getByRole('button', { name: /^Remove / })
+    .click();
   check('career: the x shows on hover', vis === 'visible', vis);
   await expect.soft(skills, 'career: … and removes the skill').toHaveCount(n0 - 1);
-  await pg.locator('#v-pane .udrow.me .vskadd').click();
+  await pg.locator('#v-pane [data-row="me"] [data-k$=":add"]').click();
   const offered = await pg.$$eval('#add-pop .addsk', (els) => els.map((e) => e.textContent));
   check(
     'career: "+" offers the missing target only, as a spark cell (her blue, pink and unique have their own bars)',
     offered.length === 1 &&
       first.startsWith(offered[0]) &&
       (await pg
-        .locator('#v-pane .udrow.me .vsb.blue, #v-pane .udrow.me .vsk.pink, #v-pane .udrow.me .vsb.pink')
+        .locator('#v-pane [data-row="me"] [data-spark="blue"], #v-pane [data-row="me"] [data-spark="pink"]')
         .count()) >= 2,
     offered.join(', '),
   );
   await pg.locator('#add-pop .addsk').first().click();
   await expect.soft(skills, 'career: … which comes back').toHaveCount(n0);
   await expect
-    .soft(pg.locator('#v-pane .udrow.me .vskb', { hasText: offered[0] }), 'career: … at 2 stars')
+    .soft(pg.locator('#v-pane [data-row="me"] [data-bar]', { hasText: offered[0] }), 'career: … at 2 stars')
     .toHaveAttribute('aria-label', /2 stars/);
   await done();
   // a pool veteran's G1 wins: the same editor, from her popup; Arima Kinen (Classic and Senior) is one race, moved from one turn to the other
@@ -141,7 +149,7 @@ export default async function careervets(b) {
   const sparksIn = async (key, n) => {
     await node(key);
     const ok = await pg
-      .locator('#node-dlg .udrow.me .vsk:not(.pink) .vskb')
+      .locator('#node-dlg  [data-row="me"] [data-spark="white"] [data-bar]')
       .evaluateAll(
         (els, n) => els.length === 8 && els.every((e) => new RegExp(n + ' stars').test(e.getAttribute('aria-label'))),
         n,

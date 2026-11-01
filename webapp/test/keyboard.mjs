@@ -336,7 +336,7 @@ export default async function keyboard(b) {
   await expect.soft(place, `${pickEsc}, gives the focus back to the tree place`).toBeFocused();
   // in Veteran Umamusume's pane: the colour picker from her blue bar, and the "+" list from her sparks' "+"
   const vetsIn = await clickOpens(cp, cp.locator('#v-toggle'), 'set-vets');
-  const bar = cp.locator('#v-pane .vsb.blue button.vskb').first(),
+  const bar = cp.locator('#v-pane [data-spark="blue"] button[data-bar]').first(),
     barKey = vetsIn ? await bar.getAttribute('data-k') : null;
   if (barKey) await bar.focus();
   await cp.keyboard.press('Enter');
@@ -349,7 +349,7 @@ export default async function keyboard(b) {
     .soft(cp.locator(`[data-k="${barKey}"]`), `${colourEsc}, gives the focus back to the spark bar that opened it`)
     .toBeFocused();
   await isOpen(cp, 'set-vets', `${colourEsc}: Veteran Umamusume stays open`);
-  const plus = cp.locator('#v-pane .vskadd').first(),
+  const plus = cp.locator('#v-pane [data-k$=":add"]').first(),
     plusKey = vetsIn ? await plus.getAttribute('data-k') : null;
   if (plusKey) await plus.focus();
   await cp.keyboard.press('Enter');

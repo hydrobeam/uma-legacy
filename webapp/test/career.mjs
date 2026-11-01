@@ -965,8 +965,8 @@ export default async function career(b) {
       const f = c.querySelector('.udtop [data-av]'),
         tabs = [...c.querySelectorAll('[role="tab"]')],
         ins = c.querySelector('#udpane-insp'),
-        who = ins.querySelector('.simwho'),
-        s = who.querySelector('.simskills'),
+        who = ins.querySelector('[data-row="me"]'),
+        s = who.querySelector('[aria-label="Her sparks"]'),
         me = who.querySelector(':scope > [data-av]'),
         fr = me.getBoundingClientRect(),
         sr = s.getBoundingClientRect();
@@ -982,7 +982,7 @@ export default async function career(b) {
         fr.right <= sr.left &&
         fr.top < sr.bottom &&
         s.getAttribute('aria-label') === 'Her sparks' &&
-        ins.querySelectorAll('.udrow.par').length === 2 &&
+        ins.querySelectorAll('[data-row="parent"]').length === 2 &&
         c.querySelector('#udpane-info').contains(document.getElementById('sim-wins')) &&
         c.getBoundingClientRect().right <= innerWidth &&
         document.documentElement.scrollWidth <= document.documentElement.clientWidth
@@ -1009,7 +1009,7 @@ export default async function career(b) {
     const tiles = await pg.$$eval('#udpane-skills .udsk', (l) =>
       l.map((t) => [t.classList.contains('off'), t.getAttribute('aria-label') || '']),
     );
-    const sparkN = await pg.locator('#udpane-insp .simskills .vsk:not(.pink)').count();
+    const sparkN = await pg.locator('#udpane-insp [aria-label="Her sparks"] [data-spark="white"]').count();
     check(
       name,
       tiles.length > 0 &&
@@ -1039,7 +1039,9 @@ export default async function career(b) {
     await expect.soft(pg.locator('#udtab-insp'), `${name}: selected`).toHaveAttribute('aria-selected', 'true');
   }
   const draft = () =>
-    pg.$$eval('#simulation .simskills .vskb', (l) => l.map((b) => b.getAttribute('aria-label')).join('|'));
+    pg.$$eval('#simulation [aria-label="Her sparks"] [data-bar]', (l) =>
+      l.map((b) => b.getAttribute('aria-label')).join('|'),
+    );
   const policyJobs = () => pg.evaluate(() => window.__careerJobs.filter((j) => j.career.compare).length);
   const d0 = await draft();
   {
@@ -1049,7 +1051,9 @@ export default async function career(b) {
   }
   // her pink spark: her roll carries at most one (an aptitude she ends at A or S)
   const pinkChips = () =>
-    pg.$$eval('#simulation .simskills .vsk.pink .vskb', (l) => l.map((b) => b.getAttribute('aria-label')));
+    pg.$$eval('#simulation [aria-label="Her sparks"] [data-spark="pink"] [data-bar]', (l) =>
+      l.map((b) => b.getAttribute('aria-label')),
+    );
   const pk0 = await pinkChips();
   check(
     'career: her roll carries at most one pink spark',
@@ -1207,7 +1211,7 @@ export default async function career(b) {
     );
   };
   await roll(0.999999999);
-  const rolledAll = await pg.$$eval('#simulation .simskills .vsk:not(.pink) .vskb', (l) =>
+  const rolledAll = await pg.$$eval('#simulation [aria-label="Her sparks"] [data-spark="white"] [data-bar]', (l) =>
     l.map((b) => b.getAttribute('aria-label')),
   );
   check(
@@ -1356,15 +1360,18 @@ export default async function career(b) {
     { timeout: 180000 },
   );
   await roll(0);
-  const skillSparks = pg.locator('#simulation .simskills .vsk:not(.pink)');
+  const skillSparks = pg.locator('#simulation [aria-label="Her sparks"] [data-spark="white"]');
   await expect.soft(skillSparks, 'career: … a low roll lands nothing').toHaveCount(0);
   // … and draws her pink: every legacy pink fires at both inspirations (+1 grade each), the first aptitude at A or S, 1 star
   const pkLow = await pinkChips();
   // … her blue spark: one stat, stars by the rank band; its bar opens the picker (the five stats, the stars)
   const blueLbl = await pg
-    .getAttribute('#udpane-insp .simskills .vsb.blue:not(.none) .vskb', 'aria-label')
+    .getAttribute(
+      '#udpane-insp [aria-label="Her sparks"] [data-spark="blue"]:not([data-none]) [data-bar]',
+      'aria-label',
+    )
     .catch(() => '');
-  await pg.click('#udpane-insp .simskills .vsb.blue .vskb');
+  await pg.click('#udpane-insp [aria-label="Her sparks"] [data-spark="blue"] [data-bar]');
   await dialog(pg, 'col-dlg');
   const blueOpts = await pg.$$eval('#col-dlg .colgrid .vskb', (l) => l.map((b) => b.textContent));
   await pg.locator('#col-dlg .spstar').nth(2).click();
@@ -1377,7 +1384,10 @@ export default async function career(b) {
       `${blueLbl} | ${blueOpts.join()}`,
     );
     await expect
-      .soft(pg.locator('#udpane-insp .simskills .vsb.blue .vskb').first(), `${name}: the third star picked`)
+      .soft(
+        pg.locator('#udpane-insp [aria-label="Her sparks"] [data-spark="blue"] [data-bar]').first(),
+        `${name}: the third star picked`,
+      )
       .toHaveAttribute('aria-label', /, 3 stars/);
   }
   await pg.keyboard.press('Escape');
@@ -1451,10 +1461,10 @@ export default async function career(b) {
   }
   // an n/n veteran: Compare says step 1 of the goal is done (no odds verdict)
   for (let i = 0; i < 12; i++) {
-    await pg.locator('#simulation .vskadd').click();
+    await pg.locator('#simulation [data-k$=":add"]').click();
     const b = pg.locator('#add-pop .addsk').first();
     if (!(await b.count())) {
-      await pg.locator('#simulation .vskadd').click();
+      await pg.locator('#simulation [data-k$=":add"]').click();
       break;
     }
     await b.click();

@@ -8,13 +8,14 @@ import type { ResultDeck } from './loop/types.ts';
 import type { DeepReadonly } from './store.ts';
 
 // a spark bar's name on one line, its type shrunk until it fits (the game's way), down to 9 px; panes on show only.
+// The names are ui/Sparks.tsx's, marked data-spark-name.
 // Measured, so it runs once the names are drawn and on show: from a layout effect of the component that draws them
 // (after its dialog's own has opened it), and on a resize (the career page's entry).
 // Each name takes the largest size f0 - 0.5k that fits, or the first one at or under 9 px (a step-by-step shrink). All
 // names are sized together: every round writes each unsettled name's next size to try, then reads them all (one layout
 // per round, not one per step per name), halving the range of steps left (the width only grows with the size).
 export function fitSparks(root: ParentNode): void {
-  const names = [...root.querySelectorAll<HTMLElement>('.ud .vskn')];
+  const names = [...root.querySelectorAll<HTMLElement>('[data-spark-name]')];
   for (const e of names) e.style.fontSize = '';
   const fits = (e: HTMLElement): boolean => !(e.scrollWidth > e.clientWidth + 0.5);
   // per name that overflows (and is on show): base size f0 in px, the steps known not to fit (lo) and known to fit, or

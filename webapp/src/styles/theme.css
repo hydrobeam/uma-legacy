@@ -140,6 +140,13 @@
   --color-bar-info: #3c7a00;
   /* the career's count chart: the average roll's words (career/view/Sections.tsx) */
   --color-count-avg: #c4245a;
+  /* a veteran's spark bars (ui/Sparks.tsx): a white bar's words and the rim at its foot (dark mode's bar is dark), the
+     "+" list's cells' rim, the dashed edge of a bar she has no spark for (blue; the unique's green) */
+  --color-spark-ink: var(--color-gm-bar-ink);
+  --color-spark-rim: #bdbdbd;
+  --color-spark-add-rim: #bdbdbd;
+  --color-spark-none: #6fc3ef;
+  --color-spark-none-green: #9fd94a;
   /* a veteran tile's stars where the game's star row isn't shipped (ui/VetCell.tsx) */
   --color-vet-star: #f0a800;
 
@@ -231,8 +238,16 @@
   /* the career's count chart's columns (career/view/Sections.tsx): their edge and light top, green, and gold for all n */
   --inset-shadow-count-bar: inset 0 0 0 1px rgba(40, 140, 60, 0.35), inset 0 2px 0 rgba(255, 255, 255, 0.5);
   --inset-shadow-count-all: inset 0 0 0 1px rgba(200, 130, 0, 0.45), inset 0 2px 0 rgba(255, 255, 255, 0.55);
+  /* a veteran's spark bars (ui/Sparks.tsx): each colour's darker foot; the "+" list's cells' */
+  --inset-shadow-spark-white: inset 0 -3px 0 var(--color-spark-rim);
+  --inset-shadow-spark-pink: inset 0 -3px 0 #e2558f;
+  --inset-shadow-spark-blue: inset 0 -3px 0 #1287c8;
+  --inset-shadow-spark-green: inset 0 -3px 0 #5aa300;
+  --inset-shadow-spark-add: inset 0 -3px 0 var(--color-spark-add-rim);
   /* a veteran tile's role tab, "Parent 1" (ui/VetCell.tsx) */
   --shadow-vet-tab: 0 1px 0 rgba(0, 0, 0, 0.2);
+  /* a portrait in the Inspiration view (ui/InspView.tsx): the game's white and cream rings */
+  --shadow-insp-face: 0 0 0 3px var(--color-gm-panel), 0 0 0 5px #efe3cf;
   /* the setup ribbon's second white stripe, left of the first */
   --shadow-stripe: -11px 0 0 rgba(255, 255, 255, 0.3);
   /* drop shadows (they follow a shape's outline): the wordmark's, the ribbon's chevron, the Enhance art's and its hover
@@ -243,6 +258,9 @@
   --drop-shadow-enh-glow: 0 0 4px var(--color-gm-bright2);
   /* the affinity heart's (ui/AffTable.tsx AffHeart) */
   --drop-shadow-heart: 0 1px 1px rgba(150, 30, 80, 0.35);
+  /* the game's stars: under a spark bar (ui/Sparks.tsx), the colour picker's (veterans/Editors.tsx) */
+  --drop-shadow-star: 0 1px 1px rgba(80, 50, 10, 0.35);
+  --drop-shadow-star-lg: 0 2px 2px rgba(80, 50, 10, 0.35);
   /* several drop shadows as one filter (`shade-*`; a drop-shadow-* token holds one): "uma"'s letters' doubled halos,
      the outline round the light / dark switch's white icon */
   --shade-brand-u: drop-shadow(0 0 0.035em var(--color-brand-u-glow)) drop-shadow(0 0 0.035em var(--color-brand-u-glow));
@@ -252,6 +270,10 @@
     drop-shadow(1px 0 0 var(--color-outline)) drop-shadow(-1px 0 0 var(--color-outline));
   /* the white odds on an optional race's grey badge (ui/Agenda.tsx) */
   --text-shadow-badge: 0 1px 1px rgba(40, 30, 40, 0.55);
+  /* the white words on a pink, blue or green spark bar (ui/Sparks.tsx), over a shade of its colour */
+  --text-shadow-spark-pink: 0 1px 1px rgba(150, 30, 80, 0.6);
+  --text-shadow-spark-blue: 0 1px 1px rgba(10, 60, 110, 0.55);
+  --text-shadow-spark-green: 0 1px 1px rgba(40, 80, 0, 0.55);
   /* the setup ribbon's white text, outlined in its deeper pink */
   --text-shadow-ribbon: 0 1px 0 var(--color-ribbon-edge), 1px 0 0 var(--color-ribbon-edge),
     -1px 0 0 var(--color-ribbon-edge), 0 -1px 0 var(--color-ribbon-edge), 0 2px 2px var(--color-ribbon-glow);
@@ -300,6 +322,16 @@
   --nine-sched-badge: var(--sched-badge, linear-gradient(#ff5d9e, #f43d88)) 0 40 fill / 0 9px / 0 stretch;
   /* the game's bond gauge's track (a career target's acquired chance: career/view/Sections.tsx) */
   --nine-gauge: var(--gauge-bond, none) 12 fill / 9px / 0 stretch;
+  /* the game's spark bars (ui/Sparks.tsx), over the bar's gradient: the sprite (244 x 71) its caps sliced at 40 and
+     200 px, drawn 19 / 96 px wide on the 34 px bar, 16 / 79 px on a phone's 28 px (`-sm`); dark mode's white bar dark */
+  --nine-spark-white: var(--face-spark-white) 0 200 0 40 fill / 0 96px 0 19px / 0 stretch;
+  --nine-spark-white-sm: var(--face-spark-white) 0 200 0 40 fill / 0 79px 0 16px / 0 stretch;
+  --nine-spark-pink: var(--spark-pink, none) 0 200 0 40 fill / 0 96px 0 19px / 0 stretch;
+  --nine-spark-pink-sm: var(--spark-pink, none) 0 200 0 40 fill / 0 79px 0 16px / 0 stretch;
+  --nine-spark-blue: var(--spark-blue, none) 0 200 0 40 fill / 0 96px 0 19px / 0 stretch;
+  --nine-spark-blue-sm: var(--spark-blue, none) 0 200 0 40 fill / 0 79px 0 16px / 0 stretch;
+  --nine-spark-green: var(--spark-green, none) 0 200 0 40 fill / 0 96px 0 19px / 0 stretch;
+  --nine-spark-green-sm: var(--spark-green, none) 0 200 0 40 fill / 0 79px 0 16px / 0 stretch;
 
   /* the green header bar: diagonal stripes at its left, fading out by a third of the way across */
   --art-bar: linear-gradient(90deg, transparent 0, var(--color-gm-green) 32%),
@@ -344,6 +376,27 @@
   /* the game's affinity heart: pink, a white rim (ui/AffTable.tsx AffHeart) */
   --art-heart: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 22'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ff9cc8'/%3E%3Cstop offset='1' stop-color='%23f0407f'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M12 20.5C5.5 15.6 1.5 12 1.5 7.4 1.5 4.2 4 1.7 7.1 1.7c2 0 3.8 1 4.9 2.6 1.1-1.6 2.9-2.6 4.9-2.6 3.1 0 5.6 2.5 5.6 5.7 0 4.6-4 8.2-10.5 13.1z' fill='url(%23g)' stroke='%23fff' stroke-width='1.8' stroke-linejoin='round'/%3E%3Cpath d='M6.5 5.2c-1.3.3-2.2 1.4-2.2 2.7' fill='none' stroke='%23fff' stroke-width='1.4' stroke-linecap='round' opacity='.8'/%3E%3C/svg%3E")
     center / contain no-repeat;
+  /* a veteran's spark bars (ui/Sparks.tsx), under their sprites (the whole bar where the sprite isn't shipped): white
+     (dark in dark mode), pink, blue, green; the dot at a bar's left (a unique's gold); the "+" list's cells, white and
+     their dot (the game's sprite) */
+  --art-spark-white: linear-gradient(#f7f7f7, var(--color-gm-bar2)) var(--color-gm-bar);
+  --art-spark-pink: linear-gradient(#ffb1d4, var(--color-gm-pink2)) var(--color-gm-pink);
+  --art-spark-blue: linear-gradient(#6fd0ff, #22a5ea) #37b9f7;
+  --art-spark-green: linear-gradient(#b8ea5a, #7cc40d) #96d526;
+  --art-spark-dot: radial-gradient(circle at 40% 35%, #fff, #b9c6ff 55%, #6d7fd6);
+  --art-spark-dot-gold: var(--spark-dot-gold, radial-gradient(circle at 40% 35%, #fff6c0, #ffcf2a 55%, #d99400)) center /
+    cover no-repeat;
+  --art-spark-add: linear-gradient(#f7f7f7, var(--color-gm-bar2)) var(--color-gm-bar);
+  --art-add-dot: var(--spark-dot, radial-gradient(circle at 40% 35%, #fff, #b9c6ff 55%, #6d7fd6)) center / cover
+    no-repeat;
+  /* the game's stars, lit and unlit: a spark bar's row (15 px each, 12 on a phone: `-sm`; spaced over the row's width),
+     the colour picker's (40 px in a 44 px button: `-lg`) */
+  --art-star-on: var(--face-star-on) 0 0 / 15px 15px space;
+  --art-star-on-sm: var(--face-star-on) 0 0 / 12px 12px space;
+  --art-star-on-lg: var(--face-star-on) center / 40px 40px no-repeat;
+  --art-star-off: var(--face-star-off) 0 0 / 15px 15px space;
+  --art-star-off-sm: var(--face-star-off) 0 0 / 12px 12px space;
+  --art-star-off-lg: var(--face-star-off) center / 40px 40px no-repeat;
   /* a veteran tile's role tab, the game's red (ui/VetCell.tsx) */
   --art-vet-tab: linear-gradient(#ff5a4a, #d8261c);
   /* the game's close cross (a target tile's remove button) */
@@ -429,6 +482,14 @@
     --color-trash-slit: #2b2934;
     --color-skill-ink: #f4eeff;
     --color-count-avg: #ff86b0;
+    /* the white spark bars and the "+" list's cells darkened (images.py dark_sprites), light words on them */
+    --color-spark-ink: #f6ece3;
+    --color-spark-rim: #18161d;
+    --color-spark-add-rim: #1d2025;
+    --art-spark-white: linear-gradient(#2e2b36, #24222b) #29262f;
+    --art-spark-add: linear-gradient(#4a5059, #31353c) #3a3f47;
+    --face-spark-white: var(--spark-white-dark, var(--spark-white, none));
+    --face-star-off: var(--star-off-dark, var(--star-off, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.8l3.1 6.6 7.2.9-5.3 5 1.4 7.1L12 17.9l-6.4 3.5 1.4-7.1-5.3-5 7.2-.9z' fill='%232a2f36' stroke='%236f6a62' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E")));
     --face-skill-white: var(--skill-white-dark, var(--skill-white, linear-gradient(#dfdbeb, #cbc5de)));
     --face-enh-umas: var(--enh-umas-dark, var(--enh-umas, linear-gradient(#f3f1f8, #dcd8ea)));
     --face-enh-cards: var(--enh-cards-dark, var(--enh-cards, linear-gradient(#f3f1f8, #dcd8ea)));
@@ -469,6 +530,10 @@
   --face-enh-cards: var(--enh-cards, linear-gradient(#f3f1f8, #dcd8ea));
   --face-enh-vets: var(--enh-vets, linear-gradient(90deg, #f3f1f8, #dcd8ea));
   --face-skill-white: var(--skill-white, linear-gradient(#dfdbeb, #cbc5de));
+  --face-spark-white: var(--spark-white, none);
+  /* the game's stars (an SVG of each where the sprite isn't shipped): lit, unlit */
+  --face-star-on: var(--star-on, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.8l3.1 6.6 7.2.9-5.3 5 1.4 7.1L12 17.9l-6.4 3.5 1.4-7.1-5.3-5 7.2-.9z' fill='%23ffd23a' stroke='%23e39a12' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E"));
+  --face-star-off: var(--star-off, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.8l3.1 6.6 7.2.9-5.3 5 1.4 7.1L12 17.9l-6.4 3.5 1.4-7.1-5.3-5 7.2-.9z' fill='%23ffffff' stroke='%23d3ccc1' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E"));
   /* a portrait's initials' ground, its saturation and lightness (--color-av; the dark block darkens it) */
   --av-c: 40%;
   --av-l: 86%;
@@ -507,6 +572,8 @@
 @custom-variant slot-many (&:where([data-slot~="many"] *));
 /* inside an uma's roster tile marked not owned (data-s="out": ui/Roster.tsx), which greys her portrait and name */
 @custom-variant unowned (&:where([data-s="out"] *));
+/* a screen without hover (touch): what shows under the pointer elsewhere shows always (ui/Sparks.tsx's corner x) */
+@custom-variant touch (@media (hover: none));
 
 /* a 9-slice sprite frame: `nine-btn-w` draws the button's face from the --nine-btn-w token above */
 @utility nine-* {
