@@ -19,7 +19,7 @@ import { Runner, UmaAv } from '../../ui/Images.tsx';
 import type { DeepReadonly } from '../../store.ts';
 import { scheduledRaces, rolledOutcome } from '../roll.mjs';
 import type { Roll, RollSetup } from '../roll.mjs';
-import { answer, runView } from '../state.ts';
+import { answer, runView, searching as runSearching } from '../state.ts';
 import { keyOf } from '../keys.js';
 import { shown, isFull } from '../job.js';
 import type { CareerReport } from '../job.js';
@@ -348,7 +348,7 @@ export function Analysis({ comparison }: { comparison: Comparison }) {
   const sim = simulation.value,
     d = draft.value,
     r = shown(),
-    searching = runView.value.searching,
+    searching = runSearching.value, // (not runView: a plan's progress would draw her card again each time)
     section = useRef<HTMLElement>(null),
     wins = useRef<HTMLButtonElement>(null);
   // her spark names shrink to fit (details.js fitSparks: it waits a frame, measures the names on show, and skips a

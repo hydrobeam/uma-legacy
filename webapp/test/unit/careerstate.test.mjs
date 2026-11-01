@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { on } from '../../src/store.ts';
+import * as store from '../../src/career/state.ts';
 import {
   answer,
   answerCareer,
@@ -364,4 +365,16 @@ test('the answers kept: the most recent four, a recalled one counting as recent'
   assert.equal(recallAnswer('b'), null);
   for (const key of ['a', 'c', 'd', 'e']) assert.notEqual(recallAnswer(key), null, `${key} is kept`);
   assert.equal(recallAnswer('none'), null);
+});
+
+test("`searching` wakes its readers when a run starts or ends, never on a plan's progress (review-9 F4)", () => {
+  const { searching } = store;
+  let woke = 0;
+  const stop = on([searching], () => woke++);
+  runWaits(1);
+  planProgresses('a candidate');
+  planProgresses('another');
+  runEnds();
+  stop();
+  assert.equal(woke, 2, 'the run starts, the run ends');
 });

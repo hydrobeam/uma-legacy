@@ -91,6 +91,9 @@ const view = signal<DeepReadonly<RunView>>(
   deepFreeze({ searching: false, started: false, phase: 'search', phaseStart: 0, lead: '', progress: '' }),
 );
 export const runView: ReadonlySignal<DeepReadonly<RunView>> = view;
+/** a run is at work: a view that needs no more of the run reads this, so a plan's progress (a write per candidate)
+ *  does not draw it again */
+export const searching = computed(() => view.value.searching);
 const NO_PLAN: PlanNone = { state: 'none', r: null };
 const shownAnswer = signal<AnswerView>(
   deepFreeze({ status: { kind: 'loading', text: 'Loading…' }, last: null, planState: NO_PLAN }),
