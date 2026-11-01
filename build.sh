@@ -19,7 +19,8 @@
 #   test     browser regression suite on webapp/dist, served locally (Playwright Test, webapp/playwright.config.mjs;
 #            Chromium + Firefox): releases
 #   testq    its fast tier (Chromium, each page's core path, under a minute): after each page change
-#   serve    serve webapp/dist on http://localhost:8000 (PORT=...); the page fetches its wasm and images, so open it there
+#   serve    serve webapp/dist on https://localhost:8000 over HTTP/2 as the host does (PORT=...; the certificate is
+#            self-signed, so the browser warns once); the page fetches its wasm and images, so open it there
 #   deploy   build the page and upload webapp/dist to Cloudflare Pages (CF_PAGES_PROJECT, default uma-legacy;
 #            CF_PAGES_BRANCH=preview for a preview URL); refuses with uncommitted changes under webapp/ pkg/
 #   val TAG  run the 24 validation jobs (20 deck, 4 career; the 20 deck jobs again with per-uma decks) in parallel with
@@ -95,7 +96,7 @@ step_browsers() { step_npm; local B="$PLAYWRIGHT_BROWSERS_PATH"
   ls -d "$B"/chromium-* "$B"/firefox-* >/dev/null 2>&1 || (cd "$W" && npx playwright install chromium firefox); }
 step_test() { MISSING=(); need "webapp/dist/index.html: the built page (./build.sh)"; check test; step_browsers; (cd "$W" && npx playwright test); }
 step_testq() { MISSING=(); need "webapp/dist/index.html: the built page (./build.sh)"; check testq; step_browsers; (cd "$W" && LLP_QUICK=1 npx playwright test --project chromium --grep @quick); }
-step_serve() { MISSING=(); need_cmd node "$TOOLS_NODE"; need "webapp/dist/index.html: the built page (./build.sh)"; check serve; node "$W/serve.mjs" "${PORT:-8000}"; }
+step_serve() { MISSING=(); need_cmd node "$TOOLS_NODE"; need "webapp/dist/index.html: the built page (./build.sh)"; check serve; node "$W/serve.mjs" "${PORT:-8000}" localhost h2; }
 # Cloudflare Pages, direct upload of webapp/dist (one-time setup: npx wrangler login; npx wrangler pages project create)
 step_deploy() {
   local dirty; dirty=$(git -C "$R" status --porcelain --untracked-files=no -- webapp pkg research/results.json)

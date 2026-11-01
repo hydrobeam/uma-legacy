@@ -24,7 +24,7 @@ Rust (pinned in `rust-toolchain.toml`), Node with npm, and [uv](https://docs.ast
 
 ```
 ./build.sh            # the solver and its tests, the wasm and the page (fetches its packages the first time; art from game/ if present)
-./build.sh serve      # http://localhost:8000
+./build.sh serve      # https://localhost:8000 (HTTP/2; self-signed, so the browser warns once)
 ```
 
 That is all a fresh clone needs; `docs/BUILD.md` has the checks and the other steps. Refreshing the game data and making the art need

@@ -8,7 +8,7 @@ A fresh clone needs two commands:
 
 ```
 ./build.sh            # the solver and its tests, the wasm, the art (with game files), the page (webapp/dist)
-./build.sh serve      # http://localhost:8000 (WebAssembly needs the page served, not opened as a file)
+./build.sh serve      # https://localhost:8000 over HTTP/2 (WebAssembly needs the page served, not opened as a file)
 ```
 
 The first `./build.sh` installs what it needs: rustup fetches the pinned Rust toolchain, `npm ci` the npm packages
@@ -95,7 +95,7 @@ missing tool or file and what it is before it stops; the `art` step instead says
 | `runners` | each uma's running mini model as a sprite strip in `webapp/img/run/` (see *Art*) |
 | `browsers` | Playwright's browsers into `cache/ms-playwright` (once) |
 | `test` / `testq` | the browser suite, full or its fast tier (see *Tests*) |
-| `serve` | `webapp/dist` on http://localhost:8000 (`PORT=…`) |
+| `serve` | `webapp/dist` on https://localhost:8000 (`PORT=…`) over HTTP/2 with TLS, as the host serves it: the certificate is self-signed (`cache/tls/`), so a browser warns once |
 | `val TAG` / `valq TAG` | validation (see *Tests*) |
 | `deploy` | builds the solver (`wasm`) and the page, and uploads `webapp/dist` to Cloudflare Pages (see *Releases*) |
 | `research` | `research/run_all.py` into `research/results.json`, then renders `docs/RESEARCH.md` from `docs/RESEARCH.template.md` (`research/README.md`) |
