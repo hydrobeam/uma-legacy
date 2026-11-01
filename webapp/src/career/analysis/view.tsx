@@ -399,13 +399,20 @@ function Analysis({ comparison }: { comparison: Comparison }) {
   // replaces the career on show)
   const actions = (
     <div class="row">
-      <Button variant="primary" id="sim-compare" data-k="sim:compare" disabled={searching} onClick={comparison.compare}>
+      <Button
+        variant="primary"
+        size="sm"
+        id="sim-compare"
+        data-k="sim:compare"
+        disabled={searching}
+        onClick={comparison.compare}
+      >
         Compare
       </Button>
-      <Button id="sim-roll" data-k="sim:roll" disabled={searching} onClick={comparison.roll}>
+      <Button size="sm" id="sim-roll" data-k="sim:roll" disabled={searching} onClick={comparison.roll}>
         Reroll
       </Button>
-      <Button id="sim-add" disabled={searching} onClick={addDraft}>
+      <Button size="sm" id="sim-add" disabled={searching} onClick={addDraft}>
         Add to veterans
       </Button>
     </div>

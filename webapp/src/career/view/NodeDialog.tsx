@@ -439,15 +439,7 @@ export function NodeDialog() {
       });
   };
   return (
-    <Dialog
-      id="node-dlg"
-      cls="nodedlg"
-      skin="game"
-      size="md"
-      labelledBy="node-title"
-      open={!!spec && !!on}
-      onClose={closed}
-    >
+    <Dialog id="node-dlg" cls="nodedlg" skin="game" labelledBy="node-title" open={!!spec && !!on} onClose={closed}>
       <DialogTitle id="node-title">{on ? on.title : ''}</DialogTitle>
       {/* (the guards inside the dialog: a throw leaves it open, and Close still closes it) */}
       <DialogBody id="node-body" ref={body}>

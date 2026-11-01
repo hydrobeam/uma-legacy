@@ -107,7 +107,7 @@ export function DeckDialog() {
   const r = shown(),
     open = deckOpen.value && !!r;
   return (
-    <Dialog id="deck-dlg" cls="deckdlg" skin="game" size="xs" labelledBy="deck-title" open={open} onClose={deckClosed}>
+    <Dialog id="deck-dlg" cls="deckdlg" skin="game" labelledBy="deck-title" open={open} onClose={deckClosed}>
       {r && (
         <>
           <DialogTitle id="deck-title">Deck</DialogTitle>

@@ -1127,7 +1127,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 /* the game's Enhance menu buttons: Umas, Support cards (square), Veteran Umamusume (wide); the art from the game, the label
    on its white lower band with a ▶ */
 .game .enh { position: relative; display: inline-grid; padding: 0; width: 125px; height: 100px; border: 0; border-radius: 12px; overflow: visible; cursor: pointer;
-  background: none; box-shadow: none; font-family: "Zen Maru Gothic", var(--font-ui); }
+  background: none; box-shadow: none; font-family: "Zen Maru Gothic", var(--font-ui); font-size: 0.85rem; font-weight: 700; }
 /* the texture carries the game's frame and white band, the art spilling over its top edge: a drop shadow follows that shape */
 .game .enh .enhimg { position: absolute; inset: 0; background: center / 100% 100% no-repeat; filter: drop-shadow(0 2px 3px var(--gm-shadow)); }
 #o-umas .enhimg { background-image: var(--enh-umas, linear-gradient(#f3f1f8, #dcd8ea)); }
