@@ -461,3 +461,29 @@ test("her parents follow their records while the same career is on show: a new a
   assert.equal(vs.draft.peek(), null, 'no draft after Add');
   p.stop();
 });
+
+// ---------- review-9 F5: no quick leftover on an exact comparison
+test('an exact comparison after a quick one (cancelled or failed) is killed by the next Compare', async () => {
+  // cancelled: Compare while the roll's quick search runs (it is left to finish), then Compare again
+  const p = page();
+  p.c.roll();
+  await flush();
+  p.c.compare();
+  assert.equal(p.engine.restarts, 0, 'a quick search is never killed');
+  await flush();
+  p.c.compare();
+  assert.equal(p.engine.restarts, 1, 'the exact comparison in flight goes, the worker with it');
+  p.stop();
+  // failed: the roll's baseline job refuses
+  const q = page({ fix: [0] });
+  q.c.roll();
+  await flush();
+  q.engine.answer(0, { error: 'bad' });
+  await flush();
+  assert.equal(simulation.peek().state, 'error');
+  q.c.compare();
+  await flush();
+  q.c.compare();
+  assert.equal(q.engine.restarts, 1);
+  q.stop();
+});

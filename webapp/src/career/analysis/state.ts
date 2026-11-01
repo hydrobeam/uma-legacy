@@ -152,12 +152,13 @@ export function draftJoins() {
 export const quickStarts = () =>
   patch({ state: 'busy', kind: 'quick', error: null, stale: false, provisional: false, standing: false });
 /** the exact comparison starts: in place of the panel's figures, or (`refine`) behind a roll's quick figures, which
- *  stay on show (the roll's 0.8 s stand is over) */
+ *  stay on show (the roll's 0.8 s stand is over). It is not a quick one, whatever ran before it (a quick comparison
+ *  cancelled leaves its `kind`; left, the next Compare would spare this job as a quick search) */
 export const exactStarts = (refine: boolean) =>
   patch(
     refine
-      ? { refining: true, standing: false, error: null, stale: false }
-      : { state: 'busy', refining: false, provisional: false, standing: false, error: null, stale: false },
+      ? { kind: null, refining: true, standing: false, error: null, stale: false }
+      : { kind: null, state: 'busy', refining: false, provisional: false, standing: false, error: null, stale: false },
   );
 /** today's best career, the comparisons' baseline, is known */
 export const baselineFound = (baseline: DeepReadonly<CareerReport>) => patch({ baseline: deepFreeze(baseline) });
