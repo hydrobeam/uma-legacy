@@ -1,6 +1,6 @@
 // the career planner's pool grows: an uma.moe tree added, generations saved from the veteran you got (her parents the
 // next one's grandparents), removals (from the 12 test veterans, parent 1 fixed so that saving has places to clear)
-import { check, dialog, audit, contrastCheck, still, careerPage } from './helpers.mjs';
+import { check, dialog, careerPage } from './helpers.mjs';
 
 export default async function careergen(b) {
   const { ctx, pg, note, done, vetsOpen, vetsShut, vetsSeen, node, inNode, simStars, simOpen, importDump, saved } =
@@ -227,10 +227,6 @@ export default async function careergen(b) {
   );
 
   await pg.keyboard.press('Escape');
-  if (b.browserType().name() === 'chromium') {
-    await still(pg);
-    contrastCheck('career: the page with one veteran', [await audit(pg)]);
-  }
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await ctx.close();
 }

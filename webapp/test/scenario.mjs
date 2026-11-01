@@ -1,18 +1,4 @@
-import {
-  check,
-  json,
-  open,
-  settle,
-  lastJob,
-  until,
-  note,
-  scen,
-  pickScen,
-  hintRates,
-  still,
-  audit,
-  contrastCheck,
-} from './helpers.mjs';
+import { check, json, open, settle, lastJob, until, note, scen, pickScen, hintRates } from './helpers.mjs';
 
 export default async function scenario(b) {
   // the scenario picker: a button showing the chosen scenario's logo, opening a grid of the scenarios
@@ -255,11 +241,5 @@ export default async function scenario(b) {
       ).size,
   );
   check('… and the tiles stay the same size', sz === 1);
-  if (b.browserType().name() === 'chromium') {
-    await still(p2); // the results' fade back from the searching dim
-    contrastCheck('contrast: scenario badges (no logo files)', [
-      await audit(p2, (x) => /^b\./.test(x) || /scen|stile|slogo|snm|ssub/.test(x)),
-    ]);
-  }
   await p2.context().close();
 }

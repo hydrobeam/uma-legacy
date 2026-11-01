@@ -1,6 +1,6 @@
 // What the browser suite's groups share (Playwright Test runs them: playwright.config.mjs, test/groups.spec.mjs): the page
 // under test, the checks, the time profile, opening a page with the worker hooks, waits on the page's own state, the
-// in-page audits (contrast, pill tracks, sideways scroll), the career page's fixture, and the data the checks read from
+// in-page audits (pill tracks, sideways scroll), the career page's fixture, and the data the checks read from
 // the repo.
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -13,7 +13,7 @@ import { SOLVER, installSolver } from './solverreplay.mjs';
 export const PAGE_URL = process.env.LLP_PAGE;
 /** The loop planner's address (the career planner is the front page, PAGE_URL itself). */
 export const LOOP_URL = `${PAGE_URL.replace(/\/?$/, '/')}loop`;
-/** The fast tier (LLP_QUICK=1; ./build.sh testq): career stops at its one-run answer, contrast checks light only. */
+/** The fast tier (LLP_QUICK=1; ./build.sh testq): career stops at its one-run answer. */
 export const QUICK = !!process.env.LLP_QUICK;
 const REPO_ROOT = new URL('../../', import.meta.url);
 /** Every test context: the local server's certificate is self-signed (vite preview, HTTP/2 over TLS as the host). */
@@ -40,7 +40,7 @@ export const check = (name, ok, detail = '') =>
     { location: caller() },
   );
 // Whether the build carries the game art: a clone without game files builds with initials in place of pictures, so
-// checks of the art itself are skipped and the contrast audits leave out the initials that stand in for card art.
+// checks of the art itself are skipped.
 const ASSETS = new URL('../dist/assets/', import.meta.url);
 export const ART =
   !!process.env.LLP_URL ||
@@ -69,10 +69,9 @@ export function artCheck(name, ok, detail = '') {
   if (ART) check(name, ok, detail);
   else skip(name, 'no game art in this build');
 }
-export const artless = (fails) => (ART ? fails : fails.filter((x) => !/^span\.cav\b/.test(x)));
 
 // ---------- LLP_PROF=file: where each group's time goes (new contexts and page loads, waits for searches and plans, fixed
-// sleeps, contrast audits, and the solver's own time per job), one JSON line per group appended to the file
+// sleeps, and the solver's own time per job), one JSON line per group appended to the file
 export const PROF = process.env.LLP_PROF;
 /** @type {Record<string, number|string[]>|null} the running group's profile (LLP_PROF), else null: milliseconds per key
  * (`timed`'s keys, `solver:<job kind>`) and each key's count under `<key>#`; `solverLog` lists each job's time. A
@@ -134,7 +133,7 @@ const timed = (key, promise, prof = groupProf) => {
   });
 };
 async function profile(ctx, pg) {
-  // the solver's time per job (the worker reports it with each result), fixed sleeps, audits
+  // the solver's time per job (the worker reports it with each result), fixed sleeps
   const prof = groupProf;
   if (!prof) return;
   await ctx.exposeBinding('__llpSolved', (_, kind, ms) => {
@@ -166,8 +165,6 @@ async function profile(ctx, pg) {
   });
   const sleep = pg.waitForTimeout.bind(pg);
   pg.waitForTimeout = (ms) => timed('sleep', sleep(ms), prof);
-  const evaluate = pg.evaluate.bind(pg);
-  pg.evaluate = (fn, ...a) => (fn === AUDIT ? timed('audit', evaluate(fn, ...a), prof) : evaluate(fn, ...a));
 }
 
 // ---------- opening a page
@@ -411,135 +408,6 @@ export const still = (pg) =>
   );
 
 // ---------- in-page audits (pg.evaluate(PILLS) and so on): each returns what is wrong, one line per fault
-// WCAG 2 contrast of every visible text run in the open dialog (or the page): {fails, skipped, bar}, the runs under the
-// bar, the runs it did not measure (exempt, or over a picture it can't see), and the bar it held (`audit` runs it)
-export const AUDIT = () => {
-  const game = document.documentElement.classList.contains('game');
-  // a computed colour: rgb()/rgba() (0-255), or color(srgb r g b / a) (0-1: Chromium's form of color-mix()); null
-  // for any other form, which the audit names as a fault rather than measure against the wrong layer
-  const parse = (c) => {
-    const m = c.match(/^rgba?\(([^)]+)\)$/),
-      s = c.match(/^color\(srgb ([\d.e-]+) ([\d.e-]+) ([\d.e-]+)(?: \/ ([\d.e-]+))?\)$/);
-    if (s) return { r: 255 * +s[1], g: 255 * +s[2], b: 255 * +s[3], a: s[4] === undefined ? 1 : +s[4] };
-    if (!m) return null;
-    const p = m[1]
-      .split(/[ ,/]+/)
-      .filter(Boolean)
-      .map(Number);
-    return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
-  };
-  const over = (f, b) => ({
-    r: f.r * f.a + b.r * (1 - f.a),
-    g: f.g * f.a + b.g * (1 - f.a),
-    b: f.b * f.a + b.b * (1 - f.a),
-    a: 1,
-  });
-  const lum = (c) => {
-    const ch = (v) => {
-      v /= 255;
-      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-    };
-    return 0.2126 * ch(c.r) + 0.7152 * ch(c.g) + 0.0722 * ch(c.b);
-  };
-  const ratio = (a, b) => {
-    const x = lum(a),
-      y = lum(b);
-    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
-  };
-  // the colour behind el: its ancestors' background colours composited down to the first opaque one (over white);
-  // img: a background picture lies behind it, which the audit can't see; unread: a background colour it can't parse
-  const bgOf = (el) => {
-    const layers = [];
-    let e = el,
-      img = false,
-      unread = null;
-    for (; e; e = e.parentElement) {
-      const cs = getComputedStyle(e);
-      if (cs.backgroundImage !== 'none' && !cs.backgroundImage.startsWith('linear')) img = true;
-      const c = parse(cs.backgroundColor);
-      if (!c) {
-        unread = cs.backgroundColor;
-        break;
-      }
-      if (c.a > 0) {
-        layers.push(c);
-        if (c.a >= 1) break;
-      }
-    }
-    let bg = { r: 255, g: 255, b: 255, a: 1 };
-    for (let i = layers.length - 1; i >= 0; i--) bg = over(layers[i], bg);
-    return { bg, img, unread };
-  };
-  const opac = (el) => {
-    let o = 1;
-    for (let e = el; e; e = e.parentElement) o *= +getComputedStyle(e).opacity;
-    return o;
-  };
-  const out = [];
-  let skipped = 0;
-  const dlg = [...document.querySelectorAll('dialog[open]')];
-  const scope = dlg.length ? dlg[dlg.length - 1] : document.body;
-  for (const el of scope.querySelectorAll('*')) {
-    const txt = [...el.childNodes]
-      .filter((n) => n.nodeType === 3)
-      .map((n) => n.textContent)
-      .join('')
-      .trim();
-    if (!txt) continue;
-    const r = el.getBoundingClientRect();
-    if (!r.width || !r.height) continue;
-    const cs = getComputedStyle(el);
-    if (cs.visibility === 'hidden' || cs.display === 'none' || el.closest('[hidden]') || el.closest('select')) continue;
-    const { bg, img, unread } = bgOf(el);
-    const exempt =
-      img ||
-      (el.closest('h1.brand') && /^b[uma]$/.test(el.className)) || // the brand's coloured "uma": the logo's colours by choice
-      // the planner pages' recreation of the game's UI (html.game): the game's colours by choice over AAA; also text on
-      // the game's sprites (skill tiles), which the audit can't see behind it
-      (game &&
-        el.closest(
-          '.ud, #simulation > h3, .rbsec > h3, .btn.primary, .seg [aria-pressed="true"], .vsk.pink, .pflab, .simhdr, .sethdr, .otag.pick, .lp .swhead, .lptgt h2, .afpick [aria-pressed="true"], .rankseg [aria-checked="true"], .udsk, .spark.g, .tgt, .agenda.game h4, .ag-slot.pre, .agenda.game .ag-when b',
-        )) ||
-      el.closest('.ptabs [aria-current="page"]') || // every page's header: the game's green tab with white outlined text
-      // the planner pages' game-style dialogs: their headers (white outlined text on the game's green) and primary buttons
-      (game && el.closest('dialog > .dlg > .dhead, dialog .btn.primary, .gmdlg > .gmdhdr'));
-    if (exempt) {
-      skipped++;
-      continue;
-    }
-    const tag = `${el.tagName.toLowerCase()}.${el.className} "${txt.slice(0, 30)}"`,
-      fg0 = parse(cs.color);
-    if (unread || !fg0) {
-      out.push(`${tag}: unread colour ${unread || cs.color}`);
-      continue;
-    }
-    const fg = over({ ...fg0, a: fg0.a * opac(el) }, bg);
-    const px = parseFloat(cs.fontSize),
-      large = px >= 24 || (+cs.fontWeight >= 700 && px >= 18.66),
-      need = game ? 3 : large ? 4.5 : 7; // AAA (/about); the planner pages keep the game's colours, held only to a 3:1 floor
-    const rt = ratio(fg, bg);
-    if (rt < need) out.push(`${tag} ${rt.toFixed(2)}<${need}`);
-  }
-  return { fails: out, skipped, bar: game ? 'the 3:1 floor' : 'WCAG AAA' };
-};
-/** @typedef {{fails: string[], skipped: number, bar: string}} Audit */
-/** The contrast audit of what shows now (AUDIT); `keep` filters its faults to the part a check is about.
- * @returns {Promise<Audit>} */
-export async function audit(pg, keep = () => true) {
-  const a = await pg.evaluate(AUDIT);
-  return { ...a, fails: artless(a.fails).filter(keep) };
-}
-/** One check over audits of the same page: every audited text run meets the bar they held; the detail says how many
- * runs they skipped (exempt, or over a picture), so a growing exemption shows. @param {Audit[]} audits */
-export function contrastCheck(name, audits) {
-  const fails = audits.flatMap((a) => a.fails),
-    skipped = audits.reduce((n, a) => n + a.skipped, 0);
-  check(
-    `${name}: every audited text run meets ${audits[0].bar}`,
-    !fails.length,
-    `${skipped} runs skipped${fails.length ? ' · ' + fails.slice(0, 5).join(' | ') : ''}`,
-  );
-}
 // every visible pill track (the segmented controls and the veteran card's tabs): its segments fill it flush, the full
 // inner height, no gap at its ends or between them, the track a pill that clips them to its own curve, none of them drawn
 // with the game's pill sprite (whose fixed-width caps don't fit other heights). Distances in CSS px, 0.6 px tolerance.

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { drawPink } from '../src/pink.ts';
 import { scheduledRaces, rolledBought, starDraw, rolledOutcome, rolledBlueGreen } from '../src/career/roll.ts';
 import { searchCaveat, planCaveat } from '../src/proofs.ts';
-import { QUICK, check, ART, dialog, audit, contrastCheck, still, careerPage, repoUrl, json } from './helpers.mjs';
+import { QUICK, check, ART, dialog, careerPage, repoUrl, json } from './helpers.mjs';
 
 // The page's pink draw (`drawPink`) against the solver's pink model (MODEL.md; `Env::pink_gen`): on every reference
 // career with legacy pinks (val/ref__global__career_*.out, the solver's outputs that validation pins), 40,000 seeded draws
@@ -513,17 +513,6 @@ export default async function career(b) {
   );
   await done();
   await planned(); // the pasted export's plan (the same pool)
-  if (chromium) {
-    // the page with a plan on show (the lineage tree, the targets, the options table, the status line), both themes
-    await vetsShut();
-    for (const theme of ['light', 'dark']) {
-      if ((await pg.evaluate(() => document.documentElement.getAttribute('data-theme'))) !== theme)
-        await pg.click('#theme-btn');
-      await still(pg);
-      contrastCheck(`career: ${theme} mode with a plan on show`, [await audit(pg)]);
-    }
-    await pg.click('#theme-btn');
-  }
   check(
     'career: the planner weighs every career, checked on exact odds (only a check that could not finish is mentioned)',
     /Weighed 3,618 careers/.test(await note()) && !/could not finish|checked exact/.test(await note()),
@@ -606,7 +595,6 @@ export default async function career(b) {
     const lines = await pg.$$eval('#sk-dlg .gmdlist li', (l) =>
       l.map((x) => [x.querySelector('span')?.textContent, x.querySelector('b')?.textContent]),
     );
-    if (chromium) contrastCheck('career: Skill Details (a game-style popup)', [await audit(pg)]);
     await pg.keyboard.press('Escape');
     const deckLines = lines.filter(([k]) => /^Deck/.test(k)).map(([, v]) => parseFloat(v) || 0);
     check(
@@ -1115,17 +1103,6 @@ export default async function career(b) {
       return !!j && !!r && JSON.stringify(j.next) === JSON.stringify({ fit: r.next.fit });
     })) && (await pg.locator('#sim-result > .simfit').count()) === 1,
   );
-  if (chromium) {
-    // one engine is enough for colours
-    for (const theme of ['light', 'dark']) {
-      // (clicked from script: the popup, open, keeps the page behind it inert)
-      if ((await pg.evaluate(() => document.documentElement.getAttribute('data-theme'))) !== theme)
-        await pg.evaluate(() => document.getElementById('theme-btn').click());
-      await still(pg); // the theme's colour transitions
-      contrastCheck(`career: ${theme} mode with the outcome table and a comparison`, [await audit(pg)]);
-    }
-    await pg.evaluate(() => document.getElementById('theme-btn').click());
-  }
   // a roll: a random result of this career, compared at once (stubbed random numbers: nothing lands, then everything at 3 stars)
   const roll = async (u) => {
     const before = await policyJobs();

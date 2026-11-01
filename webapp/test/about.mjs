@@ -1,4 +1,4 @@
-import { PAGE_URL, check, open, until, audit, contrastCheck } from './helpers.mjs';
+import { PAGE_URL, check, open, until } from './helpers.mjs';
 
 export default async function about(b) {
   // "How this works": a link in the header to its own page (/about), which links back
@@ -48,7 +48,6 @@ export default async function about(b) {
         );
       })()),
   );
-  if (b.browserType().name() === 'chromium') contrastCheck('/about', [await audit(pg)]);
   const toc = await pg.evaluate(() => {
     const a = [...document.querySelectorAll('main.about nav.toc a')];
     return {

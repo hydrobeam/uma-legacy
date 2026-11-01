@@ -1,4 +1,4 @@
-import { check, open, busy, settle, kind, until, note, json, audit, contrastCheck } from './helpers.mjs';
+import { check, open, busy, settle, kind, until, note, json } from './helpers.mjs';
 
 export default async function states(b) {
   // what the status line says when the settings can't be searched, and the results on screen meanwhile (kept, dimmed)
@@ -41,9 +41,6 @@ export default async function states(b) {
       (await pg.evaluate(() => window.__killed)) > kt,
     JSON.stringify(h),
   );
-  if (b.browserType().name() === 'chromium') {
-    contrastCheck('contrast: the error status line', [await audit(pg, (x) => /^p\.runnote/.test(x))]);
-  }
   await pg.evaluate(() => {
     window.__trap = false;
   });

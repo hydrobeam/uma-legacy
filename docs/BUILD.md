@@ -288,7 +288,7 @@ Never `x!` (Biome bans it), an `as` cast past the check, or `?? 0` on what must 
   not deterministic given its jobs and replay unsound. Replaying groups wait, before a reload, for the page's 100 ms
   state save to land, so the next worker's history does not depend on timing.
 - **Fast tier:** `./build.sh testq` (Chromium, the tests tagged `@quick`, with `LLP_QUICK=1` stopping career at its
-  one-run answer; about 30 s, 14 s with `LLP_JOBS=4`; popups, phone and contrast replay, career, load and about run live): run it after each
+  one-run answer; about 30 s, 14 s with `LLP_JOBS=4`; popups and phone replay, career, load and about run live): run it after each
   page change, and the full suite before a release.
 - **Validation:** `./build.sh val TAG` builds the release solver (so it never validates a binary left from before a
   change) and runs every validation check, each whatever the others found, and fails if any

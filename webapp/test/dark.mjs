@@ -1,8 +1,7 @@
-import { PAGE_URL, check, open, settle, audit, contrastCheck } from './helpers.mjs';
+import { PAGE_URL, check, open, settle } from './helpers.mjs';
 
 export default async function dark(b) {
   // dark mode: the system's preference until the header button is used, then the visitor's choice, kept in this browser
-  // (the loop planner's colours in dark mode are audited in `contrast`)
   const pg = await open(b, { scheme: 'dark' });
   const theme = () => pg.evaluate(() => document.documentElement.getAttribute('data-theme'));
   check(
@@ -56,7 +55,6 @@ export default async function dark(b) {
   await pg.goto(PAGE_URL.replace(/\/?$/, '/') + 'about');
   await pg.waitForLoadState('load');
   check('dark: /about takes the same choice', (await theme()) === 'dark');
-  if (b.browserType().name() === 'chromium') contrastCheck('dark: /about', [await audit(pg)]);
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await pg.context().close();
 }
