@@ -13,18 +13,16 @@ const popover = 'showPopover' in tipEl; // (a browser without popovers shows it 
 if (popover) tipEl.popover = 'manual';
 const GAP = 10,
   EDGE = 8; // px: between the element and the balloon; the least between the balloon and the window's sides
-/** @type {HTMLElement | null} */
-let tipFor = null;
-/** the elements whose title is held while the balloon shows, and their titles @type {Map<HTMLElement, string>} */
-const lifted = new Map();
-/** @type {number | undefined} */
-let tipTimer;
-function tipShow(target) {
+let tipFor: HTMLElement | null = null;
+// the elements whose title is held while the balloon shows, and their titles
+const lifted = new Map<HTMLElement, string>();
+let tipTimer: number | undefined;
+function tipShow(target: HTMLElement) {
   if (!target.isConnected || !target.title) return;
   // her title and every title round her (a card tile's own, round its picture's): with any left the browser would show it
   tipFor = target;
   tipEl.textContent = target.title;
-  for (let e = target; e && e !== document.documentElement; e = e.parentElement) {
+  for (let e: HTMLElement | null = target; e && e !== document.documentElement; e = e.parentElement) {
     if (e.hasAttribute('title')) {
       lifted.set(e, e.title);
       e.removeAttribute('title');
@@ -54,23 +52,21 @@ function tipHide() {
 }
 // moving onto a child of the element showing its balloon keeps it (its title is lifted, so a lookup for [title] would
 // find an ancestor, put the title back and the browser would show its own tooltip beside ours)
-document.addEventListener('mouseover', (/** @type {TargetedEvent} */ e) => {
-  if (tipFor?.contains(e.target)) return;
-  const target = e.target.closest?.('[title]');
+// (a mouse or focus event lands on an element; lib.dom types its target as a bare EventTarget, hence the casts)
+document.addEventListener('mouseover', (e) => {
+  if (tipFor?.contains(e.target as Element)) return;
+  const target = (e.target as Element).closest?.('[title]');
   tipHide();
   if (target) tipTimer = setTimeout(() => tipShow(target), 400);
 });
-document.addEventListener(
-  'mouseout',
-  (/** @type {TargetedEvent<Element, MouseEvent & {relatedTarget: Element | null}>} */ e) => {
-    const keep = tipFor || e.target.closest?.('[title]');
-    if (!e.relatedTarget || !keep?.contains(e.relatedTarget)) tipHide();
-  },
-);
-document.addEventListener('focusin', (/** @type {TargetedEvent} */ e) => {
-  const target = e.target.closest?.('[title]');
+document.addEventListener('mouseout', (e) => {
+  const keep = tipFor || (e.target as Element).closest?.('[title]');
+  if (!e.relatedTarget || !keep?.contains(e.relatedTarget as Element)) tipHide();
+});
+document.addEventListener('focusin', (e) => {
+  const target = (e.target as Element).closest?.('[title]');
   tipHide();
-  if (target && e.target.matches(':focus-visible')) tipShow(target);
+  if (target && (e.target as Element).matches(':focus-visible')) tipShow(target);
 });
 document.addEventListener('focusout', tipHide);
 addEventListener('scroll', tipHide, true);

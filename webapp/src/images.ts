@@ -4,8 +4,9 @@
 import { SHIPPED, IMG_EXT, IMG_BASE, SKILLICON, SKILLICON_GOLD, gameData } from './data.js';
 import { spinHTML } from './dom.js';
 import { must } from './must.ts';
-/** @param {string} kind the image folder ('uma', 'outfit', 'card', 'skill', 'run', ...) @param {number|string} id @returns {string|null} */
-export function srcFor(kind, id) {
+import type { Card } from './data.js';
+// kind: the image folder ('uma', 'outfit', 'card', 'skill', 'run', ...)
+export function srcFor(kind: string, id: number | string): string | null {
   return SHIPPED.has(`${kind}:${id}`) ? `${IMG_BASE}${kind}/${id}.${IMG_EXT[kind]}` : null;
 }
 // the runner in place of a spinner: an uma's mini model running (img/run/<chara>: a strip of 18 frames of the game's
@@ -13,19 +14,18 @@ export function srcFor(kind, id) {
 // trainee; setRunnerFrom: one of the loop's umas at random, kept while the loop on show has her); before either, a random
 // uma with a strip. Her strip is fetched as soon as she is picked, so she is drawn when the next search shows her; a
 // build without strips keeps the spinner. The negative delay keeps her stride when a status line is redrawn.
-/** @type {number | null} */
-let runner = null;
+let runner: number | null = null;
 export const RUN_CYCLE_MS = 600; // one loop of the strip (the CSS animation's duration)
-const hasRun = (id) => SHIPPED.has(`run:${id}`);
-/** @param {number|null|undefined} id a character id */
-export function setRunner(id) {
+const hasRun = (id: number) => SHIPPED.has(`run:${id}`);
+// id: a character id
+export function setRunner(id: number | null | undefined) {
   if (!id || !hasRun(id) || id === runner) return;
   runner = id;
   new Image().src = must(srcFor('run', id), 'hasRun: her strip is shipped');
 }
 // (the one running stays while she is among them: a new strip is fetched and decoded only when the loop changes)
-/** @param {number[]} ids character ids */
-export function setRunnerFrom(ids) {
+// ids: character ids
+export function setRunnerFrom(ids: number[]) {
   const withStrip = ids.filter(hasRun);
   if (withStrip.length && (runner === null || !withStrip.includes(runner)))
     // (none picked yet: pick one)
@@ -45,8 +45,8 @@ export function runnerHTML(big = false) {
 }
 // the UI sprites (--btn-w, --spark-white, ...) are CSS variables the build writes into the stylesheet (build.py SPRITES)
 // twin: ui/Images.tsx SkillIcon (the same markup, as a component): an edit here goes there too, until step 8c
-/** @param {number} group a skill group @param {boolean} [gold] its gold's icon @returns {HTMLImageElement|null} */
-export function skillIcon(group, gold = false) {
+// group: a skill group; gold: its gold's icon
+export function skillIcon(group: number, gold = false): HTMLImageElement | null {
   const src = srcFor('skill', (gold ? SKILLICON_GOLD : SKILLICON)[group]);
   if (!src) return null;
   const image = new Image();
@@ -57,7 +57,7 @@ export function skillIcon(group, gold = false) {
   return image;
 }
 // two letters for a portrait without art: the first letters of her first two words, else the first two of her one word
-export function initials(name) {
+export function initials(name: string) {
   const words = name
     .replace(/[^A-Za-z .]/g, '')
     .split(/[ .]+/)
@@ -67,13 +67,9 @@ export function initials(name) {
 }
 // twin: ui/Images.tsx UmaAv (the same markup, as a component; only the twin is ever eager, in the roster): an edit
 // here goes there too, while both exist
-/**
- * @param {number | null} uma her character id; null: an unknown uma (a parent nobody recorded, a damaged save), drawn as
- *   id 0 is: '?' on hue 0, no portrait
- * @param {number|null|undefined} outfitId her outfit's portrait, when known @param {number} size in px
- * @returns {HTMLSpanElement}
- */
-export function umaAv(uma, outfitId, size) {
+// uma: her character id; null: an unknown uma (a parent nobody recorded, a damaged save), drawn as id 0 is: '?' on hue
+// 0, no portrait. outfitId: her outfit's portrait, when known. size: in px
+export function umaAv(uma: number | null, outfitId: number | null | undefined, size: number): HTMLSpanElement {
   const charaId = uma ?? 0;
   const disc = document.createElement('span');
   disc.className = 'av';
@@ -104,8 +100,8 @@ export function umaAv(uma, outfitId, size) {
   if (tries.length) next();
   return disc;
 }
-// a card's type as the text shown without its art
-export const KIND_ABBR = {
+// a card's type as the text shown without its art (Card `kind`)
+export const KIND_ABBR: Record<string, string> = {
   speed: 'SPD',
   stamina: 'STA',
   power: 'POW',
@@ -118,8 +114,8 @@ export const KIND_ABBR = {
 export const RARITY_CLASS = { 3: 'ssr', 2: 'sr', 1: 'r' };
 // twin: ui/Images.tsx CardAv (the same markup, as a component): an edit here goes there too, until step 8c
 // `titled`: its own hover names (the card's name, its type); off inside a chip whose title says more
-/** @param {import('./data.js').Card|null} c @param {number} size in px @param {boolean} [titled] @returns {HTMLSpanElement} */
-export function cardAv(c, size, titled = true) {
+// size: in px
+export function cardAv(c: Card | null, size: number, titled = true): HTMLSpanElement {
   const tile = document.createElement('span');
   tile.className = 'cav';
   tile.style.setProperty('--s', `${size}px`); // (style.css .cav, as umaAv's)

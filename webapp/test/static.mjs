@@ -422,7 +422,7 @@ const MOUNTS = {
 };
 // (file, selector) -> why it may stay
 const MOUNT_READS = {
-  'src/popover.js': {
+  'src/popover.ts': {
     '.deck .dc':
       'the click delegation, which reads the opener it was clicked on (the panel stays el(): step 11 left it)',
     '.mem': 'reads the clicked member block’s data-* for her panel (the panel stays el(): step 11 left it)',

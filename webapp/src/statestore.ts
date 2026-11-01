@@ -5,15 +5,14 @@
 const DB_NAME = 'llp-solver',
   STORE = 'state',
   ANSWER = 'answer';
-/** @type {Promise<IDBDatabase> | null} */
-let opening = null; // the open database (a promise); a failed open is forgotten, so the next use tries again
+let opening: Promise<IDBDatabase> | null = null; // the open database (a promise); a failed open is forgotten, so the next use tries again
 // An open that can't finish (an upgrade waiting on another tab that holds an older version open) gives up after
 // OPEN_MS: the page then plans without stored work rather than wait. Our own connection closes when a newer page asks to
 // upgrade (`onversionchange`), so this page never holds another one up.
 const OPEN_MS = 2000;
 function database() {
   if (!opening)
-    opening = new Promise((resolve, reject) => {
+    opening = new Promise<IDBDatabase>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('timed out')), OPEN_MS);
       try {
         const request = indexedDB.open(DB_NAME, 2);
@@ -50,10 +49,14 @@ function database() {
 }
 // one transaction on the store: `use` makes its request; the promise resolves with that request's result once the
 // transaction completes
-function transact(mode, use, store = STORE) {
+function transact<T>(
+  mode: IDBTransactionMode,
+  use: (store: IDBObjectStore) => IDBRequest<T>,
+  store = STORE,
+): Promise<T> {
   return database().then(
     (db) =>
-      new Promise((resolve, reject) => {
+      new Promise<T>((resolve, reject) => {
         const transaction = db.transaction(store, mode),
           request = use(transaction.objectStore(store));
         transaction.oncomplete = () => resolve(request?.result);
@@ -64,8 +67,7 @@ function transact(mode, use, store = STORE) {
 }
 // what was stored under key (null when nothing is, or anything fails); keys not in `live` are dropped (a past
 // release's; the other era's stays for its next load)
-/** @param {string} key @param {string[]} live */
-export async function stateLoad(key, live) {
+export async function stateLoad(key: string, live: string[]): Promise<unknown> {
   try {
     const keys = await transact('readonly', (store) => store.getAllKeys());
     for (const old of keys || [])
@@ -75,16 +77,14 @@ export async function stateLoad(key, live) {
     return null;
   }
 }
-/** @param {string} key @param {unknown} value */
-export async function stateSave(key, value) {
+export async function stateSave(key: string, value: unknown) {
   try {
     await transact('readwrite', (store) => store.put(value, key));
   } catch {
     /* quota, private mode: plan cold next time */
   }
 }
-/** @param {string} key */
-export async function stateDrop(key) {
+export async function stateDrop(key: string) {
   try {
     await transact('readwrite', (store) => store.delete(key));
   } catch {
@@ -92,17 +92,16 @@ export async function stateDrop(key) {
   }
 }
 // the last answer drawn per era (`slot`), with the key it was drawn for (the solver's and data's fingerprints, the job
-// and the places): null when none is stored or anything fails
-/** @param {string} slot @returns {Promise<{key: string, value: any}|null>} */
-export async function answerLoad(slot) {
+// and the places): null when none is stored or anything fails. The caller names what it stored, V (IndexedDB returns
+// it untyped)
+export async function answerLoad<V>(slot: string): Promise<{ key: string; value: V } | null> {
   try {
     return (await transact('readonly', (store) => store.get(`last:${slot}`), ANSWER)) || null;
   } catch {
     return null;
   }
 }
-/** @param {string} slot @param {string} key @param {unknown} value */
-export async function answerSave(slot, key, value) {
+export async function answerSave(slot: string, key: string, value: unknown) {
   try {
     await transact('readwrite', (store) => store.put({ key, value }, `last:${slot}`), ANSWER);
   } catch {

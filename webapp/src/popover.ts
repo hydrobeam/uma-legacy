@@ -1,5 +1,6 @@
 // ---------- deck card panel: name, role, ownership (the same setting as the card picker) ----------
 import { batch, signal } from '@preact/signals-core';
+import type { ReadonlySignal } from '@preact/signals-core';
 import { esc } from './dom.js';
 import { gameData } from './data.js';
 import { settings, setOwned } from './settings.ts';
@@ -7,6 +8,7 @@ import { goldGiven } from './job.js';
 import { umaState } from './roster.js';
 import { cardTitle, cardGives, giftsHTML, chainEndAt } from './cards.js';
 import { must } from './must.ts';
+import type { Card, Uma } from './data.js';
 // The panel lives in the results column (positioned against it), so it scrolls with the result it belongs to when the
 // column scrolls on its own (desktop: the column is sticky and scrolls inside the window).
 // Keyboard: opening moves the focus into the panel; Escape, or Tab past either end, closes it and returns the focus to
@@ -17,14 +19,12 @@ pop.hidden = true;
 pop.setAttribute('role', 'dialog');
 pop.tabIndex = -1;
 must(document.getElementById('rcol'), 'both planner pages have the results column').appendChild(pop);
-/** @type {HTMLElement | null} */
-let popFor = null; // the card or name button whose panel is open
+let popFor: HTMLElement | null = null; // the card or name button whose panel is open
 // Every opener is a component's: it draws its own aria-expanded from `popOpener`, and its own greying (`off`) from the
 // settings, so nothing here writes into it.
-/** @type {import('@preact/signals-core').Signal<HTMLElement | null>} */
-const opener = signal(null);
+const opener = signal<HTMLElement | null>(null);
 /** the button whose panel is open (null: none) */
-export const popOpener = /** @type {import('@preact/signals-core').ReadonlySignal<HTMLElement | null>} */ (opener);
+export const popOpener: ReadonlySignal<HTMLElement | null> = opener;
 export const popHasFocus = () => !pop.hidden && pop.contains(document.activeElement);
 export function closePop() {
   pop.hidden = true;
@@ -32,8 +32,7 @@ export function closePop() {
   opener.value = null;
 }
 // the panel opens from `button`
-/** @param {HTMLElement} button */
-function openFor(button) {
+function openFor(button: HTMLElement) {
   batch(() => {
     closePop();
     popFor = button;
@@ -50,7 +49,7 @@ function back() {
 pop.addEventListener('keydown', (e) => {
   if (e.key !== 'Tab') return;
   const items = focusables(),
-    i = items.indexOf(/** @type {HTMLElement} */ (document.activeElement));
+    i = items.indexOf(document.activeElement as HTMLElement);
   if (!items.length || (e.shiftKey ? i <= 0 : i === items.length - 1)) {
     e.preventDefault();
     back();
@@ -59,10 +58,10 @@ pop.addEventListener('keydown', (e) => {
 const GAP = 8; // px between the panel and the element it belongs to (beside it); below it, 6
 // beside: a deck card's panel opens to its right (else its left) at its top, so it never covers the hint odds under the
 // deck; without room on either side (phones), below it like the others. Positions are in the host's scrolled box.
-function placePop(anchor, beside = false) {
+function placePop(anchor: HTMLElement, beside = false) {
   // (inside a popup, the panel goes into it: the page behind a modal popup is out of reach)
   const dlg = anchor.closest('dialog'),
-    home = dlg || document.getElementById('rcol');
+    home = dlg || must(document.getElementById('rcol'), 'both planner pages have the results column');
   if (pop.parentElement !== home) home.appendChild(pop);
   pop.hidden = false;
   // (in a popup: placed against the screen, under the card, so the popup's edges don't clip it)
@@ -95,7 +94,7 @@ function placePop(anchor, beside = false) {
 }
 // a member's panel: one "Owned" switch. When the loop uses a specific outfit, that outfit is what is owned or not
 // (another outfit would be a different trainee); with "any outfit" it is the uma.
-function openUmaPop(btn, member = btn.closest('.mem')) {
+function openUmaPop(btn: HTMLElement, member = must(btn.closest('.mem'), 'a name button is in its member block')) {
   // member: her member block (a portrait elsewhere in the result passes it)
   openFor(btn);
   const uma = +must(member.dataset.uma, 'a member block names her'),
@@ -115,8 +114,7 @@ function openUmaPop(btn, member = btn.closest('.mem')) {
     `<div class="pfoot"><label class="sw"><input type="checkbox" role="switch" data-act="uma"${owned() ? ' checked' : ''}>Owned</label>` +
     `<a class="gtl" href="${umaUrl(u, outfitId)}" target="_blank" rel="noopener">GameTora ↗︎</a></div>`;
   placePop(btn);
-  /** @type {HTMLInputElement} */
-  const toggle = must(pop.querySelector('[data-act="uma"]'), 'the panel is made with its switch');
+  const toggle = must(pop.querySelector<HTMLInputElement>('[data-act="uma"]'), 'the panel is made with its switch');
   toggle.onchange = () => {
     const roster = { ...settings.value.roster },
       outfits = { ...settings.value.outfits };
@@ -131,7 +129,7 @@ function openUmaPop(btn, member = btn.closest('.mem')) {
   };
 }
 // a name as a GameTora URL slug: lowercase, '.' and "'" dropped, every other run of punctuation a hyphen
-const slugOf = (name) =>
+const slugOf = (name: string) =>
   name
     .toLowerCase()
     .replace(/[.']/g, '')
@@ -139,12 +137,12 @@ const slugOf = (name) =>
     .replace(/^-|-$/g, '');
 // GameTora's character page: /characters/<outfit id>-<slug>, the slug from her support cards' url_name
 // (export_page.py), else made from her name; with "any outfit" her original outfit (<chara id>01)
-function umaUrl(u, outfitId) {
+function umaUrl(u: Uma, outfitId: number | null) {
   return `https://gametora.com/umamusume/characters/${outfitId || u.id * 100 + 1}-${u.gt || slugOf(u.name)}`;
 }
 // GameTora's card page, by the url_name in its own card list (export_page.py; group cards have names a slug can't
 // guess); for a card missing from that list, id + character name, lowercase, punctuation dropped.
-function gametoraUrl(c) {
+function gametoraUrl(c: Card) {
   const page = c.gt || `${c.id}-${slugOf(c.name.replace(/^\[.*?\]\s*/, ''))}`; // the name without its [title]
   return `https://gametora.com/umamusume/supports/${page}`;
 }
@@ -153,13 +151,13 @@ function gametoraUrl(c) {
 // (269 of them Sasami Anshinzawa SSR's finale); the rule is carried over to chain-ending choices here. It took it less
 // often when the top choice held a prioritised skill too (41 of 56) or the skill's hint was already Lv 5 from another
 // source (16 of 28): small samples, so "may not" (docs/RESEARCH.md section 9)
-function chainEndHTML(c, link) {
+function chainEndHTML(c: Card | undefined, link: number) {
   const { take, others } = chainEndAt(c, link);
   if (!take) return `<div>Take the chain-ending choice at link ${link}.</div>`;
   const targets = new Set(settings.value.targets.map((x) => x.group)),
     rivals = others.filter((x) => targets.has(x.group)).map((x) => x.name),
     otherNames = others.map((x) => x.name).join(' or ');
-  let caveat;
+  let caveat: string;
   if (rivals.length)
     caveat = `${rivals.join(' and ')} ${rivals.length > 1 ? 'are' : 'is'} also a target: prioritising both makes the end uncertain.`;
   else if (otherNames)
@@ -170,10 +168,11 @@ function chainEndHTML(c, link) {
     `<div class="onote">${esc(caveat)}</div>`
   );
 }
-function openCardPop(chip) {
+function openCardPop(chip: HTMLElement) {
   openFor(chip);
-  const c = gameData().cardById.get(+chip.dataset.cid),
-    title = c ? cardTitle(c) : { nm: chip.dataset.name, ti: '' };
+  // (a chip without a card entry has no data-cid: NaN, no card)
+  const c = gameData().cardById.get(Number(chip.dataset.cid)),
+    title = c ? cardTitle(c) : { nm: must(chip.dataset.name, 'a deck chip names its card'), ti: '' };
   const borrowed = chip.classList.contains('bor'),
     owned = c && settings.value.cardsOff[c.id] !== false;
   const groups = new Set(
@@ -188,8 +187,8 @@ function openCardPop(chip) {
     `<div class="pfoot">${c && !borrowed ? `<label class="sw"><input type="checkbox" role="switch" data-act="own"${owned ? ' checked' : ''}>Owned</label>` : '<span></span>'}` +
     `${c ? `<a class="gtl" href="${gametoraUrl(c)}" target="_blank" rel="noopener">GameTora ↗︎</a>` : ''}</div>`;
   placePop(chip, true);
-  /** @type {HTMLInputElement | null} a card of the data that is not borrowed has one */
-  const toggle = pop.querySelector('[data-act="own"]');
+  // (a card of the data that is not borrowed has one)
+  const toggle = pop.querySelector<HTMLInputElement>('[data-act="own"]');
   if (toggle && c)
     toggle.onchange = () => {
       const { [c.id]: _, ...rest } = settings.value.cardsOff;
@@ -197,14 +196,15 @@ function openCardPop(chip) {
     };
 }
 // a click on what is already open closes it; on another card or name, its panel opens instead
-const toggleFor = (button, open) => {
+const toggleFor = (button: HTMLElement, open: () => void) => {
   if (popFor === button) closePop();
   else open();
 };
 export function initPopover() {
-  document.addEventListener('click', (/** @type {TargetedEvent} */ e) => {
-    const chip = e.target.closest('.deck .dc'),
-      name = e.target.closest('.mem .memb');
+  // (a click lands on an element; lib.dom types its target as a bare EventTarget, hence the casts)
+  document.addEventListener('click', (e) => {
+    const chip = (e.target as Element).closest('.deck .dc'),
+      name = (e.target as Element).closest('.mem .memb');
     if (chip) {
       toggleFor(chip, () => openCardPop(chip));
       return;
@@ -213,20 +213,23 @@ export function initPopover() {
       toggleFor(name, () => openUmaPop(name));
       return;
     }
-    const face = e.target.closest('.loop .facebtn'); // a portrait in a deck title or swap row: the same panel
+    const face = (e.target as Element).closest('.loop .facebtn'); // a portrait in a deck title or swap row: the same panel
     if (face) {
       // a "Same loop as #1" card has no member blocks: #1's (the same umas and outfits) stand in
       const mem = `.mem[data-uma="${face.dataset.uma}"]`;
       toggleFor(face, () =>
         openUmaPop(
           face,
-          must(face.closest('.loop'), 'a portrait button is in a loop card').querySelector(mem) ||
-            document.querySelector(`.loop.first ${mem}`),
+          must(
+            must(face.closest('.loop'), 'a portrait button is in a loop card').querySelector(mem) ||
+              document.querySelector(`.loop.first ${mem}`),
+            "#1's loop has a member block for each of its umas",
+          ),
         ),
       );
       return;
     }
-    if (!e.target.closest('.cpop')) closePop();
+    if (!(e.target as Element).closest('.cpop')) closePop();
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && popFor) back();

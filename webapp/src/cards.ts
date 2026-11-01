@@ -4,17 +4,17 @@ import { computed } from '@preact/signals';
 import { esc } from './dom.js';
 import { gameData } from './data.js';
 import { fields, settings, setOwned } from './settings.ts';
-/** @import { Card } from './data.js' */
+import { must } from './must.ts';
+import type { Card } from './data.js';
 const RARITY = { 1: 'R', 2: 'SR', 3: 'SSR' };
 const BORROWED = /\(borrowed\)$/; // a deck names its borrowed card with this suffix
 // a deck's card indices with the borrowed card last: the sixth slot, as in the game
-/** @type {(cards: string[]) => number[]} card names (a deck's `cards`) -> their indices */
-export const borLast = (cards) =>
+// card names (a deck's `cards`) -> their indices
+export const borLast = (cards: string[]): number[] =>
   cards.map((_, i) => i).sort((a, b) => Number(BORROWED.test(cards[a])) - Number(BORROWED.test(cards[b])));
 // a card's name split as the game shows it: {nm: the character (with the rarity, "Daitaku Helios SSR", unless `rar` is
 // false: the card list leaves it out, its frame and section heading show it), ti: the card's title ('' when none)}
-/** @type {(c: Card, rar?: boolean) => {nm: string, ti: string}} */
-export const cardTitle = (c, rar = true) => {
+export const cardTitle = (c: Card, rar = true): { nm: string; ti: string } => {
   const parts = /^\[(.*)\] (.*)$/.exec(c.name);
   return parts ? { nm: parts[2] + (rar ? ` ${RARITY[c.rar]}` : ''), ti: parts[1] } : { nm: c.name, ti: '' };
 };
@@ -22,36 +22,38 @@ export const cardTitle = (c, rar = true) => {
 // n-th story event (they come in order, so a later one needs the earlier ones first); "50%": the event gives it on
 // some of its outcomes (one of two: 50%; Anshinzawa SSR's finale: 75%, measured)
 const ORDINAL = ['', '1st', '2nd', '3rd', '4th', '5th'];
-const ordinal = (n) => ORDINAL[n] || `${n}th`;
-const share = (p) => (p >= 1 ? '' : `${Math.round(p * 100)}%`);
-/**
- * One way a card gives a target.
- * @typedef {object} CardGift
- * @property {string} skill the skill's name (its gold's when the event gives the gold)
- * @property {string} note how, in short ("hint", "2nd event · 50%")
- * @property {string} tip how, as a sentence for the tooltip
- * @property {boolean} gold the event gives the gold
- */
-/** @returns {CardGift[]} the ways card `c` gives any of the skill groups in `groups` */
-export function cardGives(c, groups) {
-  const out = [];
+const ordinal = (n: number) => ORDINAL[n] || `${n}th`;
+const share = (p: number) => (p >= 1 ? '' : `${Math.round(p * 100)}%`);
+/** One way a card gives a target. */
+export interface CardGift {
+  /** the skill's name (its gold's when the event gives the gold) */
+  skill: string;
+  /** how, in short ("hint", "2nd event · 50%") */
+  note: string;
+  /** how, as a sentence for the tooltip */
+  tip: string;
+  /** the event gives the gold */
+  gold: boolean;
+}
+// the ways card `c` gives any of the skill groups in `groups`
+export function cardGives(c: Card, groups: ReadonlySet<number>): CardGift[] {
+  const out: CardGift[] = [];
   for (const group of c.whites)
     if (groups.has(group))
       out.push({
-        skill: (gameData().skillNames.get(group) || { w: group }).w,
+        skill: skillName(group, 1),
         note: 'hint',
         tip: 'Hinted when training with this card',
         gold: false,
       });
   for (const [group, level, link, p] of c.ev) {
     if (!groups.has(group)) continue;
-    const names = gameData().skillNames.get(group) || { w: group, gd: group },
-      part = share(p);
+    const part = share(p);
     const note = (link ? `${ordinal(link)} event` : 'event') + (part ? ` · ${part}` : '');
     const tip =
       (link ? `Its ${ordinal(link)} story event (they come in order)` : 'One of its events') +
       (part ? `, ${part} of the time` : '');
-    out.push({ skill: level === 2 ? names.gd : names.w, note, tip, gold: level === 2 });
+    out.push({ skill: skillName(group, level), note, tip, gold: level === 2 });
   }
   return out;
 }
@@ -60,14 +62,17 @@ export function cardGives(c, groups) {
  * only when a skill on it is prioritised. In the run data IT took a prioritised skill's choice in all 312 readings where
  * only that choice held one, on card events (most of them Sasami Anshinzawa SSR's finale), carried over here to
  * chain-ending choices; with the skill already at hint Lv 5 from another source, in 16 of 28 (docs/RESEARCH.md section 9).
- * @typedef {object} ChainEndAdvice
- * @property {string} take the ending choice's skills by name, '' when it names none the page knows
- * @property {{group: number, name: string}[]} others the skills on the event's other choices
  */
-/** @returns {ChainEndAdvice} */
-export function chainEndAt(c, link) {
+export interface ChainEndAdvice {
+  /** the ending choice's skills by name, '' when it names none the page knows */
+  take: string;
+  /** the skills on the event's other choices */
+  others: { group: number; name: string }[];
+}
+export function chainEndAt(c: Card | undefined, link: number): ChainEndAdvice {
   const choice = c?.end?.find((x) => x.link === link),
-    named = (skills) => (skills || []).map(([group, level]) => ({ group, name: skillName(group, level) }));
+    named = (skills: [number, number][] | undefined) =>
+      (skills || []).map(([group, level]) => ({ group, name: skillName(group, level) }));
   return {
     take: named(choice?.end)
       .map((x) => x.name)
@@ -75,18 +80,18 @@ export function chainEndAt(c, link) {
     others: named(choice?.go),
   };
 }
-const skillName = (group, level) => {
+// a skill's name at a level (2: its gold's); a group missing from the catalog is named by its number
+const skillName = (group: number, level: number): string => {
   const names = gameData().skillNames.get(group) || { w: String(group), gd: String(group) };
-  return level === 2 ? names.gd : names.w;
+  return level === 2 ? must(names.gd, 'a skill given at gold has a gold name (export_page.py skills)') : names.w;
 };
 // a chain-ending deck card's caption: the skill that makes IT take the ending choice
-export const chainEndNote = (c, link) => {
+export const chainEndNote = (c: Card | undefined, link: number) => {
   const { take } = chainEndAt(c, link);
   return take ? `prioritise ${take} (chain end)` : `chain end: link ${link}`;
 };
 // the gifts as the game's small labels (the card list's tiles and a deck card's panel)
-/** @type {(gifts: CardGift[]) => string} */
-export const giftsHTML = (gifts) =>
+export const giftsHTML = (gifts: CardGift[]): string =>
   gifts
     .map(
       (x) =>
@@ -99,8 +104,8 @@ export const cardsOwned = computed(() => {
   const off = fields.cardsOff.value;
   return { owned: gameData().cards.filter((c) => off[c.id] !== false).length, all: gameData().cards.length };
 });
-/** a click on a card's tile: owned <-> not owned; saved @param {number} id */
-export function toggleCard(id) {
+// a click on a card's tile: owned <-> not owned; saved
+export function toggleCard(id: number) {
   const { [id]: notOwned, ...rest } = settings.value.cardsOff;
   setOwned({ cardsOff: notOwned === false ? rest : { ...rest, [id]: false } });
 }
