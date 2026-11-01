@@ -4,10 +4,10 @@ import { check, open, openEditor, settle, pickScen, CARD_ART, json } from './hel
 export default async function cards(b) {
   const pg = await open(b);
   await expect
-    .soft(pg.locator('#cards .cgroup h3'), 'card sections SSR, SR, R in that order')
+    .soft(pg.locator('#cards [role="group"] h3'), 'card sections SSR, SR, R in that order')
     .toHaveText(['SSR', 'SR', 'R']);
   const notes = await pg.evaluate(() =>
-    [...document.querySelectorAll('#cards .gv')].map((g) => [g.querySelector('small').textContent, g.title]),
+    [...document.querySelectorAll('#cards [data-gift]')].map((g) => [g.querySelector('small').textContent, g.title]),
   );
   check(
     'card hint notes in plain words, each with a tooltip',
@@ -24,18 +24,21 @@ export default async function cards(b) {
   check(
     'card names carry no rarity (the frame and section show it)',
     await pg.evaluate(
-      () => ![...document.querySelectorAll('#cards .ct .cn')].some((e) => / (SSR|SR|R)$/.test(e.textContent)),
+      () =>
+        ![...document.querySelectorAll('#cards button[aria-pressed] [data-card] + span')].some((e) =>
+          / (SSR|SR|R)$/.test(e.textContent),
+        ),
     ),
   );
   // the game bans Team Sirius from Unity Cup and Grand Concert decks: the picker says so and no result deck holds it
-  const sirius = pg.locator('#cards .ct', { hasText: 'Team Sirius' });
+  const sirius = pg.locator('#cards button[aria-pressed]', { hasText: 'Team Sirius' });
   await expect.soft(sirius, 'Team Sirius: in the card picker').toHaveCount(1);
   await expect
-    .soft(sirius.locator('.cban'), 'Team Sirius: "Not allowed in Unity Cup" in the card picker')
+    .soft(sirius.locator('[data-ban]'), 'Team Sirius: "Not allowed in Unity Cup" in the card picker')
     .toHaveText('Not allowed in Unity Cup');
   await expect.soft(pg.locator('#results .dc[data-cid="30081"]'), '… and in no Unity Cup result deck').toHaveCount(0);
   await pickScen(pg, 'ura'); // the picker follows at once; the search is not awaited
-  await expect.soft(sirius.locator('.cban'), 'Team Sirius allowed again in URA Finale').toHaveCount(0);
+  await expect.soft(sirius.locator('[data-ban]'), 'Team Sirius allowed again in URA Finale').toHaveCount(0);
   await pickScen(pg, 'unity');
   await settle(pg);
   await openEditor(pg, 'cards');
@@ -51,7 +54,7 @@ export default async function cards(b) {
     JSON.stringify(sep),
   );
   await expect.soft(pg.locator('#cs'), 'default card sort: release, newest first').toHaveText('Release ↓');
-  const tile = pg.locator('#cards .ct').first();
+  const tile = pg.locator('#cards button[aria-pressed]').first();
   const img = await tile.evaluate((t) => {
     t.__img = t.querySelector('img');
     return !!t.__img;
@@ -69,16 +72,16 @@ export default async function cards(b) {
   await expect
     .soft(
       pg
-        .locator('#cards .cgroup')
+        .locator('#cards [role="group"]')
         .filter({ has: pg.locator('h3', { hasText: /^R$/ }) })
-        .locator('.ct'),
+        .locator('button[aria-pressed]'),
       '… the R section keeps the R pals',
     )
     .toHaveCount(rpals);
   check(
     'every card image carries its type icon',
-    (await pg.locator('#cards .ct [data-card="art"]').count()) ===
-      (await pg.locator('#cards .ct [data-ctype]').count()),
+    (await pg.locator('#cards button[aria-pressed] [data-card="art"]').count()) ===
+      (await pg.locator('#cards button[aria-pressed] [data-ctype]').count()),
   );
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await pg.context().close();

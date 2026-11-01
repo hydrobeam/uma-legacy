@@ -10,8 +10,8 @@ export default async function upcoming(b) {
     const pg = await open(b, {
       init: off ? `{ const off = ${off}, n = Date.now; Date.now = () => n() + off; }` : undefined,
     });
-    const tiles = await pg.locator('#roster .ut').count(),
-      cards = await pg.locator('#cards .ct').count();
+    const tiles = await pg.locator('#roster > [data-uma]').count(),
+      cards = await pg.locator('#cards button[aria-pressed]').count();
     await pg.click('#rank button[data-v="0.20,0.70,0.10"]');
     await settle(pg);
     const job = await pg.evaluate(() => window.__runs.filter((j) => j.cmd === 'deck').at(-1));

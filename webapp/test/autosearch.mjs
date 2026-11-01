@@ -57,15 +57,15 @@ export default async function autosearch(b) {
     const chip = document.querySelector('#results .deck .dc:not(.bor)'),
       name = chip.dataset.name;
     window.__chip = chip;
-    return [...document.querySelectorAll('#cards .ct')].findIndex((t) => {
-      const shown = t.querySelector('.cn').textContent;
+    return [...document.querySelectorAll('#cards button[aria-pressed]')].findIndex((t) => {
+      const shown = t.querySelector('[data-card] + span').textContent;
       return name === shown || name.startsWith(`${shown} `);
     });
   });
   await openEditor(pg, 'cards');
-  await pg.locator('#cards .ct').nth(tile).click();
+  await pg.locator('#cards button[aria-pressed]').nth(tile).click();
   const greyed = await pg.evaluate(() => window.__chip.isConnected && window.__chip.classList.contains('off'));
-  await pg.locator('#cards .ct').nth(tile).click();
+  await pg.locator('#cards button[aria-pressed]').nth(tile).click();
   check(
     'P5: un-owning a card in the picker greys it in the result on screen at once (the same element), owning it ungreys it',
     tile >= 0 &&
@@ -73,7 +73,7 @@ export default async function autosearch(b) {
       (await pg.evaluate(() => window.__chip.isConnected && !window.__chip.classList.contains('off'))),
     `tile ${tile}, greyed ${greyed}`,
   );
-  await pg.locator('#cards .ct').nth(6).click();
+  await pg.locator('#cards button[aria-pressed]').nth(6).click();
   await pg.waitForTimeout(1300); // past the pause a change would search after
   await closeEditor(pg, 'cards');
   const waits = 'auto-search off: a change does not search, the status says to press Search';
@@ -94,7 +94,7 @@ export default async function autosearch(b) {
   check('… the Search button runs it', (await pg.evaluate(() => window.__runs.length)) === n0 + 1);
   await noteIs(done, '… the Search button runs it: the status');
   await openEditor(pg, 'cards');
-  await pg.locator('#cards .ct').nth(6).click();
+  await pg.locator('#cards button[aria-pressed]').nth(6).click();
   await closeEditor(pg, 'cards');
   await pg.click('#x-auto');
   await settle(pg);
@@ -102,7 +102,7 @@ export default async function autosearch(b) {
   const made0 = await pg.evaluate(() => window.__made);
   const shown0 = await pg.evaluate(() => window.__live.texts.length);
   await pg.evaluate(() =>
-    [...document.querySelectorAll('#cards .ct')].slice(0, 5).forEach((b) => {
+    [...document.querySelectorAll('#cards button[aria-pressed]')].slice(0, 5).forEach((b) => {
       b.click();
     }),
   ); // five changes inside one pause

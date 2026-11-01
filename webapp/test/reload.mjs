@@ -43,8 +43,8 @@ export default async function reload(b) {
   });
   const runs = await pg.evaluate(() => window.__runs.length);
   await openEditor(pg, 'cards');
-  await pg.locator('#cards .ct').nth(6).click();
-  await pg.locator('#cards .ct').nth(6).click();
+  await pg.locator('#cards button[aria-pressed]').nth(6).click();
+  await pg.locator('#cards button[aria-pressed]').nth(6).click();
   await closeEditor(pg, 'cards');
   await pg.locator('#r-act button', { hasText: 'Search' }).click();
   await settle(pg);

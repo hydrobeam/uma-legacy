@@ -4,7 +4,7 @@ export default async function borrowed(b) {
   const pg = await open(b);
   await openEditor(pg, 'cards');
   for (const nm of ['Light Hello', 'Sasami Anshinzawa'])
-    await pg.locator('#cards .cgroup').first().locator('.ct', { hasText: nm }).first().click(); // the SSR section
+    await pg.locator('#cards [role="group"]').first().locator('button[aria-pressed]', { hasText: nm }).first().click(); // the SSR section
   await settle(pg);
   const rows = await pg.evaluate(() =>
     [...document.querySelectorAll('.deck .dcards')]

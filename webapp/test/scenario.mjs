@@ -173,8 +173,10 @@ export default async function scenario(b) {
   await pickScen(pg, 'gc');
   await lastJob(pg, 'gc');
   const sirius = await pg.evaluate(() => {
-    const t = [...document.querySelectorAll('#cards .ct')].find((x) => /Team Sirius/.test(x.textContent));
-    return t ? t.querySelector('.cban')?.textContent || '' : null;
+    const t = [...document.querySelectorAll('#cards button[aria-pressed]')].find((x) =>
+      /Team Sirius/.test(x.textContent),
+    );
+    return t ? t.querySelector('[data-ban]')?.textContent || '' : null;
   });
   check(
     'Team Sirius: "Not allowed in Grand Concert" in the card picker',

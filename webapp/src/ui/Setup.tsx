@@ -28,7 +28,8 @@ export const openSetupDialog = (which: Which) => {
 const closeSetupDialog = () => {
   openOne.value = null;
 };
-/** one of the two dialogs: its heading and Done, its panel (a section the panel draws into, behind its own guard) */
+/** one of the two dialogs: its heading and Done, its panel (a section the panel draws into, behind its own guard: a
+ *  column whose list takes the height the rows above it leave) */
 function SetupDialog({
   id,
   which,
@@ -48,7 +49,7 @@ function SetupDialog({
     <Dialog size="xl" id={id} label={label} open={openOne.value === which} onClose={closeSetupDialog}>
       <DialogPanel fit="full">
         <DialogHead title={heading} close="Done" onClose={closeSetupDialog} />
-        <section class="panel" id={panel.id} aria-labelledby={panel.labelledBy}>
+        <section class="flex min-h-0 min-w-0 flex-auto flex-col gap-3" id={panel.id} aria-labelledby={panel.labelledBy}>
           <RenderGuard input={settings} what={panel.what}>
             {children}
           </RenderGuard>

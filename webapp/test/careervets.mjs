@@ -268,7 +268,7 @@ export default async function careervets(b) {
     }); // (nothing saved before the first settings change)
   const before = await umasNow(),
     searches = await pg.evaluate(() => window.__careerJobs.filter((j) => j.cmd === 'career').length);
-  await pg.locator('#set-umas #roster .ut .up').nth(3).click();
+  await pg.locator('#set-umas #roster [data-uma] button').nth(3).click();
   await closeEditor(pg, 'umas');
   await done();
   check(

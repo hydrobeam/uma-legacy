@@ -29,7 +29,7 @@ export default async function states(b) {
     return window.__killed;
   });
   await openEditor(pg, 'cards');
-  await pg.locator('#cards .ct').nth(6).click();
+  await pg.locator('#cards button[aria-pressed]').nth(6).click();
   const trapped = 'a job that fails in the worker ends the search on its error, the results kept, the worker restarted';
   await expect.soft(rhead, trapped).toHaveAttribute('data-kind', 'error', { timeout: 15_000 });
   await expect.soft(runNote, `${trapped}: the status`).toHaveText(/^Not searched: the solver stopped with an error/);
@@ -39,7 +39,7 @@ export default async function states(b) {
   await pg.evaluate(() => {
     window.__trap = false;
   });
-  await pg.locator('#cards .ct').nth(6).click();
+  await pg.locator('#cards button[aria-pressed]').nth(6).click();
   await settle(pg);
   await expect.soft(runNote, '… and the next search runs').toHaveText(/^Checked [\d,]+ decks/);
   await closeEditor(pg, 'cards');
@@ -99,7 +99,7 @@ export default async function states(b) {
   await pg.click('#ex-close');
   await settle(pg);
   const tiles = await pg.evaluate(
-    (id) => [...document.querySelectorAll(`#roster .ut[data-uma="${id}"]`)].map((t) => t.dataset.s),
+    (id) => [...document.querySelectorAll(`#roster [data-uma="${id}"]`)].map((t) => t.dataset.s),
     u.id,
   );
   const mustInclude = "an old export's must-include mark loads as owned, and the search runs";
@@ -179,7 +179,7 @@ export default async function states(b) {
   const drawErrors = pg.errors.splice(errors0);
   check(`${undrawn}: the error logged`, drawErrors.length > 0, JSON.stringify(drawErrors));
   await openEditor(pg, 'cards');
-  await pg.locator('#cards .ct').nth(6).click();
+  await pg.locator('#cards button[aria-pressed]').nth(6).click();
   await settle(pg);
   const next = '… and the next result draws';
   await expect.soft(rhead, next).toHaveAttribute('data-kind', 'done');

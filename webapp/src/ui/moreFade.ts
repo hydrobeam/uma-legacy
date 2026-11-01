@@ -1,4 +1,4 @@
-// ---------- a scrolling box's fade: class `more` while there is more to scroll to below (style.css fades its bottom) ----------
+// ---------- a scrolling box's fade: data-more while there is more to scroll to below (its `data-more:fade-bottom`) ----------
 // Kept current on a scroll, a change in the box (a filter hides tiles) and a resize (also when its dialog opens: its
 // size goes from 0). The loop page's roster and card boxes have it.
 import type { RefObject } from 'preact';
@@ -9,7 +9,7 @@ export function useMoreFade(box: RefObject<HTMLElement | null>, on: boolean) {
     const element = box.current;
     if (!on || !element) return;
     const update = () =>
-      element.classList.toggle('more', element.scrollTop + element.clientHeight < element.scrollHeight - 4); // 4 px: rounding slack
+      element.toggleAttribute('data-more', element.scrollTop + element.clientHeight < element.scrollHeight - 4); // 4 px: rounding slack
     update();
     element.addEventListener('scroll', update, { passive: true });
     const changes = new MutationObserver(update);

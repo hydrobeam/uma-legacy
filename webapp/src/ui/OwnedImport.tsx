@@ -5,6 +5,15 @@ import { useState } from 'preact/hooks';
 import { importFiles } from '../owned.ts';
 import { FileButton } from './Button.tsx';
 
+/** the two panels' shared rows: the top row (its title for the panel's name alone: the dialog's head shows it) with All /
+ *  None owned, Import and the count at the right; the filter row (the box and the order); the hint line */
+export const OWNED_PANEL = {
+  top: 'flex flex-wrap items-center justify-between gap-2',
+  tools: 'flex flex-1 flex-wrap items-center gap-2',
+  count: 'text-note text-gm-ink2 ml-auto self-center pl-2.5 tabular-nums',
+  filters: 'flex flex-wrap items-center gap-1.5',
+  hint: 'text-note text-gm-ink2',
+} as const;
 /** what the last import said; `n` counts the imports */
 export interface Said {
   n: number;

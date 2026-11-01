@@ -345,7 +345,7 @@ export const PILLS = () => {
 export const CARD_ART = () => {
   const s = new Set();
   let over = 0;
-  for (const t of document.querySelectorAll('#cards .ct')) {
+  for (const t of document.querySelectorAll('#cards button[aria-pressed]')) {
     const c = t.querySelector('[data-card]').getBoundingClientRect();
     s.add(Math.round(c.width));
     if (c.width > t.getBoundingClientRect().width + 0.5) over++;

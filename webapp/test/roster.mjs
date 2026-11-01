@@ -9,7 +9,7 @@ export default async function roster(b) {
     .map((u) => ({ ...u, outfits: u.outfits.filter((o) => o.rel <= Date.now() / 1000), had: u.outfits.length }))
     .filter((u) => u.outfits.length || !u.had);
   const nOut = umas.reduce((a, u) => a + Math.max(1, u.outfits.length), 0);
-  await expect.soft(pg.locator('#roster .ut'), 'one tile per outfit').toHaveCount(nOut);
+  await expect.soft(pg.locator('#roster > [data-uma]'), 'one tile per outfit').toHaveCount(nOut);
   const all = umas.flatMap((u) =>
     (u.outfits.length ? u.outfits : [{ label: '', rel: 0, id: 0 }]).map((o) => ({
       n: u.name + (o.label ? ' ' + o.label : ''),
@@ -18,7 +18,7 @@ export default async function roster(b) {
     })),
   );
   const sort = pg.locator('#rs'),
-    firstTile = pg.locator('#roster .ut').first(),
+    firstTile = pg.locator('#roster > [data-uma]').first(),
     menu = pg.locator('#rs-menu');
   // the first tile shows `name` (its text as drawn, line breaks as spaces)
   const firstIs = (name, what) => expect.soft(firstTile, what).toHaveText(name, { useInnerText: true });
@@ -41,10 +41,10 @@ export default async function roster(b) {
   const multi = umas.find((u) => u.outfits.length > 1);
   const states = () =>
     pg.evaluate(
-      (id) => [...document.querySelectorAll(`#roster .ut[data-uma="${id}"]`)].map((t) => t.dataset.s).join(','),
+      (id) => [...document.querySelectorAll(`#roster [data-uma="${id}"]`)].map((t) => t.dataset.s).join(','),
       multi.id,
     );
-  const tile = pg.locator(`#roster .ut[data-uma="${multi.id}"] .up`).first();
+  const tile = pg.locator(`#roster [data-uma="${multi.id}"] button`).first();
   await tile.click();
   const s1 = await states();
   await tile.click();

@@ -36,7 +36,7 @@ export default async function panels(b) {
   const pickerPressed = () =>
     pg.evaluate(
       (name) =>
-        [...document.querySelectorAll('#cards .ct')]
+        [...document.querySelectorAll('#cards button[aria-pressed]')]
           .find((t) => t.querySelector('[data-card]')?.title === name)
           ?.getAttribute('aria-pressed') ?? null,
       cardName,
@@ -86,7 +86,7 @@ export default async function panels(b) {
   await pg.locator('[data-pop="card"]').getByRole('switch', { name: 'Owned' }).click();
   check(
     'member Owned switch updates the roster and greys her',
-    (await pg.locator('#roster .ut[data-s="out"]').count()) === 1 && (await pg.locator('.mem.off').count()) > 0,
+    (await pg.locator('#roster [data-uma][data-s="out"]').count()) === 1 && (await pg.locator('.mem.off').count()) > 0,
   );
   await pg.locator('[data-pop="card"]').getByRole('switch', { name: 'Owned' }).click();
   await pg.keyboard.press('Escape');

@@ -76,7 +76,7 @@ export default async function delivery(b) {
   check(
     'card tiles take their name from their visible text',
     await pg.evaluate(() =>
-      [...document.querySelectorAll('#cards .ct')].every(
+      [...document.querySelectorAll('#cards button[aria-pressed]')].every(
         (e) => !e.hasAttribute('aria-label') && e.hasAttribute('aria-pressed'),
       ),
     ),

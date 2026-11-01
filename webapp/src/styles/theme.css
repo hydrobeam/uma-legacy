@@ -409,6 +409,8 @@
 @custom-variant loop (&:where([data-page="loop"] *));
 /* inside a box whose answer is not the setup's (data-stale: career/Layout.tsx's tree, dimmed while a run works) */
 @custom-variant stale (&:where([data-stale] *));
+/* inside an uma's roster tile marked not owned (data-s="out": ui/Roster.tsx), which greys her portrait and name */
+@custom-variant unowned (&:where([data-s="out"] *));
 
 /* a 9-slice sprite frame: `nine-btn-w` draws the button's face from the --nine-btn-w token above */
 @utility nine-* {
@@ -426,6 +428,10 @@
 /* several drop shadows as one filter: `shade-outline` applies the --shade-outline token */
 @utility shade-* {
   filter: --value(--shade-*);
+}
+/* a scrolling box's bottom 40 px fading out, while there is more below (ui/moreFade.ts sets data-more) */
+@utility fade-bottom {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
 }
 /* an outline round each letter, painted under its fill: `letter-edge-brand` draws the --letter-edge-brand token */
 @utility letter-edge-* {

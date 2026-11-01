@@ -1046,7 +1046,7 @@ export default async function career(b) {
           inDeck = new Set(shown.deck.card_ids);
         // (the picker lists the cards that give a target; a tile is known by its card's name, its picture's title)
         const sr = new Set(cards.filter((c) => c.rar === 2 && !inDeck.has(c.id)).map((c) => c.name.toLowerCase()));
-        const title = [...document.querySelectorAll('#cards .ct [data-card]')].find((t) =>
+        const title = [...document.querySelectorAll('#cards button[aria-pressed] [data-card]')].find((t) =>
           sr.has(t.title.toLowerCase()),
         ).title;
         return { title, id: cards.find((c) => c.name === title).id };
@@ -1059,9 +1059,9 @@ export default async function career(b) {
     const toggleCard = async () => {
       await pg.evaluate(
         (name) =>
-          [...document.querySelectorAll('#cards .ct [data-card]')]
+          [...document.querySelectorAll('#cards button[aria-pressed] [data-card]')]
             .find((t) => t.title === name)
-            .closest('.ct')
+            .closest('button')
             .click(),
         offCard.title,
       );

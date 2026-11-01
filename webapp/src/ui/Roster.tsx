@@ -14,6 +14,9 @@ import { OwnedImport, useSaid } from './OwnedImport.tsx';
 import { SettingsSort } from './SortMenu.tsx';
 import { useMoreFade } from './moreFade.ts';
 import { Button } from './Button.tsx';
+import { field } from './Field.ts';
+import { OWNED_PANEL } from './OwnedImport.tsx';
+import { cx } from 'tailwind-variants/lite';
 
 const STATE_LABEL = { own: 'owned', out: 'not owned' };
 const EAGER = 8; // the first two rows are on screen when the dialog opens (phone and desktop): their portraits load at once
@@ -37,8 +40,8 @@ const countText = computed(() => {
   return `${n.umasOwned} of ${n.umas} umas · ${n.outfitsOwned} of ${n.outfits} outfits`;
 });
 
-// her tile: the portrait is the toggle (its name says owned or not owned; the tile's look shows it), her name and the
-// outfit (two lines at most, by CSS; the hover has it whole)
+// her tile: the portrait is the toggle (its name says owned or not owned; the tile's look shows it: data-s="out" greys
+// her portrait and name, the theme's `unowned:`), her name and the outfit (two lines at most; the hover has it whole)
 function RosterTile({ u, o, eager }: { u: Uma; o: Outfit | null; eager: boolean }) {
   const who = u.name + (o ? ` ${o.label}` : ''),
     name = u.name.toLowerCase(),
@@ -48,13 +51,19 @@ function RosterTile({ u, o, eager }: { u: Uma; o: Outfit | null; eager: boolean 
     label = useComputed(() => `${who}: ${STATE_LABEL[mark.value]}`),
     hidden = useComputed(() => !!query.value && !name.includes(query.value) && !outfit.includes(query.value));
   return (
-    <div class="ut" data-uma={u.id} data-s={mark} hidden={hidden}>
-      <button class="up" type="button" aria-label={label} title={who} onClick={() => toggleTile(u, o)}>
-        <UmaAv uma={u.id} outfit={o ? o.id : null} size={96} eager={eager} />
+    <div class="grid min-w-0 gap-1" data-uma={u.id} data-s={mark} hidden={hidden}>
+      <button
+        class="block rounded-xl p-0"
+        type="button"
+        aria-label={label}
+        title={who}
+        onClick={() => toggleTile(u, o)}
+      >
+        <UmaAv uma={u.id} outfit={o ? o.id : null} size={96} shape="tile" dim="unowned" eager={eager} />
       </button>
-      <div class="un">{u.name}</div>
+      <div class="text-note unowned:text-muted text-center leading-tight font-semibold wrap-anywhere">{u.name}</div>
       {o && (
-        <div class="uol" title={o.label}>
+        <div class="text-caption text-muted line-clamp-2 text-center leading-tight wrap-anywhere" title={o.label}>
           {o.label}
         </div>
       )}
@@ -65,7 +74,11 @@ function RosterList({ fadeMore }: { fadeMore: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   useMoreFade(box, fadeMore);
   return (
-    <div class="roster" id="roster" ref={box}>
+    <div
+      class="data-more:fade-bottom grid min-h-0 flex-auto [scrollbar-gutter:stable] grid-cols-[repeat(auto-fill,minmax(84px,1fr))] items-start gap-x-2 gap-y-2.5 overflow-auto py-1 pr-3 pl-1"
+      id="roster"
+      ref={box}
+    >
       {tiles.value.map((t, i) => (
         <RosterTile key={t.key} u={t.u} o={t.o} eager={i < EAGER} />
       ))}
@@ -76,9 +89,12 @@ export function RosterPanel({ fadeMore }: { fadeMore: boolean }) {
   const [said, say] = useSaid();
   return (
     <>
-      <div class="row between">
-        <h2 id="h-roster">Umas</h2>
-        <div class="row">
+      <div class={OWNED_PANEL.top}>
+        {/* (the dialog's head shows the title: this one only names the panel) */}
+        <h2 class="hidden" id="h-roster">
+          Umas
+        </h2>
+        <div class={OWNED_PANEL.tools}>
           <Button id="r-all" onClick={ownAllUmas}>
             All owned
           </Button>
@@ -86,15 +102,16 @@ export function RosterPanel({ fadeMore }: { fadeMore: boolean }) {
             None owned
           </Button>
           <OwnedImport id="r-file" onSaid={say} />
-          <span class="hint cnt" id="r-count" role="status">
+          <span class={OWNED_PANEL.count} id="r-count" role="status">
             {countText}
           </span>
         </div>
       </div>
-      <div class="row rtools">
+      <div class={OWNED_PANEL.filters}>
         <input
           type="search"
           id="r-filter"
+          class={cx(field.tap, 'flex-1')}
           aria-label="Filter umas"
           placeholder="Filter by name or outfit"
           onInput={(e) => {
@@ -103,7 +120,7 @@ export function RosterPanel({ fadeMore }: { fadeMore: boolean }) {
         />
         <SettingsSort prefix="r" id="rs" what="sort umas" />
       </div>
-      <p class="hint">
+      <p class={OWNED_PANEL.hint}>
         {'Tap a portrait to mark it owned or not owned. '}
         <span id="r-msg" role="status">
           <Fragment key={said.n}>{said.text}</Fragment>

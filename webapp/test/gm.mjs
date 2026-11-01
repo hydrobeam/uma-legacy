@@ -54,7 +54,11 @@ export default async function gm(b) {
     )
   ).umas;
   const nOut = umas.reduce((a, u) => a + Math.max(1, u.outfits.length), 0);
-  check('GM era: roster from the GM data', (await pg.locator('#roster .ut').count()) === nOut, nOut + ' outfits');
+  check(
+    'GM era: roster from the GM data',
+    (await pg.locator('#roster > [data-uma]').count()) === nOut,
+    nOut + ' outfits',
+  );
   // the GM era offers Grand Masters as a fifth tile (same size as the others)
   await pg.click('#x-scen');
   const gt = await pg.evaluate(() =>

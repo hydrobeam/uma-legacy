@@ -21,7 +21,7 @@ export default async function phone(b) {
         '[aria-labelledby="h-set"] button, [aria-labelledby="h-set"] select, #rhead button, #rhead select, .loop .lacts button, .mem .memb',
       ),
     ]
-      .filter((e) => e.offsetParent && !e.closest('.roster, .cards'))
+      .filter((e) => e.offsetParent && !e.closest('#roster, #cards'))
       .map((e) => [e.id || e.className || e.tagName, Math.round(e.getBoundingClientRect().height)])
       .filter(([, h]) => h < 44),
   );
@@ -109,7 +109,7 @@ export default async function phone(b) {
     .toHaveText(/^1 in 103 · see result/, { useInnerText: true });
   // edit a setting far down, then the button takes you back to the result
   await openEditor(pg, 'cards');
-  const ct = pg.locator('#cards .ct').nth(2);
+  const ct = pg.locator('#cards button[aria-pressed]').nth(2);
   await ct.scrollIntoViewIfNeeded();
   await ct.click();
   await settle(pg);

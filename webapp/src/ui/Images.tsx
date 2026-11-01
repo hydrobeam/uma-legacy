@@ -14,7 +14,7 @@ import type { VariantProps } from 'tailwind-variants/lite';
 
 // An uma's portrait: a circle (`round`, --s across, set inline) or the roster's square tile (`tile`, its box's width),
 // her initials on her hue (--h, set inline) in the mono face while there is no picture, a faint edge just outside it;
-// `dim`, greyed out (an outfit marked not owned)
+// `dim`, greyed out: `always`, or `unowned` while her roster tile is marked not owned (the theme's `unowned:`)
 const avLook = tv({
   base: 'bg-av font-data text-ink outline-img-edge inline-grid shrink-0 place-items-center overflow-hidden align-middle leading-none font-semibold outline',
   variants: {
@@ -22,7 +22,7 @@ const avLook = tv({
       round: 'size-(--s) rounded-full text-(length:--fs)',
       tile: 'text-display aspect-square h-auto w-full rounded-xl',
     },
-    dim: { true: 'opacity-45 grayscale' },
+    dim: { always: 'opacity-45 grayscale', unowned: 'unowned:opacity-45 unowned:grayscale' },
   },
   defaultVariants: { shape: 'round' },
 });
@@ -73,7 +73,8 @@ export function UmaAv({ uma, outfit, size, shape, dim, cls, label, title, eager 
 }
 // A card's tile: its art (its own frame drawn in), else its type's letters in white on its type's colour (--k, set
 // inline) in a ring of its rarity's (--rr); --s across (`fixed`) or its box's width (`fill`, the card list's); `dim`,
-// greyed out (a card not owned, or banned). data-card says which it shows, "art" or "letters".
+// greyed out: `always` (a card the scenario bans), or `unpressed` while the toggle round it (a `group`) is not pressed
+// (a card not owned). data-card says which it shows, "art" or "letters".
 const cardLook = tv({
   base: 'font-data inline-grid shrink-0 place-items-center overflow-hidden align-middle leading-none font-bold text-white',
   variants: {
@@ -82,7 +83,7 @@ const cardLook = tv({
       fixed: 'size-(--s) rounded-sm text-(length:--fs)',
       fill: 'text-title aspect-square h-auto w-full min-w-0 rounded-md',
     },
-    dim: { true: 'opacity-45 grayscale' },
+    dim: { always: 'opacity-45 grayscale', unpressed: 'group-not-on:opacity-45 group-not-on:grayscale' },
   },
   defaultVariants: { shape: 'fixed' },
 });

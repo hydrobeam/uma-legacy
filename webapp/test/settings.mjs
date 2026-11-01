@@ -27,21 +27,21 @@ export default async function settings(b) {
   check(
     'saved settings load: the uma marked not owned shows not owned',
     await pg.evaluate(() =>
-      [...document.querySelectorAll('#roster .ut[data-uma="1001"]')].every((t) => t.dataset.s === 'out'),
+      [...document.querySelectorAll('#roster [data-uma="1001"]')].every((t) => t.dataset.s === 'out'),
     ),
   );
-  await expect.soft(pg.locator('#cards .ct[aria-pressed="false"]'), '… card ownership too').toHaveCount(1);
+  await expect.soft(pg.locator('#cards button[aria-pressed="false"]'), '… card ownership too').toHaveCount(1);
   await expect.soft(pg.locator('#rank'), '… and rank').toHaveAttribute('data-value', '0.20,0.70,0.10');
   // changes persist across a reload
   await openEditor(pg, 'umas');
-  await pg.locator('#roster .ut .up').nth(3).click();
+  await pg.locator('#roster [data-uma] button').nth(3).click();
   await settle(pg);
   await pg.reload();
   await settle(pg);
   check(
     'a change survives a reload',
-    (await pg.locator('#roster .ut[data-s="out"]').count()) >=
-      1 + (await pg.locator('#roster .ut[data-uma="1001"]').count()),
+    (await pg.locator('#roster [data-uma][data-s="out"]').count()) >=
+      1 + (await pg.locator('#roster [data-uma="1001"]').count()),
   );
   // export, then import it with the rank changed: the import sets it
   await pg.click('#ex-open');
