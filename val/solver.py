@@ -1,6 +1,8 @@
 """What the validation scripts share: running the native solver on job files, reading its outputs (one JSON line per
-job), a recursive comparison of two outputs, and the rule for a deck's exact / product ratio near its class's cap."""
+job), the model constants it prints, a recursive comparison of two outputs, and the rule for a deck's exact / product
+ratio near its class's cap."""
 
+import functools
 import json
 import os
 import subprocess
@@ -8,6 +10,19 @@ import subprocess
 VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(VALIDATION_DIR)
 PLAN_DIR = os.path.join(VALIDATION_DIR, "plan")
+BINARY = os.path.join(REPO, "pkg", "loopopt", "target", "release", "loopopt")  # ./build.sh native
+
+
+@functools.cache
+def constants(binary=BINARY):
+    """the model constants the solver itself uses, as `loopopt constants` prints them: chain_n, chain_a, chain_b,
+    chain_stop_share ([k, n]), exact_builders_targets, ceil_share, lam_decay, default_star_mix"""
+    if not os.path.exists(binary):
+        raise FileNotFoundError(f"{binary} is missing: ./build.sh native builds it")
+    result = subprocess.run([binary, "constants"], capture_output=True, text=True)
+    if result.returncode:
+        raise RuntimeError(f"constants: solver exited {result.returncode}\n{result.stderr}")
+    return json.loads(result.stdout)
 
 
 def era_dir(era):

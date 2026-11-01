@@ -145,6 +145,15 @@ def must[T](value: T | None, what: str) -> T:
     return value
 
 
+@functools.cache
+def solver_constants() -> dict[str, Any]:
+    """the model constants the solver itself uses, as `loopopt constants` prints them (chain_n, chain_a, chain_b,
+    chain_stop_share, exact_builders_targets, ceil_share, lam_decay, default_star_mix); the release build is needed"""
+    if not os.path.exists(SOLVER):
+        raise FileNotFoundError(f"{SOLVER} is missing: ./build.sh native builds it")
+    return json.loads(subprocess.run([SOLVER, "constants"], capture_output=True, text=True, check=True).stdout)
+
+
 def have_mdb() -> bool:
     return os.path.exists(MDB)
 

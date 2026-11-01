@@ -40,7 +40,7 @@ class StarMixes(NamedTuple):
 
     page: dict[str, Mix]  # webapp/src/data.ts RANKS: 'below' and 'ss'
     scenario_ss: dict[int, bool]  # scenario id -> the page puts its careers at 17,500 and up (data.ts `ss`)
-    solver_default: Mix  # pkg/loopopt/src/skills.rs dstar() (a `const fn`, its array on the next line)
+    solver_default: Mix  # the solver's default mix (skills.rs dstar(), `loopopt constants`)
 
 
 def mixes() -> StarMixes:
@@ -48,11 +48,8 @@ def mixes() -> StarMixes:
     ranks = dict(re.findall(r"(\w+): '([\d.]+,[\d.]+,[\d.]+)'", re.search(r"RANKS = \{(.*?)\}", src).group(1)))
     page = {k: tuple(float(x) for x in v.split(",")) for k, v in ranks.items()}
     scenario_ss = {int(i): b == "true" for i, b in re.findall(r"id: (\d+),[^}]*?ss: (true|false)", src)}
-    rs = open(os.path.join(common.ROOT, "pkg", "loopopt", "src", "skills.rs")).read()
-    solver = tuple(
-        float(x) for x in re.search(r"(?:const )?fn dstar\(\) -> \[f64; 3\] \{\s*\[([^\]]*)\]", rs).group(1).split(",")
-    )
-    return StarMixes(page, scenario_ss, solver)
+    below, middle, above = common.solver_constants()["default_star_mix"]
+    return StarMixes(page, scenario_ss, (below, middle, above))
 
 
 def expected_base(pi: Mix) -> float:

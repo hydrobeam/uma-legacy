@@ -52,7 +52,6 @@ import json
 import math
 import os
 import random
-import re
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
@@ -69,13 +68,8 @@ SHARES = [round(0.3 + 0.05 * i, 2) for i in range(19)]  # 0.3 .. 1.2
 DECAYS = [round(0.5 + 0.1 * i, 1) for i in range(46)]  # 0.5 .. 5.0
 
 
-def cont_constant(name):
-    """`CEIL_SHARE` or `LAM_DECAY` as cont.rs states it"""
-    src = open(os.path.join(REPO, "pkg", "loopopt", "src", "career", "plan", "cont.rs")).read()
-    return float(re.search(rf"const {name}: f64 = ([\d.]+);", src).group(1))
-
-
-CEIL_SHARE, LAM_DECAY = cont_constant("CEIL_SHARE"), cont_constant("LAM_DECAY")
+# cont.rs's shape, as the solver uses it (`loopopt constants`)
+CEIL_SHARE, LAM_DECAY = solver.constants()["ceil_share"], solver.constants()["lam_decay"]
 
 
 class Trace(NamedTuple):

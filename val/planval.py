@@ -59,7 +59,6 @@ import argparse
 import json
 import math
 import os
-import re
 import sys
 import tempfile
 import time
@@ -67,7 +66,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
 import solver
-from solver import CAP_CLASSES, PLAN_DIR, REPO, near_cap, read_output
+from solver import CAP_CLASSES, PLAN_DIR, near_cap, read_output
 
 PROXY_GATE = 0.03
 SAVING_GATE = 0.25  # careers
@@ -245,9 +244,8 @@ def proxy_errors(output):
 
 
 def exact_builders_targets():
-    """`EXACT_BUILDERS_TARGETS` from the solver's source (career/plan/candidates.rs), read as its build reads it"""
-    source = open(os.path.join(REPO, "pkg", "loopopt", "src", "career", "plan", "candidates.rs")).read()
-    return int(re.search(r"const EXACT_BUILDERS_TARGETS: usize = (\d+);", source).group(1))
+    """the fewest targets at which the plan searches every builder exactly (`EXACT_BUILDERS_TARGETS`, from the solver)"""
+    return solver.constants(binary)["exact_builders_targets"]
 
 
 def builders_searched_exactly(job):

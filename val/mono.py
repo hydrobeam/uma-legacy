@@ -49,7 +49,6 @@ from dataclasses import dataclass
 
 # pink.ts: grades are aptitude codes 1..8 = G..S; each legacy pink fires at each of the two April inspirations
 GRADE_A, GRADE_S, INSPIRATIONS = 7, 8, 2
-DEFAULT_STAR_DIST = [0.5, 0.45, 0.05]  # the solver's default rank mix (src/skills.rs)
 RISE = 1e-9
 
 
@@ -217,7 +216,7 @@ def drawn_pink(aptitudes, rng):
 
 def drawn_veteran(report, job, race_names, rng):
     """(landed count, the veteran's job entry): draftOf's rolled outcome, then draftJob's shape"""
-    star_dist = job.get("star_dist", DEFAULT_STAR_DIST)
+    star_dist = job.get("star_dist", solver.constants(binary)["default_star_mix"])  # the solver's default mix
     star = lambda: rng.choices([1, 2, 3], star_dist)[0]
     targets = job["targets"]
     if isinstance(report.get("outcome_sets"), list):

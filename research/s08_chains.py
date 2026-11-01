@@ -51,7 +51,7 @@ deck). Intervals on rates over observations that come several to a run (final li
 started) are run-clustered (common.cluster_ci), the spread between cards a run-clustered Wald test
 (common.cluster_chi2)."""
 
-import collections, functools, itertools, math, os, re, sys
+import collections, functools, itertools, math, os, sys
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, NamedTuple
@@ -145,10 +145,9 @@ def pois_pmf(lam: float, upto: int = 61) -> list[float]:
 
 
 def chain_model() -> tuple[int, float]:
-    """the solver's event count n (CHAIN_N, pkg/loopopt/src/deck/chains.rs) and today's p: the model before the
-    pal-count budget, N ~ Binomial(21, 0.35) for every deck, the baseline the budget is tested against"""
-    src = open(f"{common.ROOT}/pkg/loopopt/src/deck/chains.rs", encoding="utf-8").read()
-    return int(re.search(r"CHAIN_N: u32 = (\d+);", src).group(1)), 0.35
+    """the solver's event count n (CHAIN_N, `loopopt constants`) and today's p: the model before the pal-count budget,
+    N ~ Binomial(21, 0.35) for every deck, the baseline the budget is tested against"""
+    return common.solver_constants()["chain_n"], 0.35
 
 
 CN, CP = chain_model()

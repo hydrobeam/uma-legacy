@@ -18,11 +18,6 @@ class ValidationExitTests(unittest.TestCase):
         self.plan = self.val / "plan"
         self.plan.mkdir(parents=True)
         (self.root / "pkg/loopopt/data/global").mkdir(parents=True)
-        # (planval reads the solver's exact_builders threshold from its source)
-        (self.root / "pkg/loopopt/src/career/plan").mkdir(parents=True)
-        (self.root / "pkg/loopopt/src/career/plan/candidates.rs").write_text(
-            "const EXACT_BUILDERS_TARGETS: usize = 10;\n"
-        )
         for name in ("solver.py", "cmp2.py", "runval.py", "planval.py", "same.py", "capaudit.py"):
             shutil.copyfile(Path(__file__).with_name(name), self.val / name)
         self.solver = self.root / "solver"
@@ -63,9 +58,12 @@ class ValidationExitTests(unittest.TestCase):
         path.write_text(json.dumps(obj))
 
     def fake_solver(self, output, status=0):
+        """a solver that prints `output` for any job, and its constants (planval reads exact_builders_targets) for
+        `constants`; both exit `status`"""
+        constants = {"exact_builders_targets": 10}
         self.solver.write_text(
             f"#!{sys.executable}\nimport sys\n"
-            f"print({json.dumps(output)!r})\n"
+            f"print({json.dumps(constants)!r} if sys.argv[1:] == ['constants'] else {json.dumps(output)!r})\n"
             'print("solver diagnostic", file=sys.stderr)\n'
             f"sys.exit({status})\n"
         )

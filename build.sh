@@ -211,7 +211,8 @@ step_lint() {
   lint "ruff check" in_dir "$R" uv run --quiet ruff check
   lint "ruff format" in_dir "$R" uv run --quiet ruff format --check
   lint test_validation in_dir "$R" quiet "${PY[@]}" val/test_validation.py
-  lint test_s08_likelihood in_dir "$R" quiet uv run --quiet --group research python research/test_s08_likelihood.py
+  # (section 8 reads CHAIN_N from the release binary, `loopopt constants`: built first, a no-op when current)
+  lint test_s08_likelihood build_and_run uv run --quiet --project "$R" --group research python "$R/research/test_s08_likelihood.py"
   lint biome in_dir "$W" npx --no-install biome check --error-on-warnings --diagnostic-level=warn
   lint tsc in_dir "$W" npx --no-install tsc -p .
   lint "tsc (worker)" in_dir "$W" npx --no-install tsc -p tsconfig.worker.json
@@ -228,6 +229,7 @@ step_lint() {
 }
 lint() { local name=$1; shift; "$@" || LINT_FAILED+=("$name"); }   # lint NAME COMMAND...
 in_dir() { (cd "$1" && shift && "$@"); }   # in_dir DIR COMMAND...
+build_and_run() { build_solver && quiet "$@"; }   # build_and_run COMMAND...: the release binary first
 step_hooks() {
   git -C "$R" config core.hooksPath .githooks
   echo "hooks: core.hooksPath = .githooks (every worktree of this clone)"

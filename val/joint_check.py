@@ -4,7 +4,7 @@ For every deck result of a validation run, recompute P(all targets land) from th
 reported decks and loops, jointly over the chain process (Binomial(CHAIN_N, p) events with logit p = CHAIN_A + CHAIN_B x
 the deck's pals, group cards not counted, or the job's chain_events; each event advancing a running chain card, all
 equally likely, or weighted by links left under job chain_rule "slots"; a card-event stop risk ending its chain on
-CHAIN_STOP_SHARE of its firings, its own k/n under "slots"; the constants read from src/deck/chains.rs), over each event's outcomes and over one card's training draws
+CHAIN_STOP_SHARE of its firings, its own k/n under "slots"; the constants as `loopopt constants` prints them), over each event's outcomes and over one card's training draws
 (P(no hint for a set A of its targets) by forward simulation of the draws, each uniform over the skills below Lv 5, a
 skill leaving after ceil(5 / hint levels per draw) draws; floor/ceil(h) draws, h = base(scenario) x (1 + hf/100) x
 (1 + d(scenario) x specialty/100), the two constants read from research/results.json as the solver's build reads
@@ -21,11 +21,12 @@ import itertools
 import json
 import math
 import os
-import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import NamedTuple
+
+import solver
 
 
 class SkillReference(NamedTuple):
@@ -36,16 +37,10 @@ class SkillReference(NamedTuple):
 
 
 def chain_constants():
-    """CHAIN_N, CHAIN_A, CHAIN_B and CHAIN_STOP_SHARE (as k, n) from the solver's source, read as its build reads them"""
-    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pkg/loopopt/src/deck/chains.rs")).read()
-    number = lambda name, kind: float(re.search(rf"const {name}: {kind} = (-?[\d._]+);", src).group(1).replace("_", ""))
-    share = re.search(r"const CHAIN_STOP_SHARE: \(u\d+, u\d+\) = \((\d+), (\d+)\);", src)
-    return (
-        int(number("CHAIN_N", "u32")),
-        number("CHAIN_A", "f64"),
-        number("CHAIN_B", "f64"),
-        (int(share[1]), int(share[2])),
-    )
+    """CHAIN_N, CHAIN_A, CHAIN_B and CHAIN_STOP_SHARE (as k, n), as the solver uses them (`loopopt constants`)"""
+    c = solver.constants()
+    k, n = c["chain_stop_share"]
+    return c["chain_n"], c["chain_a"], c["chain_b"], (k, n)
 
 
 CHAIN_N, CHAIN_A, CHAIN_B, CHAIN_STOP_SHARE = chain_constants()

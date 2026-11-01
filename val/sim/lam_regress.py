@@ -16,17 +16,12 @@ import argparse
 import glob
 import math
 import os
-import re
 import statistics
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # val/, for the shared solver module
-from solver import REPO, read_output
-
-
-def lam_decay():
-    src = open(os.path.join(REPO, "pkg", "loopopt", "src", "career", "plan", "cont.rs")).read()
-    return float(re.search(r"const LAM_DECAY: f64 = ([\d.]+);", src).group(1))
+import solver
+from solver import read_output
 
 
 def fit_of(path):
@@ -44,7 +39,7 @@ def implied_decay(points):
 
 
 def main(mono_dir):
-    decay = lam_decay()
+    decay = solver.constants()["lam_decay"]  # cont.rs's LAM_DECAY, as the solver uses it
     points = []  # (pool, roll, chara, ln g, ln(lam_refit / lam0), lam_refit / lam(p'), lam0)
     for base_path in sorted(glob.glob(os.path.join(mono_dir, "*_base.out"))):
         pool = os.path.basename(base_path)[: -len("_base.out")]
