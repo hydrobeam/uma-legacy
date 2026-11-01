@@ -120,7 +120,9 @@ interface BarProps {
   readOnly: boolean;
 }
 /** her blue, pink or unique spark as its coloured bar: a chip for a unique or a pink she has, else
- *  a bar that opens the picker (a missing unique's adds it) */
+ *  a bar that opens the picker (a missing unique's adds it). The chip is drawn by calling Chip (it holds no hooks), not
+ *  as a component of its own: the bar is then the same span and button whether she has the spark or not, so adding the
+ *  unique back or setting a first pink keeps the button, and the focus on it (a <Chip> here would replace them) */
 function ColourBar({ nd, kind, k, at, readOnly }: BarProps) {
   const spec = KIND[kind],
     cur = currentSpark(nd, kind);
@@ -128,23 +130,20 @@ function ColourBar({ nd, kind, k, at, readOnly }: BarProps) {
     if (cur) {
       const [group, stars] = cur,
         label = uniqueName(group) || 'Unique spark';
-      return (
-        <Chip
-          label={label}
-          stars={stars}
-          k={k}
-          readOnly={readOnly}
-          cls="vsb green"
-          tag=" (unique)"
-          onCycle={() => at.edit((now) => ({ greens: { ...now.greens, [group]: (stars % 3) + 1 } }))}
-          onRemove={() =>
-            at.edit((now) => {
-              const { [group]: _, ...rest } = (now.greens || {}) as Record<string, number>;
-              return { greens: rest };
-            })
-          }
-        />
-      );
+      return Chip({
+        label,
+        stars,
+        k,
+        readOnly,
+        cls: 'vsb green',
+        tag: ' (unique)',
+        onCycle: () => at.edit((now) => ({ greens: { ...now.greens, [group]: (stars % 3) + 1 } })),
+        onRemove: () =>
+          at.edit((now) => {
+            const { [group]: _, ...rest } = (now.greens || {}) as Record<string, number>;
+            return { greens: rest };
+          }),
+      });
     }
     return (
       <span class="vsb green none">
@@ -162,18 +161,16 @@ function ColourBar({ nd, kind, k, at, readOnly }: BarProps) {
   }
   if (cur && kind === 'pink') {
     const [group, stars] = cur;
-    return (
-      <Chip
-        label={pinkName(group)}
-        stars={stars}
-        pink
-        k={k}
-        readOnly={readOnly}
-        popup
-        aria={`${pinkName(group)} (aptitude), ${stars} star${stars > 1 ? 's' : ''}. Change`}
-        onCycle={() => openColour(at, kind)}
-      />
-    );
+    return Chip({
+      label: pinkName(group),
+      stars,
+      pink: true,
+      k,
+      readOnly,
+      popup: true,
+      aria: `${pinkName(group)} (aptitude), ${stars} star${stars > 1 ? 's' : ''}. Change`,
+      onCycle: () => openColour(at, kind),
+    });
   }
   // a blue (she has one or not), or no pink yet
   const label = cur ? spec.name(cur[0]) || spec.title : `${spec.title}: none`,

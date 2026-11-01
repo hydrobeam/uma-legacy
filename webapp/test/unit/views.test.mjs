@@ -42,7 +42,7 @@ const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
 const { store: vs, on, changeUma, InspView, h, render, loadData } = page;
 // the career tables the spark bars read (blue, pink and unique names; no races)
-globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: { 11: 'Turf' }, uniques: {}, races: [] };
+globalThis.__LLP_DATA['data-career'] = { blues: {}, pinks: { 11: 'Turf' }, uniques: { 30001: 'Her Own' }, races: [] };
 await loadData();
 
 const settle = async () => {
@@ -71,6 +71,36 @@ test("the spark editor shows each edit of the store's draft (a new record each)"
     .click();
   await settle();
   assert.match(chipLabel(root), /, 2 stars\. Click for 3$/, "the store's draft");
+});
+
+test('her unique spark added back, or a first pink set: the bar is the same button, so the focus stays on it', async () => {
+  vs.setDraft({ ...node(1001), outfit: 30001, borrowed: false, parents: [] });
+  const Card = () => {
+    const d = vs.draft.value;
+    return d && h(InspView, { nd: d, parents: d.parents, k: 'sim', at: vs.draftRef(), targets: [T] });
+  };
+  const root = document.createElement('div');
+  render(h(Card, null), root);
+  await settle();
+  const bar = (k) => root.querySelectorAll('button').find((b) => b.attributes['data-k'] === k);
+  const attached = (n) => {
+    while (n && n !== root) n = n.parentNode;
+    return n === root;
+  };
+  const none = bar('sim:green');
+  assert.match(none.textContent, /\+ Unique spark/);
+  none.focus();
+  none.click(); // her unique at 2 stars
+  await settle();
+  assert.match(bar('sim:green').attributes['aria-label'], /\(unique\), 2 stars/);
+  // (identity as a boolean: an assertion message inspecting two Preact-owned nodes walks their whole graphs)
+  assert.ok(bar('sim:green') === none, "the unique's button is the one that had the focus");
+  assert.ok(attached(document.activeElement), 'the focus is still in the card');
+  // a first pink (the colour picker's pick lands; its close gives the focus back to its opener, which must be there)
+  const pink = bar('sim:pink');
+  vs.draftRef().edit(() => ({ pinks: { 11: 1 } }));
+  await settle();
+  assert.ok(bar('sim:pink') === pink, "the pink's opener is the same button");
 });
 
 test('change uma: the uma is hers at the pick (saved, the page told); the prompt dismissed keeps her sparks', async () => {
