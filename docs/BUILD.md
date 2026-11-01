@@ -210,12 +210,14 @@ In `src/`, `loop/main.tsx` and `career/main.tsx` are the two pages' entries (eac
 send (from the settings it is given; `loop/job.ts` and `career/job.ts` build their jobs from them), and `statestore.ts`
 keeps the solver's work in IndexedDB.
 
-Every page module is `.ts` or `.tsx`, checked strict with `exactOptionalPropertyTypes` and the four flags that cost
-nothing (`webapp/tsconfig.json`); none carries `@ts-expect-error` or `@ts-ignore` (static.mjs reports any).
-`noUncheckedIndexedAccess` is off: on 2026-11-01 it raised 190 errors in 40 files (the worker none; most in
-`loop/Results.tsx`, 30, and `loop/Affinity.tsx`, 29). Each fix chooses what the page does when an entry is missing, a
-guard that skips it or `must()` that fails loudly, so each changes behaviour; made all at once, guards that silently
-skip what should never be missing would go unreviewed. Turning it on is the maintainer's decision.
+Every page module is `.ts` or `.tsx`, checked strict with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`
+and the four flags that cost nothing (`webapp/tsconfig.json`, the worker's too); none carries `@ts-expect-error` or
+`@ts-ignore` (static.mjs reports any). An index read is avoided where the data can take the shape it is read in
+(records in place of parallel lists: `loop/members.ts`; a veteran by her id: `career/current.ts` `legacyVet`); a key
+from data (a grade, a race's track, a sort) gets its type where it is first read, checked there (`grades.ts`
+`gradeAt`, `data.ts`). What is left is `must(value, reason)` for a value provably there, `assert(cond, reason)` for a
+fact such as two lists being as long, and a guard only where the missing case is a real state, named beside it.
+Never `x!` (Biome bans it), an `as` cast past the check, or `?? 0` on what must not be missing.
 
 ## Tests
 
