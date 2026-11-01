@@ -23,8 +23,9 @@
 #            self-signed, so the browser warns once); the page fetches its wasm and images, so open it there
 #   deploy   build the page and upload webapp/dist to Cloudflare Pages (CF_PAGES_PROJECT, default uma-legacy;
 #            CF_PAGES_BRANCH=preview for a preview URL); refuses with uncommitted changes under webapp/ pkg/
-#   val TAG  run the 24 validation jobs (20 deck, 4 career; the 20 deck jobs again with per-uma decks) in parallel with
-#            the current binary into val/TAG__*.out and val/TAGpu__*.out, compared with val/ref__* and val/refpu__*
+#   val TAG  run the validation jobs (val/jobs.json: deck and career jobs; the deck jobs again with per-uma decks) in
+#            parallel with the current binary into val/TAG__*.out and val/TAGpu__*.out, compared with val/ref__* and
+#            val/refpu__* by val/cmp2.py (values; another pick passes only as a confirmed tie) and val/same.py (every field)
 #   valq TAG the same without the three slow shared three-result jobs (val/slow.json): for iterating on a change
 #   research compute the research numbers (research/run_all.py -> research/results.json) and render docs/RESEARCH.md
 #            from docs/RESEARCH.template.md; without the run records (research/data/) the committed results are kept
@@ -123,10 +124,14 @@ step_art() {   # in the default build: runs what the game files in game/ allow, 
   if have "${IMAGE_FILES[@]}"; then step_images; else echo "images: skipped, missing $(missing_of "${IMAGE_FILES[@]}") (the page shows initials)"; fi
   if have "${RUNNER_FILES[@]}"; then step_runners; else echo "runners: skipped, missing $(missing_of "${RUNNER_FILES[@]}") (the page shows a spinner)"; fi
 }
-step_val() { local tag="${1:?val needs a tag}"; shift || true
+# the deck and career jobs: cmp2.py (values, picks, confirmed ties, cap margins) and same.py (every field but the
+# timings), each run whatever the others found; fails if any of them does
+step_val() { local tag="${1:?val needs a tag}" rc=0; shift || true
   MISSING=(); need_cmd uv "$TOOLS_UV"; need "pkg/loopopt/target/release/loopopt: the solver (./build.sh native)"; check val
   "${PY[@]}" "$R/val/runval.py" "$C/target/release/loopopt" "$tag" "$@"
-  "${PY[@]}" "$R/val/cmp2.py" "$tag" ref; "${PY[@]}" "$R/val/cmp2.py" "${tag}pu" refpu; }
+  "${PY[@]}" "$R/val/cmp2.py" "$tag" ref || rc=1; "${PY[@]}" "$R/val/cmp2.py" "${tag}pu" refpu || rc=1
+  "${PY[@]}" "$R/val/same.py" "$tag" || rc=1
+  return $rc; }
 step_research() { uv run --quiet --project "$R" --group research python "$R/research/run_all.py" && uv run --quiet --project "$R" --group research python "$R/research/render.py"; }
 [ $# -eq 0 ] && set -- native wasm art page
 while [ $# -gt 0 ]; do

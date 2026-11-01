@@ -182,11 +182,13 @@ IndexedDB.
   (Chromium, the tests tagged `@quick`, with `LLP_QUICK=1` stopping career at its one-run answer; about 15 s): run it
   after each page change, and the full suite before a release.
 - **Validation:** `./build.sh val TAG` runs the 25 reference jobs in `val/jobs.json` (21 deck jobs, shared and per-uma
-  decks, and 4 career jobs; every job leaves out the R cards that are not pals, as the page does) and compares them with `val/ref__*` / `val/refpu__*` (`val/cmp2.py`); `valq TAG` skips the
-  three slow jobs in `val/slow.json`. When results move on purpose, check the diff and copy the new outputs over the
-  references in the same commit; when every value should scale by one factor, compare with `val/cmp_ratio.py`.
-  `uv run val/same.py TAG` compares the whole outputs instead (every field but the timings: the byte identity speed
-  work keeps, `docs/PERF.md`). Solver process failures and comparison failures exit nonzero. `uv run val/test_validation.py` checks these failure
+  decks, and 4 career jobs; every job leaves out the R cards that are not pals, as the page does) and compares them with `val/ref__*` / `val/refpu__*` twice, and fails if either comparison does; `valq TAG` skips the
+  three slow jobs in `val/slow.json`. `val/cmp2.py` says what moved: P(all) rounded to 14 decimals, rank by rank, and
+  each rank that names another deck or career, which passes only as a confirmed tie (P(all) and P(all but one) equal
+  to the bit); `val/same.py TAG` then compares the whole outputs (every field but the timings: the byte identity speed
+  work keeps, `docs/PERF.md`), so a confirmed tie still fails until its reference is re-taken. When results move on
+  purpose, check the diff and copy the new outputs over the references in the same commit; when every value should
+  scale by one factor, compare with `val/cmp_ratio.py`. Solver process failures and comparison failures exit nonzero. `uv run val/test_validation.py` checks these failure
   paths with synthetic outputs and a stub solver, without running any searches.
 - **Career planner:** `uv run val/planval.py pkg/loopopt/target/release/loopopt TAG` runs the ten plan jobs in
   `val/plan/` and compares each whole output with `val/plan/ref__*.out`; `val/mono.py BIN` checks that adding a veteran

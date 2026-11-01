@@ -87,6 +87,34 @@ class ValidationExitTests(unittest.TestCase):
             with self.subTest(output=output):
                 self.assertNotEqual(self.compare(output).returncode, 0)
 
+    def test_comparison_passes_a_confirmed_tie_only(self):
+        # (another career at P(all) and P(all but one) equal to the bit passes as a confirmed tie; at other odds, or the
+        # same career at other odds, it fails)
+        reference = self.output["results"][0]
+        tie = {**reference, "parents": [0, 2]}
+        for result, fails, says in (
+            (tie, False, "confirmed ties"),
+            ({**tie, "p_minus1": 0.7500000000001}, True, "not a tie"),
+            ({**reference, "p_minus1": 0.7}, True, "ODDS DIFFER"),
+        ):
+            with self.subTest(says=says):
+                comparison = self.compare({**self.output, "results": [result]})
+                self.assertEqual(comparison.returncode != 0, fails, comparison.stdout)
+                self.assertIn(says, comparison.stdout)
+
+    def test_deck_comparison_passes_a_confirmed_tie_only(self):
+        loop = {"p_all": 0.25, "p_minus1": 0.5, "members": ["A", "B", "C"]}
+        reference = {"top": [{"loop": loop, "deck": {"card_ids": [1, 2]}}]}
+        tie = {"top": [{"loop": {**loop, "members": ["A", "B", "D"]}, "deck": {"card_ids": [1, 2]}}]}
+        other = {"top": [{"loop": {**loop, "p_minus1": 0.4}, "deck": {"card_ids": [1, 3]}}]}
+        self.write(self.val / "ref__tiny.out", reference)
+        for output, fails, says in ((tie, False, "confirmed ties"), (other, True, "not a tie")):
+            with self.subTest(says=says):
+                self.write(self.val / "trial__tiny.out", output)
+                comparison = self.run_script("cmp2.py", "trial", "ref")
+                self.assertEqual(comparison.returncode != 0, fails, comparison.stdout)
+                self.assertIn(says, comparison.stdout)
+
     def test_comparison_fails_without_comparisons(self):
         self.assertNotEqual(self.run_script("cmp2.py", "trial", "ref").returncode, 0)
 

@@ -1,4 +1,10 @@
-"""Compare rounded validation values, selected decks, and exact/product cap margins."""
+"""Compare rounded validation values, selected decks or careers, and exact/product cap margins.
+
+Each output's results are compared rank by rank. A rank whose P(all) differs (rounded to 14 decimals) fails. A rank
+that names another deck or career fails too, unless it is a confirmed tie: the reference's and the new result at that
+rank have P(all) and P(all but one) equal to the bit, the two values the search ranks and reports by. A confirmed tie
+is printed as such and passes here; `val/same.py`, which `./build.sh val` runs next, still fails on it, so the
+commit that moves a tie re-takes the reference."""
 
 import argparse
 import json
@@ -15,6 +21,7 @@ class DeckSignature(NamedTuple):
     p_minus1: float
     cards_and_stops: tuple
     members: tuple
+    exact_odds: tuple  # (P(all), P(all but one)) as reported, unrounded: a tie is these equal to the bit
 
 
 class CareerSignature(NamedTuple):
@@ -23,6 +30,65 @@ class CareerSignature(NamedTuple):
     trainee_id: int
     parents: tuple
     card_ids: tuple
+    exact_odds: tuple  # (P(all), P(all but one)) as reported, unrounded
+
+
+def exact_odds(result):
+    """P(all) and P(all but one) by their bits (float.hex: -0.0 and 0.0 differ, as their bits do)"""
+    return (float(result["p_all"]).hex(), float(result["p_minus1"]).hex())
+
+
+class RankChanges(NamedTuple):
+    """How the results moved, rank by rank (the ranks listed from 0)"""
+
+    values_equal: bool  # the rounded P(all) list, every rank, is the reference's
+    ties: list  # another result at odds equal to the bit: a confirmed tie
+    moved: list  # another result at other odds
+    revalued: list  # the same result at other rounded odds
+
+
+def identity(signature):
+    """what names a result: every signature field but its odds"""
+    return signature._replace(p_all=None, p_minus1=None, exact_odds=None)
+
+
+def compare_ranks(reference_signatures, candidate_signatures):
+    """the `RankChanges` from the reference's results to the candidate's"""
+    changes = RankChanges(
+        values_equal=[s.p_all for s in reference_signatures] == [s.p_all for s in candidate_signatures],
+        ties=[],
+        moved=[],
+        revalued=[],
+    )
+    for rank, (reference, candidate) in enumerate(zip(reference_signatures, candidate_signatures)):
+        if reference == candidate:
+            continue
+        if identity(reference) == identity(candidate):
+            changes.revalued.append(rank)
+        elif reference.exact_odds == candidate.exact_odds:
+            changes.ties.append(rank)
+        else:
+            changes.moved.append(rank)
+    return changes
+
+
+def rank_note(changes, what):
+    """the printed verdict on the ranks whose result moved"""
+    notes = [
+        f"{text} at ranks {ranks}"
+        for text, ranks in (
+            (f"{what} differ, confirmed ties (P(all) and P(all but one) equal to the bit)", changes.ties),
+            (f"{what} DIFFER, not a tie (other odds)", changes.moved),
+            (f"same {what}, ODDS DIFFER", changes.revalued),
+        )
+        if ranks
+    ]
+    return "; ".join(notes) or f"{what} same"
+
+
+def fails(changes):
+    """a value or pick change that is not a confirmed tie"""
+    return not changes.values_equal or bool(changes.moved or changes.revalued)
 
 
 def deck_signatures(output):
@@ -34,6 +100,7 @@ def deck_signatures(output):
             members=tuple(
                 member if isinstance(member, str) else member.get("name") for member in top["loop"]["members"]
             ),
+            exact_odds=exact_odds(top["loop"]),
         )
         for top in output["top"]
     ]
@@ -47,6 +114,7 @@ def career_signatures(output):
             trainee_id=career["trainee"]["id"],
             parents=tuple(career["parents"]),
             card_ids=tuple(sorted(career["deck"]["card_ids"])),
+            exact_odds=exact_odds(career),
         )
         for career in output["results"]
     ]
@@ -65,7 +133,8 @@ def near_cap(ratio, cap):
 
 
 parser = argparse.ArgumentParser(
-    description="Compare rounded validation values, selected decks, and exact/product cap margins.", allow_abbrev=False
+    description="Compare rounded validation values, selected decks or careers, and exact/product cap margins.",
+    allow_abbrev=False,
 )
 parser.add_argument("tag", help="the outputs val/TAG__*.out")
 parser.add_argument("ref", help="the references val/REF__*.out")
@@ -108,24 +177,22 @@ for reference_path in sorted(glob.glob(VALIDATION_DIR + ref + "__*.out")):
             mismatches += 1
     if "top" in reference:
         reference_signatures, candidate_signatures = deck_signatures(reference), deck_signatures(candidate)
-        ok = [s.p_all for s in reference_signatures] == [s.p_all for s in candidate_signatures]
-        same = reference_signatures == candidate_signatures
+        changes = compare_ranks(reference_signatures, candidate_signatures)
         print(
-            f"{name}: values {'OK' if ok else 'DIFF'} decks {'same' if same else 'differ(ties?)'} ref {[round(1 / s.p_all) for s in reference_signatures]} new {[round(1 / s.p_all) for s in candidate_signatures]} proven {reference.get('proven')}/{candidate.get('proven')}"
+            f"{name}: values {'OK' if changes.values_equal else 'DIFF'} {rank_note(changes, 'decks')} ref {[round(1 / s.p_all) for s in reference_signatures]} new {[round(1 / s.p_all) for s in candidate_signatures]} proven {reference.get('proven')}/{candidate.get('proven')}"
         )
-        if not ok:
+        if fails(changes):
             mismatches += 1
     elif "results" in reference:
         reference_signatures, candidate_signatures = career_signatures(reference), career_signatures(candidate)
-        ok = [s.p_all for s in reference_signatures] == [s.p_all for s in candidate_signatures]
-        same = reference_signatures == candidate_signatures
+        changes = compare_ranks(reference_signatures, candidate_signatures)
         print(
-            f"{name}: career values {'OK' if ok else 'DIFF'} picks {'same' if same else 'differ(ties?)'} proven {reference.get('proven_top')}/{candidate.get('proven_top')}"
+            f"{name}: career values {'OK' if changes.values_equal else 'DIFF'} {rank_note(changes, 'picks')} proven {reference.get('proven_top')}/{candidate.get('proven_top')}"
         )
-        if not ok:
+        if fails(changes):
             mismatches += 1
     else:
         print(name, "neither a deck nor a career output")
         mismatches += 1
-print(f"{compared} compared, {mismatches} value mismatches")
+print(f"{compared} compared, {mismatches} mismatches (values, picks not a confirmed tie, cap margins, parse failures)")
 sys.exit(1 if mismatches or not compared else 0)

@@ -33,11 +33,12 @@ speed record: where it stands, what is open, what was tried and rejected.
 - *The worker's saved state* (IndexedDB): its format can change only with `STATE_VERSION` (`career/state.rs`) bumped, so
   an older state is refused whole and not misread.
 
-`val/cmp2.py` checks less than this (rounded P(all) per result; changed decks print "differ(ties?)" and pass) and
+`val/cmp2.py` checks less than this (rounded P(all) per result; another deck or career at a rank passes where its
+P(all) and P(all but one) equal the reference's to the bit, as a confirmed tie) and
 `val/planval.py` skips the work counters: passing them is necessary, not sufficient. Both also check observed cap
 ratios. `uv run val/same.py TAG [REF]` compares parsed JSON values, including counters, ignoring only `timing_s` and
 keys ending in `_ms`; `REF` defaults to `ref`. Add `--plan` for the planner outputs. This is not a raw-byte check:
-JSON formatting and numerically equal encodings compare equal, and a missing key compares equal to a null value.
+JSON formatting and numerically equal encodings compare equal; a key missing on one side differs from a null value.
 It compares only output/reference pairs that exist, so check the compared count against the jobs run; a missing
 reference is skipped. None compared, or any value
 difference, exits nonzero. It does not ignore a field named `ms`, such as `next.roll.ms`.
