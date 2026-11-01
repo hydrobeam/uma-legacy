@@ -67,8 +67,10 @@ export const placesKey = (p = places.value) => JSON.stringify({ trainee: p.train
  * @property {import('../loop/types.ts').ResultDeck} deck
  * @property {{group: number, q: number, carriers: number}[]} pinks  per pink the six legacies carry: the chance at least
  *   one of the two inheritance events passes it on, and its carriers
- * @property {{base: number[], start: number[], fire: object[], pink_gen: {group: number, p: number}[]}} aptitudes  her
- *   aptitude grades (codes 1..8 = G..S) and her veteran's pink spark (pink.mjs)
+ * @property {{base: number[], start: number[], fire: {group: number, apt: number, p: number, slot: number, stars:
+ *   number}[], pink_gen: {group: number, p: number}[]}} aptitudes  her aptitude grades (codes 1..8 = G..S) and her
+ *   veteran's pink spark (pink.mjs); `fire`: each legacy pink that can fire at an April inspiration, its aptitude and
+ *   chance (outcomes.rs `fire_json`)
  * @property {CareerScheduleRow[]|null} schedule  every G1 she could enter, in turn order (the search's
  *   best career and the plan's pick only)
  * @property {number[]|null} outcome_sets  [mask]: the chance of landing exactly the targets in mask (as

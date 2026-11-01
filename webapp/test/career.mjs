@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { drawPink } from '../src/pink.ts';
-import { scheduledRaces, rolledBought, starDraw, rolledOutcome, rolledBlueGreen } from '../src/career/roll.mjs';
+import { scheduledRaces, rolledBought, starDraw, rolledOutcome, rolledBlueGreen } from '../src/career/roll.ts';
 import { searchCaveat, planCaveat } from '../src/proofs.ts';
 import { QUICK, check, ART, dialog, audit, contrastCheck, still, careerPage, repoUrl } from './helpers.mjs';
 
