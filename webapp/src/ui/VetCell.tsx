@@ -97,7 +97,7 @@ export interface VetCellProps {
   label: string;
   onClick: () => void;
   /** a role tab over her ("Parent 1") */
-  tab?: string;
+  tab?: string | undefined;
   /** a line under her name */
   sub?: string;
   /** the pool's: her card's id, data-k, chosen mark and aria-current */

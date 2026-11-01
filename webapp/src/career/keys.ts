@@ -16,8 +16,11 @@ export const jobKey = (job: Job): string => {
 };
 // a career's identity: the solver's `career` (her uma, her parents in order and her deck: two decks on the same parents
 // are two careers), else (an answer from before it) her uma and parents
-export const keyOf = (r: { career?: string; trainee: { id: number }; parents: readonly number[] }): string =>
-  r.career ?? `${r.trainee.id}:${r.parents.join(',')}`;
+export const keyOf = (r: {
+  career?: string | undefined;
+  trainee: { id: number };
+  parents: readonly number[];
+}): string => r.career ?? `${r.trainee.id}:${r.parents.join(',')}`;
 // x with every object's keys sorted and its undefined fields left out (JSON that two equal jobs share)
 const canon = (x: unknown): unknown =>
   Array.isArray(x)

@@ -39,7 +39,7 @@ export interface Status {
   kind: 'loading' | 'done' | 'empty' | 'error';
   text: string;
   /** a button after the text (e.g. Try sample veterans), or several */
-  act?: { label: string; run: () => void } | { label: string; run: () => void }[] | null;
+  act?: { label: string; run: () => void } | { label: string; run: () => void }[] | null | undefined;
 }
 /** The search's result for a job and the places it ran with (the plan's is the answer's `planState`). */
 export interface Searched {

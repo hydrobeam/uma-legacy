@@ -17,9 +17,9 @@ const pageDrawn = computed(() => [careerShown.value, planShown.value, vets.value
 const NONE: ReadonlySignal<null> = computed(() => null);
 interface GuardProps {
   /** the view's name on the status line ("The node popup"); none for the status line itself */
-  what?: string;
+  what?: string | undefined;
   /** what else the view draws from (a popup's subject): a new value draws it again too */
-  also?: ReadonlySignal<unknown>;
+  also?: ReadonlySignal<unknown> | undefined;
   children: ComponentChildren;
 }
 export function Guard({ what, also = NONE, children }: GuardProps) {

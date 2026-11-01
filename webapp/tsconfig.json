@@ -9,6 +9,7 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
     "allowUnreachableCode": false,
+    "exactOptionalPropertyTypes": true,
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,

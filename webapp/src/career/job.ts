@@ -70,14 +70,14 @@ export type CareerJob = {
   compare?: boolean;
   /** one career reported as it is, no deck search (career/given.rs: its `career` id, on the trainee and both parents
    *  fixed): Use this on a builder's other career or the pair search's (`chosen`) */
-  career?: string;
+  career?: string | undefined;
 };
 /** One career in a report (career/outcomes.rs `report`): the trainee and her parents, by legacy index. */
 export interface CareerReport {
   trainee: CareerTrainee;
   parents: [number, number];
   /** the career's identity (`kept::career_id`: her uma, parents in order and deck) */
-  career?: string;
+  career?: string | undefined;
   /** her six legacies */
   slots: CareerSlot[];
   /** per target, in the job's order */
@@ -218,7 +218,7 @@ export interface PlanOptionFields {
   /** the pair search's recommendation (`pairSearchRow`): run as it is, its deck kept */
   pair_search?: boolean;
   /** its Saves per run in the pair search */
-  pair_search_score?: number | null;
+  pair_search_score?: number | null | undefined;
 }
 /** A row of the Career choices table: a plan option, or a career of the search (without the plan's fields). */
 export type OptionRow = CareerReport & Partial<PlanOptionFields>;

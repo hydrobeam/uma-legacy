@@ -15,7 +15,7 @@ interface GuardProps {
    *  replace it, or the view would fail again on the record that write made */
   input: ReadonlySignal<unknown>;
   /** the view's name on the status line ("The result"); none for the status line's own parts, which cannot say it */
-  what?: string;
+  what?: string | undefined;
   /** shown in the view's place while it cannot be drawn */
   fallback?: ComponentChildren;
   /** what a failure gives up (a popup's request: nothing then waits on a popup that is gone) */

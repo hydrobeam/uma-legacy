@@ -57,7 +57,7 @@ export interface Veteran extends LineageNode {
   parents: LineageNode[];
   lender?: Lender;
   /** her rank score (her career-rank badge), when the import or uma.moe gives it */
-  rank?: number;
+  rank?: number | undefined;
 }
 /** The places of the next career: each is chosen here or left to the planner (null). */
 export interface LineagePlan {

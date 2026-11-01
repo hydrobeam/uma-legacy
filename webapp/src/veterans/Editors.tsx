@@ -156,7 +156,7 @@ function AskSkills({ asked }: { asked: SkillsAsk | null }) {
             choices.map(({ label, sparks, primary }) => (
               <button
                 key={label}
-                ref={primary ? first : undefined}
+                ref={primary ? first : null}
                 type="button"
                 class={`btn${primary ? ' primary' : ''}`}
                 onClick={() => skillsChosen(sparks())}

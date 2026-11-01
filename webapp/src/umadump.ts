@@ -18,7 +18,7 @@ interface Factor {
 interface ExportNode {
   card_id: number;
   factor_info_array?: readonly Factor[];
-  win_saddle_id_array?: readonly number[];
+  win_saddle_id_array?: readonly number[] | undefined;
 }
 /** a veteran in umadump's export */
 interface ExportVeteran extends ExportNode {

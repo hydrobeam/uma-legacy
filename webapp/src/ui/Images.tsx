@@ -12,7 +12,7 @@ interface UmaAvProps {
   outfit: number | null | undefined;
   size: number;
   /** a class beside `av` */
-  cls?: string;
+  cls?: string | undefined;
   /** a name read out for her (she becomes an image) */
   label?: string;
   title?: string;

@@ -20,7 +20,7 @@ export interface SkillSpec {
   group: number;
   goldIcon: boolean;
   gold?: boolean;
-  legacies?: readonly { chara: number; outfit?: number | null; carries: boolean }[];
+  legacies?: readonly { chara: number; outfit?: number | null | undefined; carries: boolean }[];
   cards?: readonly { card: Card; how: string }[];
 }
 const shown = signal<{ spec: SkillSpec | null; open: boolean }>({ spec: null, open: false });

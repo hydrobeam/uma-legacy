@@ -75,9 +75,9 @@ export interface WinsEditorProps {
   /** race index -> the turn its win shows at */
   winAt: Readonly<Record<number, number>>;
   /** the races the menu lists at a turn (none: every race held then) */
-  offer?: ((turn: number) => number[] | null) | null;
+  offer?: ((turn: number) => number[] | null) | null | undefined;
   /** the race in her schedule */
-  info?: ((ix: number) => WinInfo | null) | null;
+  info?: ((ix: number) => WinInfo | null) | null | undefined;
   /** an edit: her wins (sorted, no repeats) and where each shows, both new */
   onWins: (wins: number[], winAt: Record<number, number>) => void;
 }

@@ -115,7 +115,7 @@ function Faces({
   tid: number;
   outfit: number | undefined;
   outfitLabel: string;
-  parents: { chara: number | null; outfit?: number; label: string; her?: boolean }[];
+  parents: { chara: number | null; outfit?: number | undefined; label: string; her?: boolean }[];
 }) {
   return (
     <span class="cfaces">
