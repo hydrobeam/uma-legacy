@@ -5,11 +5,14 @@
 import { $, $dialog, backdropCloses } from '../dom.js';
 import { on } from '../store.ts';
 import { rosterCounts } from '../roster.js';
+import { cardsOwned } from '../cards.js';
 import { mountRoster } from './Roster.tsx';
+import { mountCards } from './Cards.tsx';
 
 /** `fadeMore`: the roster's and the card list's bottom edge fades while there is more below (the loop page) */
 export function mountSetup({ fadeMore = false } = {}) {
   mountRoster(fadeMore);
+  mountCards(fadeMore);
   for (const [buttonId, dialogId] of [
     ['o-umas', 'set-umas'],
     ['o-cards', 'set-cards'],
@@ -28,6 +31,13 @@ export function mountSetup({ fadeMore = false } = {}) {
     b.dataset.n = `${n.outfitsOwned}/${n.outfits}`;
     b.title = `${n.outfitsOwned} of ${n.outfits} outfits owned`;
   };
+  const cardsBadge = (n: typeof cardsOwned.value) => {
+    const b = $('o-cards');
+    b.dataset.n = `${n.owned}/${n.all}`;
+    b.title = `${n.owned} of ${n.all} support cards owned`;
+  };
   umasBadge(rosterCounts.peek());
+  cardsBadge(cardsOwned.peek());
   on([rosterCounts], umasBadge);
+  on([cardsOwned], cardsBadge);
 }

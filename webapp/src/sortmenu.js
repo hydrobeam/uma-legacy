@@ -1,43 +1,8 @@
-// sort menus (umas, cards): pick Release or Name; picking the active one again reverses it (release starts newest
-// first, name A to Z). The menu stays open until a click outside it or Escape. key: the settings' prefix ('r' or 'c').
-// (`wireMenu` is the button and menu alone; the uma.moe popup's orders use it too.)
+// The el() menu button, for the two menus that are not components yet: the veterans' order (career/view/Pool.tsx) and
+// uma.moe's (umamoesetup.js). Part 2 of step 11 moves them to ui/SortMenu.tsx, which is this behaviour as a
+// component (P8); then this file goes.
 import { $ } from './dom.js';
-import { settings, setSort } from './settings.ts';
 import { must } from './must.ts';
-const HOW = { 'rel-desc': 'newest first', 'rel-asc': 'oldest first', 'name-asc': 'A to Z', 'name-desc': 'Z to A' };
-// a sort menu's choice and its direction ('r': rsort, rdir; 'c': csort, cdir)
-/** @type {(key: 'r' | 'c') => [string, string]} */
-const sortOf = (key) =>
-  key === 'r' ? [settings.value.rsort, settings.value.rdir] : [settings.value.csort, settings.value.cdir];
-/** @param {string} id the sort button's id @param {'r' | 'c'} key the settings' sort keys' prefix ('r': rsort, rdir) */
-export function paintSort(id, key) {
-  const [sortBy, direction] = sortOf(key),
-    arrow = direction === 'desc' ? '↓' : '↑';
-  const btn = $(id);
-  if (!btn.dataset.what)
-    btn.dataset.what = must(btn.getAttribute('aria-label'), 'a sort button has its label').toLowerCase(); // 'sort umas', kept from the first paint
-  const what = btn.dataset.what;
-  btn.textContent = `${sortBy === 'name' ? 'Name ' : 'Release '}${arrow}`;
-  btn.title = `Sorted ${HOW[`${sortBy}-${direction}`]}`;
-  btn.setAttribute('aria-label', `${btn.textContent}, ${what}`); // starts with the visible text (voice control)
-  $(`${id}-menu`)
-    .querySelectorAll('button')
-    .forEach((b) => {
-      const on = b.dataset.k === sortBy;
-      b.setAttribute('aria-checked', String(on));
-      b.textContent = (b.dataset.k === 'rel' ? 'Release' : 'Name') + (on ? ` ${arrow}` : '');
-      b.title = on ? 'Click to reverse' : b.dataset.k === 'rel' ? 'Newest first' : 'A to Z';
-    });
-}
-/** @param {string} id the sort button's id @param {'r' | 'c'} key the settings' sort keys' prefix @param {() => void} render */
-export function sortMenu(id, key, render) {
-  wireMenu(id, (k) => {
-    const [sortBy, direction] = sortOf(key);
-    if (k === sortBy) setSort({ prefix: key, sort: sortBy, dir: direction === 'desc' ? 'asc' : 'desc' });
-    else setSort({ prefix: key, sort: k, dir: k === 'rel' ? 'desc' : 'asc' });
-    render(); // ordering only: saved, no new search
-  });
-}
 // A sort button and its menu (`id`, `${id}-menu`, `${id}-dd`), wired: `pick` gets the chosen item's data-k (the items
 // are the menu's buttons when this runs). Keyboard (menu pattern, as the scenario picker): opening focuses the checked
 // item, the arrows (and Home/End) move between items, Escape closes and returns to the button, focus leaving the menu

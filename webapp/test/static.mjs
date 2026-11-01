@@ -122,8 +122,6 @@ const MAY_BE_MISSING = {
   'src/loop/main.tsx': {},
   'src/career/main.tsx': {
     'data-example': "data.js probes it: the loop page's precomputed example result; the career page has none",
-    'c-peruma':
-      "cards.js: the loop page's Deck per uma switch; the career page has none (cards.js returns before using it)",
   },
 };
 const PAGES = { 'src/loop/main.tsx': 'index.template.html', 'src/career/main.tsx': 'career.template.html' };
@@ -253,6 +251,12 @@ const SETUP_MOUNTS = [
     'src/ui/Roster.tsx',
     ['h-roster', 'r-all', 'r-none', 'r-file', 'r-count', 'r-filter', 'rs', 'rs-dd', 'rs-menu', 'r-msg', 'roster'],
     ['ut', 'uol'],
+  ],
+  [
+    'cards-panel',
+    'src/ui/Cards.tsx',
+    ['h-deck', 'c-all', 'c-none', 'c-file', 'c-count', 'c-msg', 'c-filter', 'cs', 'cs-dd', 'cs-menu', 'cards'],
+    ['cgroup', 'ctiles', 'ct', 'cban'],
   ],
 ];
 const MOUNTS = {

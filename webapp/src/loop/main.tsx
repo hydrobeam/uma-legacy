@@ -10,7 +10,7 @@ import { render } from 'preact';
 import { $, $dialog, $input, backdropCloses } from '../dom.js';
 import { ERA } from '../saved.ts';
 import { EXAMPLE, loadData } from '../data.js';
-import { DEFAULTS, fields, jobSetup, settings, setAuto, switchEra } from '../settings.ts';
+import { DEFAULTS, fields, jobSetup, settings, setAuto, setPerUma, switchEra } from '../settings.ts';
 import { on } from '../store.ts';
 import { headline, loopDrawn, loopRun, loopView, resultsStale, settle } from './state.ts';
 import type { LoopView, RunState } from './state.ts';
@@ -21,8 +21,6 @@ import { RenderGuard } from './RenderGuard.tsx';
 import { restartEngine, run, warmEngine } from '../engine.ts';
 import { initTargets, renderTargets } from '../targets.js';
 import { initScenario, eraScenario } from '../scenario.js';
-import { initCards } from '../cards.js';
-import { initOwnedImport } from '../owned.js';
 import { Results, ResultsCount, drawResult } from './Results.tsx';
 import { AffinityDialog } from './Affinity.tsx';
 import { ExportDialog, openExport } from './Export.tsx';
@@ -116,16 +114,16 @@ function start() {
     setAuto($input('x-auto').checked);
     if (settings.value.auto && loopView.value.status.kind === 'pending') loop.scheduleSearch();
   }; // the switch changes no result: switching it on searches only changes made while it was off
+  $input('c-peruma').checked = settings.value.perUma;
+  $input('c-peruma').onchange = () => setPerUma($input('c-peruma').checked);
   initScenario(); // the scenario picker (sets the training-hint rate; Unity Cup's golds follow it)
 
-  initCards();
   render(
     <RenderGuard input={fields.decksTop} what="The Results switch">
       <ResultsCount />
     </RenderGuard>,
     $('rtop'),
   );
-  initOwnedImport();
   initTargets();
   render(<AffinityDialog />, $('why-root'));
   render(<ExportDialog />, $('ex-root'));
@@ -148,19 +146,6 @@ function start() {
     });
     column.focus({ preventScroll: true });
   };
-  // the card box: .more while there is more to scroll to below (its bottom edge fades)
-  for (const id of ['cards']) {
-    const box = $(id),
-      update = () => box.classList.toggle('more', box.scrollTop + box.clientHeight < box.scrollHeight - 4); // 4 px: rounding slack
-    box.addEventListener('scroll', update, { passive: true });
-    new MutationObserver(update).observe(box, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['hidden'],
-    }); // the filter hides tiles
-    if (window.ResizeObserver) new ResizeObserver(update).observe(box); // also when its dialog opens (its size goes from 0)
-  }
   backdropCloses($dialog('sched-dlg'));
 
   renderTargets(); // renderTargets draws the card picker too (it lists the cards that give a target)

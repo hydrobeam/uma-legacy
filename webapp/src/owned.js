@@ -3,10 +3,8 @@
 // (umadump.js parseOwned). A file is the game's whole list of what you own, so it replaces this era's marks: what it
 // lists is owned, everything else in the data not owned. Ids the data doesn't have (R cards it leaves out, another
 // era's) are skipped.
-import { $, $input } from './dom.js';
 import { gameData } from './data.js';
 import { setOwned } from './settings.ts';
-import { paintCards } from './cards.js';
 import { parseOwned } from './umadump.js';
 import { must } from './must.ts';
 
@@ -77,16 +75,9 @@ export async function importFiles(input) {
     }
   }
   input.value = '';
-  if (changed) {
-    setOwned(marks);
-    paintCards();
-  }
+  if (changed) setOwned(marks);
   return said.join(' ');
 }
-// the Support cards panel's Import (the Umas panel's is ui/OwnedImport.tsx)
-export function initOwnedImport() {
-  const input = $input('c-file');
-  input.onchange = async () => {
-    $('c-msg').textContent = await importFiles(input);
-  };
-}
+// Kept for career/main.tsx, which wired the Import buttons before they were the panels' own (part 2 of step 11 drops
+// the call): nothing to do.
+export const initOwnedImport = () => undefined;

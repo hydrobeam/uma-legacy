@@ -4,7 +4,6 @@ import { gameData } from './data.js';
 import { initPresets } from './presets.js';
 import { settings, setTargets } from './settings.ts';
 import { skillIcon } from './images.js';
-import { renderCards } from './cards.js';
 import { namesOf, tileEl } from './tile.ts';
 // one compact tile per target, two per row: icon and name (white → gold when the scenario guarantees the gold),
 // remove. focus: after a removal, the row index whose remove button gets the focus (the next row's, else the last
@@ -35,7 +34,6 @@ export function renderTargets(focus = null) {
     const removes = box.querySelectorAll('.x');
     (removes[Math.min(focus, removes.length - 1)] || $('t-add')).focus();
   }
-  renderCards();
 }
 export function initTargets() {
   const addIn = $input('t-add'),
