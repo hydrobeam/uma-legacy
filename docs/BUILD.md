@@ -165,7 +165,9 @@ search works (a spinner when a build has none). How the pipeline works and what 
 
 The solver runs as WebAssembly in a Web Worker (`worker.template.js`, minified to `assets/worker.<hash>.js`). Saved settings are one versioned object,
 `localStorage['llp:settings']`, migrated in `settings.js`. Shared page state is two exported objects (`state`: the
-settings, `ui`: what is on screen). No framework.
+settings, `ui`: what is on screen). Views are built with `el()`, except the career page's veterans list and node popup:
+Preact components (`src/career/view/`; shared ones in `src/ui/`), in step with the page's redraws until the stores they
+read become signals.
 
 In `src/`, `main.js` and `career.js` are the two pages' entries; `engine.js` talks to the worker, `job.js` builds the
 job both pages send, `save.js` decides what a settings change does, and `statestore.js` keeps the solver's work in

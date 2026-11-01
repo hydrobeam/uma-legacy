@@ -626,7 +626,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .pn.trainee .tnm .nm { font-size: 1.45rem; font-weight: 900; }
 .pn.gp .nm { font-weight: 700; font-size: 0.9rem; }
 .tempty { margin: 0; color: var(--muted); }
-.tacts { gap: 8px; }
 /* the career under the pedigree: the loop planner's odds line and deck, the targets, the schedule button */
 .rbsec { margin-top: 22px; min-width: 0; display: grid; gap: 8px; justify-items: start; }
 .rbsec > * { justify-self: stretch; }
@@ -1092,7 +1091,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .nodedlg .gmdbody { gap: 12px; }
 .nodedlg .twho { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .nodedlg .nm { font-weight: 900; font-size: 1.05rem; }
-.nodedlg .tacts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .nodedlg .btn { font-family: inherit; font-weight: 700; border-radius: 999px; color: var(--gm-ink); background-color: var(--gm-cell); background-image: linear-gradient(var(--gm-cell), var(--gm-tab-low)); border: 1px solid var(--gm-edge); box-shadow: inset 0 -3px 0 var(--gm-tab-edge); padding: 6px 16px; }
 .nodedlg .btn.primary { color: #fff; text-shadow: var(--gm-outline); background-color: var(--gm-bright); background-image: linear-gradient(#b4ec52, var(--gm-bright2)); border-color: #5aa300; box-shadow: inset 0 -3px 0 #5aa300; }
 .gmdlg { position: fixed; }

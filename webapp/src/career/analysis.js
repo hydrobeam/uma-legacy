@@ -31,9 +31,9 @@ import {
   deckEl,
   fmtN,
   tableRows,
-  openNode,
 } from '../career.js';
 import { must } from '../must.ts';
+import { openNode } from './view/Node.tsx';
 /** @import { LineageNode } from '../vets.js' */
 /** @import { CareerJob, CareerReport, CareerSearch, PlanDone, PlanOption, PlanReport } from '../career.js' */
 /** @typedef {{results: CareerReport[], pending: true}} PendingSearch a stand-in while the quick comparison looks for the best career with her */

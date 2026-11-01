@@ -65,8 +65,6 @@ import {
   drawUmas,
   filterUmas,
 } from './vets.js';
-import { vetCell } from './vetcell.js';
-import { wireMenu } from './sortmenu.js';
 import { parseExport, parseTree } from './umadump.js';
 import { initUmamoe, syncListings, umamoeButton } from './umamoesetup.js';
 import { inspView, fitSparks, deckCardAt, openSkill } from './details.js';
@@ -82,6 +80,10 @@ import {
 import { optionsEl } from './career/options.js';
 import { unprovenWhy, searchCaveat, planCaveat } from './proofs.mjs';
 import { must } from './must.ts';
+import { signal } from '@preact/signals';
+import { initPool, poolChanged, setVTab, vetsTab } from './career/view/Pool.tsx';
+import { mountNode, openNode, closeNode } from './career/view/Node.tsx';
+/** @import { NodeSpec } from './career/view/Node.tsx' */
 
 const tName = (g) => {
   const s = gameData().skillNames.get(g) || { w: `Skill ${g}`, gd: null };
@@ -977,7 +979,7 @@ function pnode(kind, label, ghost) {
 }
 // The tree, as the game's legacy display: portraits only (the trainee; Legacy 1 blue and Legacy 2 pink, each the parent
 // with her own two parents), each with its legacy number and affinity; a portrait opens the node popup (her sparks,
-// G1 wins, choose or hand back the place, change who she is). The popup is refilled after every edit (`fillNode`).
+// G1 wins, choose or hand back the place, change who she is). The popup is refilled after every redraw (`drawn`).
 // a click anywhere in a node's box opens it, as its portrait does (not on the box's own buttons or deck cards)
 const wholeBox = (box, t) => {
   box.classList.add('pnclick');
@@ -1097,13 +1099,8 @@ function familyEl(k, r) {
   }
   return fam;
 }
-// the node popup (game style): one dialog, refilled on every redraw while open
-// nodeOpen, the node on show: {kind: 't'} the trainee, {kind: 'p', k} parent place k, {kind: 'g', k, j} parent k's
-// parent j, {kind: 'v', id} a veteran of the pool
-/** @typedef {{kind: 't' | 'p' | 'g' | 'v', k?: number, j?: number, id?: string}} NodeSpec */
-/** @type {NodeSpec | null} */
-let nodeOpen = null;
-// the data-k of the tree's (or the pool's) button for a node
+// the node popup (career/view/Node.tsx): the data-k of the tree's (or the pool's) button for a node
+/** @type {(spec: NodeSpec) => string} */
 const nodeKey = (spec) =>
   spec.kind === 't'
     ? 'node:t'
@@ -1112,71 +1109,29 @@ const nodeKey = (spec) =>
       : spec.kind === 'v'
         ? `node:v${spec.id}`
         : `node:p${spec.k}g${spec.j}`;
-const nodeDialog = lazyDialog('gmdlg nodedlg', (dialog) => {
-  dialog.id = 'node-dlg';
-  dialog.setAttribute('aria-labelledby', 'node-title');
-  const h = el('h3', 'gmdhdr');
-  h.id = 'node-title';
-  const body = el('div', 'gmdbody');
-  body.id = 'node-body';
-  const f = el('div', 'gmdfoot');
-  const c = el('button', 'btn gmclose', 'Close');
-  c.type = 'button';
-  c.onclick = () => dialog.close();
-  f.appendChild(c);
-  dialog.append(h, body, f);
-  dialog.addEventListener('close', () => {
-    const sp = nodeOpen;
-    nodeOpen = null;
-    const key = sp && nodeKey(sp);
-    const e = key && document.querySelector(`[data-k="${key}"]`);
-    if (e && !document.querySelector('dialog[open]')) e.focus();
-  });
-});
-// the node popup, closed if it is open
-const closeNode = () => {
-  const nodeDlg = nodeDialog.made();
-  if (nodeDlg?.open) nodeDlg.close();
-};
-export function openNode(spec) {
-  const nodeDlg = nodeDialog.get();
-  nodeOpen = spec;
-  fillNode();
-  if (!nodeDlg.open) nodeDlg.showModal();
+// closed: the focus goes back to the node's button where no other dialog is open
+/** @param {NodeSpec} spec */
+function nodeClosed(spec) {
+  const e = /** @type {HTMLElement | null} */ (document.querySelector(`[data-k="${nodeKey(spec)}"]`));
+  if (e && !document.querySelector('dialog[open]')) e.focus();
 }
 // a dialog of its own from the popup (the uma or parent picker): the popup closes first
 const fromNode = (fn) => () => {
   closeNode();
   fn();
 };
-// Refill the popup for the node on show (`nodeOpen`): its title and body, and its actions in the footer. A node that is
-// gone (a removed veteran, a grandparent whose parent place emptied) closes it instead.
-function fillNode() {
-  const nodeDlg = nodeDialog.made();
-  if (!nodeOpen || !nodeDlg) return;
-  const r = shown(),
-    body = $('node-body');
-  body.textContent = '';
-  const sp = nodeOpen;
-  const acts = el('div', 'row tacts');
+// The popup's content for the node on show: its body and its actions, by kind; returns its title ('' where the node is
+// gone: a removed veteran, a grandparent whose parent place emptied)
+/** @param {NodeSpec} sp @param {HTMLElement} body @param {HTMLElement} acts */
+function nodeContent(sp, body, acts) {
   const fill = { t: fillTraineeNode, p: fillParentNode, v: fillVeteranNode }[sp.kind] || fillGrandparentNode;
-  if (!fill(sp, r, body, acts)) {
-    nodeDlg.close();
-    return;
-  }
-  // the popup's actions sit in its footer beside Close (no row of their own)
-  const foot = must(nodeDlg.querySelector('.gmdfoot'), 'the popup is made with its footer');
-  for (const e of foot.querySelectorAll('.nact')) e.remove();
-  for (const b of [...acts.children]) {
-    b.classList.add('nact');
-    foot.appendChild(b);
-  }
-  fitSparks(nodeDlg);
+  const title = fill(sp, shown(), body, acts);
+  fitSparks(must(body.parentElement, 'the body is in the popup'));
+  return title;
 }
-// Each node kind's popup fills the title, `body` (its content) and `acts` (its actions); false: the node is gone.
+// Each node kind's popup fills `body` (its content) and `acts` (its actions) and returns its title; '': the node is gone.
 // The trainee: who she is, her outfit, her affinity's breakdown; choose her or hand her back to the planner.
 function fillTraineeNode(_sp, r, body, acts) {
-  $('node-title').textContent = plan.trainee ? 'Trainee' : "Trainee · planner's pick";
   const id = plan.trainee || r?.trainee.id;
   if (id) {
     const w = el('div', 'twho'),
@@ -1213,12 +1168,11 @@ function fillTraineeNode(_sp, r, body, acts) {
         changed();
       }),
     );
-  return true;
+  return plan.trainee ? 'Trainee' : "Trainee · planner's pick";
 }
 // A parent place: the veteran in it (chosen or the planner's pick) with her sparks and her parents', all editable.
 function fillParentNode({ k }, r, body, acts) {
   const at = parentAt(k, r);
-  $('node-title').textContent = `Legacy ${k + 1} · parent ${k + 1}${at?.pick ? " · planner's pick" : ''}`;
   if (at) {
     const v = at.v,
       i = idxOf(v.id),
@@ -1274,7 +1228,7 @@ function fillParentNode({ k }, r, body, acts) {
         changed();
       }),
     );
-  return true;
+  return `Legacy ${k + 1} · parent ${k + 1}${at?.pick ? " · planner's pick" : ''}`;
 }
 // an uma.moe listing (in the pool, not yours): shown in the popups, never edited
 const listed = (v) => v.src === 'umamoe';
@@ -1329,9 +1283,7 @@ const VET_SOURCE = {
 };
 // A veteran of yours (the pool, Career Info's legacies): her sparks and her parents', editable in place.
 function fillVeteranNode({ id }, _r, body) {
-  const title = veteranView(id, body);
-  if (title) $('node-title').textContent = title;
-  return !!title;
+  return veteranView(id, body);
 }
 // her view (the popup's, and beside the list in Veteran Umamusume): her face, name, targets carried, wins, where she
 // came from; Yours / Guest and Remove; her sparks and her parents'. Returns the title, '' when she is gone
@@ -1418,8 +1370,7 @@ function veteranView(id, body) {
 function fillGrandparentNode({ k, j }, r, body) {
   const at = parentAt(k, r),
     g = at?.v.parents[j];
-  $('node-title').textContent = `Legacy ${k + 1} · grandparent`;
-  if (!g) return false;
+  if (!g) return '';
   const edit = !listed(at.v),
     w = el('div', 'twho');
   w.append(
@@ -1437,7 +1388,7 @@ function fillGrandparentNode({ k, j }, r, body) {
       sparksEl(g, `p${k}g${j}`, changed),
     );
   body.append(w, iv);
-  return true;
+  return `Legacy ${k + 1} · grandparent`;
 }
 // The next career as the player sets it up in the game, in the game's order: the odds, then whom to follow (a borrow
 // from uma.moe), the trainee, her two legacies, the deck, and each target's chance to land
@@ -1458,7 +1409,6 @@ function renderTree() {
     box.append(targetsEl(r));
     if (deckDialog.made()?.open) fillDeck(r);
   }
-  if (nodeDialog.made()?.open) fillNode();
 }
 // the career's odds of landing every target and Try a run, beside the title
 function verdictEl(r) {
@@ -1873,90 +1823,9 @@ function renderResults() {
 }
 
 // ---------- the veterans (pool) ----------
-// a veteran as the game's legacy list draws her, her number (an uma.moe one: her trainer) under her, a "Parent 1" tab
-// when she is one of the next career's parents; a click shows her beside the list (a wide dialog) or in her popup (her
-// sparks editable in place, Yours / Guest, Remove)
-function vetCardEl(v, i) {
-  const k = plan.parents.indexOf(v.id),
-    tg = state.targets.map((t) => t.group),
-    have = tg.filter((g) => v.sparks?.[g]).length,
-    c = vetCell(v, {
-      name: v.lender ? v.lender.name || 'uma.moe' : `#${i + 1}`,
-      label: `Veteran #${i + 1}: ${umaName(v.chara)}, ${have} of ${tg.length} target skills. Her sparks`,
-      onClick: () => {
-        if (!wideVets()) openNode({ kind: 'v', id: v.id });
-        else if (vSel !== v.id) {
-          vSel = v.id;
-          markSel();
-          drawPane();
-        }
-      },
-      tab: k >= 0 ? `Parent ${k + 1}` : undefined,
-    });
-  c.id = `vet-${i}`;
-  c.dataset.k = `node:v${v.id}`;
-  return c;
-}
-// your veterans: the game's Veteran Umamusume button in the setup bar opens them in a dialog
-// (the cards are drawn only while the dialog is open, and when it opens: every edit and result redraws the page)
-// Two tabs, as the game's Legacy Select: Veteran Umamusume (yours) and Guests (the ones you can borrow: your borrow list,
-// then uma.moe's listings); a veteran keeps her number (her place in the whole list) in either. A wide dialog shows the
-// chosen one beside the list (`vSel`); a narrow one opens her popup.
-let poolStale = true,
-  vTab = 'own',
-  /** @type {string|null} */ vSel = null;
-const wideVets = () => matchMedia('(min-width: 760px)').matches;
-const inTab = (v) => !!v.borrowed === (vTab === 'bor');
-function setVTab(t) {
-  vTab = t;
-  for (const x of ['own', 'bor']) $(`v-tab-${x}`).setAttribute('aria-selected', String(x === t));
-  $('vets').setAttribute('aria-labelledby', `v-tab-${t}`);
-  renderPool();
-}
-// the list's orders: the order added (uma.moe's listings in uma.moe's order), how many targets she carries (the
-// default; ties in the order added), her rank; each starts as the menu says and picking the chosen one again reverses
-// it (as the umas' and cards' sort menus)
-/** @type {Record<string, [string, string, (v: import('./vets.js').Veteran, i: number) => number]>} */
-const VSORTS = {
-  no: ['Added', 'In the order they were added to this page (uma.moe’s: in its own order)', (_v, i) => -i],
-  tg: [
-    'Targets',
-    'The most targets she carries first',
-    (v) => state.targets.filter((t) => v.sparks?.[t.group] > 0).length,
-  ],
-  rank: ['Rank', 'The highest career rank first', (v) => v.rank || 0],
-};
-let vSort = 'tg',
-  vRev = false;
-function paintVSort() {
-  const arrow = vRev ? '↑' : '↓',
-    b = $('vs');
-  b.textContent = `${VSORTS[vSort][0]} ${arrow}`;
-  b.title = VSORTS[vSort][1] + (vRev ? ', reversed' : '');
-  b.setAttribute('aria-label', `${b.textContent}, order veterans`);
-  for (const x of $('vs-menu').querySelectorAll('button')) {
-    const on = x.dataset.k === vSort;
-    x.setAttribute('aria-checked', String(on));
-    const [name, hint] = VSORTS[must(x.dataset.k, 'a menu item names its key')];
-    x.textContent = name + (on ? ` ${arrow}` : '');
-    x.title = on ? 'Click to reverse' : hint;
-  }
-}
-function initVSort() {
-  for (const k of Object.keys(VSORTS)) {
-    const x = el('button', '', VSORTS[k][0]);
-    x.type = 'button';
-    x.setAttribute('role', 'menuitemradio');
-    x.dataset.k = k;
-    $('vs-menu').appendChild(x);
-  }
-  wireMenu('vs', (k) => {
-    vRev = k === vSort && !vRev;
-    vSort = k;
-    drawPool();
-  });
-}
-function renderPool() {
+// The veterans dialog's list and pane are career/view/Pool.tsx's; around them, after an edit of the veterans: the tabs'
+// counts, the uma.moe button, the setup's fold
+function paintVetsBar() {
   // the first veterans arriving fold the setup (as a reload with veterans does), unless you folded or opened it
   if (!folded && vets.length) {
     /** @type {string | null} */
@@ -1975,88 +1844,16 @@ function renderPool() {
   const guests = vets.filter((v) => v.borrowed).length;
   $('v-tab-own').textContent = `Veteran Umamusume · ${vets.length - guests}`;
   $('v-tab-bor').textContent = `Guests · ${guests}`;
-  if (!$dialog('set-vets').open) {
-    poolStale = true;
-    return;
-  }
-  drawPool();
 }
-// the cards drawn last, by veteran: one whose record, number, parent tab and the targets are as they were is kept, so an
-// edit or a tab switch builds only the cards that changed (300 veterans are about 1,900 elements)
-/** @type {Map<string, {sig: string, card: HTMLElement}>} */
-const poolCards = new Map();
-/** @param {import('./vets.js').Veteran} v @param {number} i */
-function poolCard(v, i) {
-  const sig = JSON.stringify([v, i, plan.parents.indexOf(v.id), state.targets]),
-    kept = poolCards.get(v.id);
-  if (kept?.sig === sig) return kept.card;
-  const card = vetCardEl(v, i);
-  poolCards.set(v.id, { sig, card });
-  return card;
-}
-// the chosen one's mark (beside the list on a wide dialog)
-function markSel() {
-  const selId = `vet-${idxOf(vSel)}`;
-  for (const c of $('vets').querySelectorAll('.umcell')) {
-    const on = c.id === selId;
-    c.classList.toggle('sel', on);
-    c.setAttribute('aria-current', String(on && wideVets()));
-  }
-}
-function drawPane() {
-  const pane = $('v-pane');
-  pane.textContent = '';
-  if (vSel && wideVets()) {
-    const h = el('h4', 'vptitle');
-    pane.appendChild(h);
-    h.textContent = veteranView(vSel, pane) || '';
-  }
-}
-function drawPool() {
-  const box = $('vets');
-  poolStale = false;
-  paintVSort();
-  const by = VSORTS[vSort][2],
-    sign = vRev ? -1 : 1,
-    shown = vets
-      .map((v, i) => /** @type {[import('./vets.js').Veteran, number]} */ ([v, i]))
-      .filter(([v]) => inTab(v))
-      .sort(([a, i], [b, j]) => sign * (by(b, j) - by(a, i)));
-  // Guests: your borrow list, then uma.moe's listings, each under its heading
-  /** @type {[string, [import('./vets.js').Veteran, number][]][]} */
-  const groups =
-    vTab === 'own'
-      ? [['', shown]]
-      : [
-          ['Borrow list', shown.filter(([v]) => v.src !== 'umamoe')],
-          ['uma.moe', shown.filter(([v]) => v.src === 'umamoe')],
-        ];
-  const nodes = [];
-  for (const [head, list] of groups) {
-    if (!list.length) continue;
-    if (head) nodes.push(el('p', 'vsec', head));
-    for (const [v, i] of list) nodes.push(poolCard(v, i));
-  }
-  box.replaceChildren(...nodes);
-  const ids = new Set(vets.map((v) => v.id));
-  for (const id of poolCards.keys()) if (!ids.has(id)) poolCards.delete(id);
-  if (!shown.length)
-    box.innerHTML =
-      vTab === 'own'
-        ? '<p class="hint">None yet. Import umadump\'s trained_chara_data.json, or make one with Choose parent.</p>'
-        : '<p class="hint">None yet. Import umadump\'s rental_chara_data.json, mark a veteran Guest, or Borrow from uma.moe beside Next career.</p>';
-  // the one beside the list: the chosen one while she is in this tab, else the first shown
-  if (!shown.some(([v]) => v.id === vSel)) vSel = shown[0]?.[0].id ?? null;
-  markSel();
-  drawPane();
-}
-// redraw everything, keeping the keyboard focus on the same control (every edit redraws)
+// redraw everything, keeping the keyboard focus on the same control (every edit redraws); the node popup refills after
+// (`drawn`)
+const drawn = signal(0);
 function renderAll() {
   keepFocus(() => {
     renderTree();
     renderResults();
-    renderPool();
   });
+  drawn.value++;
 }
 // a redraw that keeps the focus on the element of the same key (`data-k`) where it is drawn again
 /** @param {() => void} draw */
@@ -2108,6 +1905,7 @@ function initSettings() {
     syncListings(); // a changed target set: its listings (kept, or one request)
     schedule();
     renderAll();
+    poolChanged();
     paintFold();
   });
 }
@@ -2305,6 +2103,7 @@ document.addEventListener('click', (e) => {
 }); // a backdrop click closes
 loadData().then(
   async () => {
+    mountNode({ drawn, fill: nodeContent, closed: nodeClosed });
     initSettings();
     initPopover();
     // uma.moe's listings for the targets, from the kept answer, before the first search (a request otherwise)
@@ -2329,6 +2128,8 @@ loadData().then(
       }
       schedule();
       renderAll();
+      paintVetsBar();
+      poolChanged();
     });
     for (const x of ['vets', 'new', 'auto']) $(`vp-tab-${x}`).onclick = () => vpTab(x);
     $input('vp-filter').oninput = () => filterUmas($('vp-umas'), $input('vp-filter').value);
@@ -2352,28 +2153,21 @@ loadData().then(
     $('paste-load').onclick = () => {
       if (importText($textarea('paste-text').value)) $dialog('paste-dlg').close();
     };
-    $('v-toggle').onclick = () => {
-      if (poolStale) drawPool();
-      $dialog('set-vets').showModal();
-    };
-    // however the dialog opens, its cards are drawn before it paints (a mutation callback runs before the next frame)
-    new MutationObserver(() => {
-      if ($dialog('set-vets').open && poolStale) drawPool();
-    }).observe($dialog('set-vets'), { attributes: true, attributeFilter: ['open'] });
+    initPool({ vets, plan, targets: () => state.targets, openNode, veteranView });
     $('v-clear').onclick = () => {
       // the open tab's veterans
       // (uma.moe's listings stay, unless one is a chosen parent: they are its answer for the targets, not yours)
-      const gone = (v) => inTab(v) && (v.src !== 'umamoe' || plan.parents.includes(v.id)),
+      const tab = vetsTab(),
+        gone = (v) => !!v.borrowed === (tab === 'bor') && (v.src !== 'umamoe' || plan.parents.includes(v.id)),
         n = vets.filter(gone).length,
-        what = vTab === 'own' ? `${n} of your veterans` : `${n} borrowed veteran${n === 1 ? '' : 's'}`;
+        what = tab === 'own' ? `${n} of your veterans` : `${n} borrowed veteran${n === 1 ? '' : 's'}`;
       if (n && confirm(`Remove all ${what}?`)) {
         clearVets(gone);
         $('v-msg').textContent = `Removed ${what}.`;
       }
     };
-    for (const x of ['own', 'bor']) $(`v-tab-${x}`).onclick = () => setVTab(x);
-    initVSort();
     renderAll();
+    paintVetsBar();
     await preloadAnswer(); // the last visit's answer, when nothing changed since: drawn at once
     search();
   },

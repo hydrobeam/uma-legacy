@@ -65,7 +65,7 @@ export function skillIcon(group, gold = false) {
   return image;
 }
 // two letters for a portrait without art: the first letters of her first two words, else the first two of her one word
-function initials(name) {
+export function initials(name) {
   const words = name
     .replace(/[^A-Za-z .]/g, '')
     .split(/[ .]+/)
