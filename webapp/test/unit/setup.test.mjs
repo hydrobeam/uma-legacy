@@ -1,4 +1,4 @@
-// The shared setup editors (ui/Presets, ui/Targets) on a fake document (fakedom.mjs), bundled with esbuild as the page
+// The shared setup editors (ui/Presets, ui/Targets) on happy-dom's document, bundled with esbuild as the page
 // bundles them: what each edit stores. Presets by name: Load, Overwrite, a rename, a rename onto a taken name, Delete
 // after a rename (review-11a F1); a target's removal and where the focus goes after it; the rank's ? keeps its click
 // (F2); a sort menu over a stored value it doesn't list (F3); two presets of one name in storage (F4); the
@@ -6,7 +6,6 @@
 // picks of a pill row in one task (careerrun's edit and its undoing) both count.
 // node --test 'test/unit/*.test.*' (in webapp)
 import './fakepage.mjs';
-import './fakedom.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import fs from 'node:fs';
@@ -14,8 +13,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
+import { GlobalRegistrator } from '@happy-dom/global-registrator';
+
+GlobalRegistrator.register({ width: 1440, height: 900 });
+document.documentElement.className = 'game'; // (the planner pages' class)
 
 const WEBAPP = fileURLToPath(new URL('../..', import.meta.url));
+// the editors' mount points: the setup partials both planner pages hold (vite.config.mjs fills them in)
+const SETUP_PARTIALS = ['era', 'scen', 'rank', 'enh', 'skills', 'dlgumas', 'dlgcards'];
+document.body.innerHTML = SETUP_PARTIALS.map((p) =>
+  fs.readFileSync(path.join(WEBAPP, 'partials', `${p}.hbs`), 'utf8'),
+).join('');
 const built = await esbuild.build({
   stdin: {
     contents: `
@@ -81,24 +89,12 @@ const mount = (id) => {
 const settle = async () => {
   for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
 };
-const descendants = (root) => {
-  const out = [];
-  const walk = (n) => {
-    for (const c of n.childNodes)
-      if (c.nodeType === 1) {
-        out.push(c);
-        walk(c);
-      }
-  };
-  walk(root);
-  return out;
-};
-const byId = (root, id) => descendants(root).find((e) => e.id === id || e.attributes.id === id);
+const byId = (root, id) => root.querySelector(`#${id}`);
 const text = (e) => e.textContent.trim();
-// typing into a box: its value, then the input event Preact listens for
+// typing into a box: its value, then the input event
 const type = (box, value) => {
   box.value = value;
-  for (const f of box.listeners.input || []) f.call(box, { type: 'input', target: box, currentTarget: box });
+  box.dispatchEvent(new Event('input', { bubbles: true }));
 };
 
 test('presets by name: Load, a rename onto a taken name (refused), a rename, Overwrite and Delete of the renamed one', async () => {
@@ -109,18 +105,15 @@ test('presets by name: Load, a rename onto a taken name (refused), a rename, Ove
     ],
     targets: [{ group: 20159 }],
   });
-  const root = document.createElement('div');
+  const root = document.body.appendChild(document.createElement('div'));
   render(h(PresetDialogs, {}), root);
   openPresets();
   await settle();
-  const rows = () => root.querySelectorAll('div.prow');
-  const row = (name) => rows().find((r) => r.attributes['aria-label'] === name);
-  const button = (name, label) =>
-    row(name)
-      .querySelectorAll('button.btn')
-      .find((b) => text(b) === label);
+  const rows = () => [...root.querySelectorAll('div.prow')];
+  const row = (name) => root.querySelector(`div.prow[aria-label="${name}"]`);
+  const button = (name, label) => [...row(name).querySelectorAll('button.btn')].find((b) => text(b) === label);
   assert.deepEqual(
-    rows().map((r) => r.attributes['aria-label']),
+    rows().map((r) => r.getAttribute('aria-label')),
     ['A', 'B'],
   );
   // Load B: its skills become the targets, the presets stay as they were
@@ -179,9 +172,9 @@ test("a target's × removes its own place (one skill held twice too); the focus 
   mount('skills-panel');
   await settle();
   const box = document.getElementById('skills-panel');
-  const removes = () => box.querySelectorAll('button.x');
+  const removes = () => [...box.querySelectorAll('button.x')];
   const groups = () => stored().targets.map((t) => t.group);
-  const labels = () => removes().map((b) => b.attributes['aria-label']);
+  const labels = () => removes().map((b) => b.getAttribute('aria-label'));
   assert.deepEqual(labels(), ['Remove Skill 20049', 'Remove Skill 20159', 'Remove Skill 20049', 'Remove Skill 20166']);
   removes()[1].click(); // the second place
   await settle();
@@ -205,30 +198,28 @@ test("the lineage rank's ? opens its note and stops its click there (other popup
   await settle();
   const box = document.getElementById('rank-ctl'),
     question = byId(box, 'rank-q');
-  let stopped = false;
-  const click = { type: 'click', target: question, currentTarget: question, preventDefault: () => undefined };
-  for (const f of question.listeners.click || [])
-    f.call(question, {
-      ...click,
-      stopPropagation: () => {
-        stopped = true;
-      },
-    });
+  let reached = false;
+  const outside = () => {
+    reached = true;
+  };
+  document.addEventListener('click', outside);
+  question.click();
+  document.removeEventListener('click', outside);
   await settle();
-  const expanded = question.attributes['aria-expanded'];
+  const expanded = question.getAttribute('aria-expanded');
   render(null, box); // (first: a failure here leaves no control drawn for the tests after)
   assert.equal(expanded, 'true', 'the note is open');
-  assert.ok(stopped, 'the click went no further than the ?');
+  assert.ok(!reached, 'the click went no further than the ?');
 });
 
 test('a sort menu given a value it does not list (a hand-edited storage) shows its first item instead of throwing', async () => {
   fresh({ rsort: 'bogus', rdir: 'sideways' });
-  const root = document.createElement('div');
+  const root = document.body.appendChild(document.createElement('div'));
   // the umas' menu: read as the roster orders by it (release, ascending)
   render(h(SettingsSort, { prefix: 'r', id: 'rs', what: 'sort umas' }), root);
   await settle();
   assert.equal(text(byId(root, 'rs')), 'Release ↑');
-  assert.equal(byId(root, 'rs').attributes.title, 'Sorted oldest first');
+  assert.equal(byId(root, 'rs').title, 'Sorted oldest first');
   const items = [
     { k: 'a', label: 'First', hint: '' },
     { k: 'b', label: 'Second', hint: '' },
@@ -341,23 +332,14 @@ test('two picks of the rank in one task (an edit and its undoing, before any red
   mount('rank-ctl');
   await settle();
   const box = document.getElementById('rank-ctl'),
-    pill = (v) => box.querySelectorAll('button').find((b) => b.attributes['data-v'] === v);
+    pill = (v) => box.querySelector(`button[data-v="${v}"]`);
   const written = [],
     stop = S.fields.rank.subscribe((rank) => written.push(rank));
   pill('0.20,0.70,0.10').click();
   pill('0.50,0.45,0.05').click();
   await settle();
   const group = byId(box, 'rank'),
-    key = (k) => {
-      for (const f of group.listeners.keydown || [])
-        f.call(group, {
-          type: 'keydown',
-          key: k,
-          target: group,
-          currentTarget: group,
-          preventDefault: () => undefined,
-        });
-    };
+    key = (k) => group.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
   key('ArrowRight');
   key('ArrowRight'); // (two pills: round to where it was)
   await settle();

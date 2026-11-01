@@ -1,10 +1,9 @@
-// The veterans' views and editors on a fake document (fakedom.mjs), bundled with esbuild as the page bundles them: the
+// The veterans' views and editors on happy-dom's document, bundled with esbuild as the page bundles them: the
 // spark editor (ui/Sparks under ui/InspView) shows each edit of the store's draft, a new record each (review-8c 1); change uma commits the uma at the pick, saved and
 // seen by the page's effects once the skills prompt is gone (the search held while it is open, review-10 1), and the
 // prompt dismissed keeps her sparks (review-8c 7).
 // node --test 'test/unit/*.test.*' (in webapp)
 import './fakepage.mjs';
-import { dispatchToDocument } from './fakedom.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import fs from 'node:fs';
@@ -13,6 +12,10 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
 import { memory } from './fakes.mjs';
+import { GlobalRegistrator } from '@happy-dom/global-registrator';
+
+GlobalRegistrator.register({ width: 1440, height: 900 });
+document.documentElement.className = 'game'; // (the planner pages' class)
 
 const WEBAPP = fileURLToPath(new URL('../..', import.meta.url));
 const built = await esbuild.build({
@@ -65,8 +68,7 @@ const settle = async () => {
 const node = (chara, sparks = {}) => ({ chara, sparks, pinks: {}, blues: {}, greens: {}, wins: [] });
 const T = 20159; // a target skill of the fake page's data
 // her chip's label for target T in the drawn card
-const chipLabel = (root) =>
-  root.querySelectorAll('button').find((b) => b.attributes['data-k'] === `sim:s${T}`)?.attributes['aria-label'];
+const chipLabel = (root) => root.querySelector(`button[data-k="sim:s${T}"]`)?.getAttribute('aria-label');
 
 test("the spark editor shows each edit of the store's draft (a new record each)", async () => {
   // the store's draft: her card reads the signal and hands InspView her record
@@ -75,14 +77,11 @@ test("the spark editor shows each edit of the store's draft (a new record each)"
     const d = vs.draft.value;
     return d && h(InspView, { nd: d, parents: d.parents, k: 'sim', at: vs.draftRef(), targets: [T] });
   };
-  const root = document.createElement('div');
+  const root = document.body.appendChild(document.createElement('div'));
   render(h(Card, null), root);
   await settle();
   assert.match(chipLabel(root), /, 1 star\. Click for 2$/);
-  root
-    .querySelectorAll('button')
-    .find((b) => b.attributes['data-k'] === `sim:s${T}`)
-    .click();
+  root.querySelector(`button[data-k="sim:s${T}"]`).click();
   await settle();
   assert.match(chipLabel(root), /, 2 stars\. Click for 3$/, "the store's draft");
 });
@@ -93,23 +92,19 @@ test('her unique spark added back, or a first pink set: the bar is the same butt
     const d = vs.draft.value;
     return d && h(InspView, { nd: d, parents: d.parents, k: 'sim', at: vs.draftRef(), targets: [T] });
   };
-  const root = document.createElement('div');
+  const root = document.body.appendChild(document.createElement('div'));
   render(h(Card, null), root);
   await settle();
-  const bar = (k) => root.querySelectorAll('button').find((b) => b.attributes['data-k'] === k);
-  const attached = (n) => {
-    while (n && n !== root) n = n.parentNode;
-    return n === root;
-  };
+  const bar = (k) => root.querySelector(`button[data-k="${k}"]`);
   const none = bar('sim:green');
   assert.match(none.textContent, /\+ Unique spark/);
   none.focus();
   none.click(); // her unique at 2 stars
   await settle();
-  assert.match(bar('sim:green').attributes['aria-label'], /\(unique\), 2 stars/);
+  assert.match(bar('sim:green').getAttribute('aria-label'), /\(unique\), 2 stars/);
   // (identity as a boolean: an assertion message inspecting two Preact-owned nodes walks their whole graphs)
   assert.ok(bar('sim:green') === none, "the unique's button is the one that had the focus");
-  assert.ok(attached(document.activeElement), 'the focus is still in the card');
+  assert.ok(root.contains(document.activeElement), 'the focus is still in the card');
   // a first pink (the colour picker's pick lands; its close gives the focus back to its opener, which must be there)
   const pink = bar('sim:pink');
   vs.draftRef().edit(() => ({ pinks: { 11: 1 } }));
@@ -118,15 +113,9 @@ test('her unique spark added back, or a first pink set: the bar is the same butt
 });
 
 // an element of the drawn editors by its id
-const byId = (root, id) => {
-  for (const c of root.childNodes) {
-    const found = c.nodeType === 1 && (c.attributes.id === id ? c : byId(c, id));
-    if (found) return found;
-  }
-  return undefined;
-};
+const byId = (root, id) => root.querySelector(`#${id}`);
 // (an uma's button: her portrait, then her name)
-const button = (root, text) => root.querySelectorAll('button').find((b) => b.textContent.endsWith(text));
+const button = (root, text) => [...root.querySelectorAll('button')].find((b) => b.textContent.endsWith(text));
 test('change uma: the uma is hers at the pick (saved, the page told once the prompt is gone); the prompt dismissed keeps her sparks', async () => {
   const storage = memory(),
     frames = [];
@@ -140,7 +129,7 @@ test('change uma: the uma is hers at the pick (saved, the page told once the pro
   const stop = on([vs.vets, searchHeld], (_list, held) => {
     if (!held) woke++;
   });
-  const editors = document.createElement('div');
+  const editors = document.body.appendChild(document.createElement('div'));
   render(h(VetEditors, null), editors);
   changeUma(vs.vetRef('a'), 'Veteran #1');
   await settle();
@@ -150,6 +139,7 @@ test('change uma: the uma is hers at the pick (saved, the page told once the pro
   const ask = byId(editors, 'ask-dlg');
   assert.equal(ask.open, true, 'the skills prompt asks');
   ask.close(); // Escape: no choice
+  await settle(); // (a browser fires the dialog's close as a task of its own)
   for (const f of frames.splice(0)) f();
   const v = vs.vetById('a');
   assert.deepEqual([v.chara, 'outfit' in v, v.sparks], [1002, false, { [T]: 2 }], 'her uma changed, her sparks kept');
@@ -182,7 +172,7 @@ test("Try a run's legacies: a place no veteran holds any more (the list changed 
   );
   vs.setDraft({ ...node(1001), borrowed: false, parents: [node(1002), node(1003)] });
   const spec = { d: vs.draft.peek(), r: career, races: [], raceName: String, targets: [T], legacies, numberOf };
-  const root = document.createElement('div');
+  const root = document.body.appendChild(document.createElement('div'));
   render(h(Details, { spec, actions: null, winsButton: null }), root);
   await settle();
   assert.equal(root.querySelectorAll('div.udleg').length, 1, 'her card draws, with the one legacy');
@@ -205,27 +195,32 @@ test("the search is held while a pool veteran's G1 wins window or a skills promp
 });
 
 test('a second "+" pressed while a "+" list is open moves the list there (review-11b 1)', async () => {
-  const host = document.createElement('div'),
-    first = document.createElement('button'),
-    second = document.createElement('button');
+  const host = document.body.appendChild(document.createElement('div'));
+  // a "+" opens the list on its click (ui/Sparks.tsx)
+  const plus = () => {
+    const btn = document.body.appendChild(document.createElement('button'));
+    btn.addEventListener('click', () => openAdd(btn, vs.vetRef('a')));
+    return btn;
+  };
+  const first = plus(),
+    second = plus();
   render(h(AddList, { host }), host);
-  openAdd(first, vs.vetRef('a'));
+  first.click();
   await settle(); // drawn, its listeners on
   // the second "+": its own handler, then the click reaches the document
-  openAdd(second, vs.vetRef('a'));
-  dispatchToDocument('click', { target: second });
+  second.click();
   await settle();
   assert.ok(addOpen.peek()?.btn === second, 'the list is on the second "+"');
   assert.equal(host.hidden, false, 'and shown');
   // a press elsewhere closes it
-  dispatchToDocument('click', { target: document.createElement('div') });
+  document.body.appendChild(document.createElement('div')).click();
   await settle();
   assert.ok(addOpen.peek() === null, 'closed by a press outside');
 });
 
 // review-11b 2: the editors' writes and releases that no check covered (sabotages M1, M3, M6)
 test("Escape on a pool veteran's G1 wins window releases the search hold (M1)", async () => {
-  const editors = document.createElement('div');
+  const editors = document.body.appendChild(document.createElement('div'));
   render(h(VetEditors, null), editors);
   openWins(vs.vetRef('a'), 'Veteran #1');
   await settle();
@@ -238,7 +233,7 @@ test("Escape on a pool veteran's G1 wins window releases the search hold (M1)", 
 });
 test('a win moved to another turn of its race ("moves here") is written once, at the new turn (M3)', async () => {
   const edits = [],
-    root = document.createElement('div');
+    root = document.body.appendChild(document.createElement('div'));
   render(
     h(WinsEditor, {
       races: [{ ix: 0, name: 'Arima Kinen', turns: [47, 71] }],
@@ -249,17 +244,14 @@ test('a win moved to another turn of its race ("moves here") is written once, at
     root,
   );
   await settle();
-  root
-    .querySelectorAll('button')
-    .find((b) => b.attributes['data-k'] === 'add:71')
-    .click();
+  root.querySelector('button[data-k="add:71"]').click();
   await settle();
   root.querySelectorAll('button.wpick')[0].click();
   assert.deepEqual(edits, [{ wins: [0], winAt: { 0: 71 } }]);
 });
 test('a colour bar picked keeps her spark of that colour at its stars (M6)', async () => {
   vs.editVet('a', () => ({ pinks: { 11: 3 } }));
-  const editors = document.createElement('div');
+  const editors = document.body.appendChild(document.createElement('div'));
   render(h(VetEditors, null), editors);
   openColour(vs.vetRef('a'), 'pink');
   await settle();
@@ -268,7 +260,7 @@ test('a colour bar picked keeps her spark of that colour at its stars (M6)', asy
 });
 
 test('a throw while the wins window or the skills prompt is open: it goes, the hold is released, a search runs (review-11b 3)', async () => {
-  const editors = document.createElement('div'),
+  const editors = document.body.appendChild(document.createElement('div')),
     reported = [];
   globalThis.reportError = (e) => reported.push(e);
   render(h(VetEditors, null), editors);
@@ -304,7 +296,7 @@ test('a throw while the wins window or the skills prompt is open: it goes, the h
 
 // review-11b 6: a closed editor draws nothing, and one whose node is gone closes, the wins window as the colour picker
 test('the uma picker closed draws no list; a G1 wins window whose draft is replaced closes', async () => {
-  const editors = document.createElement('div');
+  const editors = document.body.appendChild(document.createElement('div'));
   render(h(VetEditors, null), editors);
   openUmaPicker('Which uma?', () => undefined);
   await settle();

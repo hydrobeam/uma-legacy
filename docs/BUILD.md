@@ -60,6 +60,7 @@ The page's packages (`webapp/package.json`; build and dev tools pinned exactly),
 | `binaryen` | `wasm-opt` (`wasm`) |
 | `esbuild` | bundles for `test/samecode.mjs` (and `static.mjs`'s load-order check through it; its metafiles give `static.mjs` each page's modules) and the node tests that draw views; the page itself is built by Vite |
 | `knip` 6.44.1 | dead exports, files and dependencies, imports of nothing (`lint`), in place of `static.mjs`'s dead-export and import checks |
+| `@happy-dom/global-registrator` 21.0.4 | the node tests' document (`webapp/test/unit/`): happy-dom's window as node's globals, in place of the hand-written `fakedom.mjs` |
 | `dependency-cruiser` 18.7.0, `@swc/core` 1.16.21 | the module layers (`lint`), in place of `static.mjs`'s layer, store-reach and components-stay-views checks; swc parses the TypeScript, as dependency-cruiser reads it through TypeScript's JavaScript API, which TypeScript 7 no longer has |
 | `purgecss` 8.0.0 | dead CSS (`lint`, `test/deadcss.mjs`), in place of `static.mjs`'s |
 | `playwright` (pinned) | the browser suite, `icons.mjs`, `runners` |
@@ -247,8 +248,11 @@ Never `x!` (Biome bans it), an `as` cast past the check, or `?? 0` on what must 
 ## Tests
 
 - **Solver:** `cargo test --release` in `pkg/loopopt` (part of `native`); `./build.sh lint` for formatting and clippy.
-- **Page logic in node:** `node --test 'test/unit/*.test.*'` in `webapp` (part of `lint` and the pre-commit hook; well
-  under a second) runs the page's node tests, `webapp/test/unit/`.
+- **Page logic in node:** `node --test 'test/unit/*.test.*'` in `webapp` (part of `lint` and the pre-commit hook; about
+  a second) runs the page's node tests, `webapp/test/unit/`. Those that draw views or run editors register happy-dom's
+  window as node's globals (`@happy-dom/global-registrator`) before the page's modules load, and mount them in its
+  document as the page does; `fakepage.mjs` supplies a small made-up game's data. happy-dom fires a dialog's `close`
+  at once where a browser queues it, so a test lets tasks run after a close before it reads what the close did.
 - **Same code:** `node test/samecode.mjs [BASE [HEAD]]` in `webapp` (BASE defaults to `HEAD`, HEAD to the working tree;
   under a second) says whether a change to the page's code only moved or renamed it: each page bundle and the worker,
   built unminified without JSDoc type comments and read as tokens (comments and line breaks dropped), must have the

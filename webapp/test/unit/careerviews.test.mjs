@@ -1,9 +1,8 @@
-// The career page's views on a fake document (fakedom.mjs), bundled with esbuild as the page bundles them: a view that
+// The career page's views on happy-dom's document, bundled with esbuild as the page bundles them: a view that
 // throws while drawing (review-8c 3: the render guard, ui/RenderGuard.tsx under career/view/Guard.tsx); the veterans
 // dialog's lists and pane (review-10 2-4).
 // node --test 'test/unit/*.test.*' (in webapp)
 import './fakepage.mjs';
-import './fakedom.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import fs from 'node:fs';
@@ -12,6 +11,10 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
 import { memory } from './fakes.mjs';
+import { GlobalRegistrator } from '@happy-dom/global-registrator';
+
+GlobalRegistrator.register({ width: 1440, height: 900 });
+document.documentElement.className = 'game'; // (the planner pages' class)
 
 const WEBAPP = fileURLToPath(new URL('../..', import.meta.url));
 const built = await esbuild.build({
@@ -74,7 +77,7 @@ test('a node popup that throws while drawing: the dialog stays, the status line 
     if (said.length < 4) loadFails(text);
   });
   globalThis.reportError = (e) => reported.push(e);
-  const root = document.createElement('div');
+  const root = document.body.appendChild(document.createElement('div'));
   render(h(NodeDialog, null), root);
   openNode({ kind: 'v', id: 'bad' });
   await settle();
@@ -108,9 +111,9 @@ test('the node popup closes before the parent picker opens (two writes), and Rem
       parents: [node(1003), node(1004)],
     })),
   );
-  const root = document.createElement('div');
+  const root = document.body.appendChild(document.createElement('div'));
   render(h(NodeDialog, null), root);
-  const button = (text) => root.querySelectorAll('button').find((b) => b.textContent === text);
+  const button = (text) => [...root.querySelectorAll('button')].find((b) => b.textContent === text);
   // Choose parent: the popup closes, then the picker opens (a batch would run the picker's effects first: the picker
   // would open over the popup and give the focus back to the popup's button, which is gone by then)
   openNode({ kind: 'p', k: 0 });
@@ -140,8 +143,6 @@ test('the node popup closes before the parent picker opens (two writes), and Rem
   for (const f of frames.splice(0)) f();
 });
 
-// every element under `root`, depth first
-const elements = (root) => root.childNodes.filter((c) => c.nodeType === 1).flatMap((c) => [c, ...elements(c)]);
 test('the veterans dialog: a selection draws two cards, one list is #vets, each tab names its own list, closed no pane', async () => {
   const frames = [];
   vs.initVets({ storage: () => memory(), hidden: () => false, afterFrame: (f) => frames.push(f) });
@@ -154,8 +155,8 @@ test('the veterans dialog: a selection draws two cards, one list is #vets, each 
       parents: [node(1002), node(1003)],
     })),
   );
-  const tabs = document.createElement('div'),
-    body = document.createElement('div');
+  const tabs = document.body.appendChild(document.createElement('div')),
+    body = document.body.appendChild(document.createElement('div'));
   render(h(PoolHead, null), tabs);
   render(h(PoolBody, null), body);
   openPool();
@@ -171,13 +172,11 @@ test('the veterans dialog: a selection draws two cards, one list is #vets, each 
   await settle();
   options.diffed = diffed;
   assert.equal(cards, 2, 'the one chosen before and the one chosen now');
-  const withId = (id) => elements(body).filter((e) => e.attributes.id === id);
+  const withId = (id) => body.querySelectorAll(`#${id}`);
   assert.equal(withId('vets').length, 1, 'one list is #vets');
   assert.equal(withId('vets-bor').length, 1, "the Guests list, hidden, by its tab's name");
   assert.deepEqual(
-    elements(tabs)
-      .filter((b) => b.attributes.role === 'tab')
-      .map((b) => [b.attributes.id, b.attributes['aria-controls']]),
+    [...tabs.querySelectorAll('[role="tab"]')].map((b) => [b.id, b.getAttribute('aria-controls')]),
     [
       ['v-tab-own', 'vets'],
       ['v-tab-bor', 'vets-bor'],
@@ -198,7 +197,7 @@ test('the veterans dialog: a selection draws two cards, one list is #vets, each 
 test('a popup whose content throws reports it once per opening: its close draws nothing again (review-11b 4)', async () => {
   const reported = [];
   globalThis.reportError = (e) => reported.push(e);
-  const root = document.createElement('div');
+  const root = document.body.appendChild(document.createElement('div'));
   render(h(OddsDialog, null), root);
   openOdds({ title: 'Odds', n: 2, ex: null, pAll: 0.1, expected: 1 }); // (a malformed spec: no chances)
   await settle();
@@ -217,14 +216,14 @@ test('the race schedule, after it failed to draw, draws on its next opening (rev
   globalThis.reportError = (e) => reported.push(e);
   sayRenderErrors(() => undefined);
   // into its mount point (the career entry's guard, with the schedule's openings as its subject)
-  const root = document.createElement('div');
+  const root = document.body.appendChild(document.createElement('div'));
   render(h(Guard, { what: 'The race schedule', also: schedOpened }, h(ScheduleDialog, null)), root);
   const member = { k: 0, id: 1001, name: 'Uma A', outfits: [] };
   openSched({ members: [member], schedule: null }); // (malformed: no schedule)
   await settle();
   const dialog = root.querySelector('dialog');
   assert.equal(reported.length, 1, 'the throw reported');
-  const close = dialog.querySelectorAll('button').find((b) => b.textContent === 'Close');
+  const close = [...dialog.querySelectorAll('button')].find((b) => b.textContent === 'Close');
   assert.ok(close !== undefined, 'its heading and Close stay');
   close.click();
   await settle();
