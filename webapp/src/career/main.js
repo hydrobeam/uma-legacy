@@ -45,8 +45,7 @@ import { initTargets, renderTargets } from '../targets.js';
 import { vets, plan, chosen, onVetsChange, changed, persist, clearVets, dropMissing, filterUmas } from '../vets.js';
 import { initUmamoe, syncListings } from '../umamoesetup.js';
 import { renderResults } from './view/Sections.js';
-import { placesKey, runKey, buildJob, chosenDropped, dropStaleChosen, baseKey, refBase, shown } from './job.js';
-import { jobKey, planKey } from './keys.js';
+import { placesKey, buildJob, chosenDropped, dropStaleChosen, baseKey, refBase, shown, runJob } from './job.js';
 import {
   outdateComparison,
   stopComparison,
@@ -56,26 +55,9 @@ import {
   keptPlan,
   reviseKeptPlan,
 } from './analysis.js';
-import {
-  answer,
-  answerFails,
-  dropAnswer,
-  keepAnswer,
-  keepSavedAnswer,
-  loadFails,
-  newPlanId,
-  planProgresses,
-  planStarts,
-  recallAnswer,
-  runEnds,
-  runEndsWith,
-  runView,
-  runWaits,
-  searchStarts,
-  showAnswer,
-  showKeptAnswer,
-} from './state.ts';
-import { checkComplete, checkPhase, run, progText, runJob, PLAN_NEXT } from './run.ts';
+import * as answerStore from './state.ts';
+import { dropAnswer, loadFails } from './state.ts';
+import { createRun } from './run.ts';
 import { tName } from './view/parts.js';
 import { paint } from './view/RunNote.js';
 import { renderTree } from './view/Tree.js';
@@ -91,184 +73,57 @@ import { must } from '../must.ts';
 /** @import { DeepReadonly } from '../store.ts' */
 
 // ---------- the run ----------
-// every change: redraw now, search again after a short pause (a change during a search stops it)
-function schedule() {
-  // an edit that leaves the job as it is (a preset saved or renamed, a setting changed and back) asks for the answer
-  // already coming or on show: a run under way goes on, and an answer on show stands (with her comparison, if one is
-  // running); a job that can't be built (`Blocked`) goes on as any other edit
-  /** @type {string | null} */
-  let key = null;
-  try {
-    key = runKey(buildJob(settings.value));
-  } catch {
-    /* the search says why */
-  }
-  const { last, planState } = answer.value;
-  if (
-    key !== null &&
-    (run.inflight
-      ? run.inflight === key
-      : !runView.value.searching && last && `${last.key}\n${last.plan}` === key && planState.state !== 'error')
-  )
-    return;
-  clearTimeout(run.timer);
-  run.id++;
-  run.inflight = null;
-  // only a job in flight is cut short: an idle worker keeps what it holds for the next jobs (the last search, every
-  // uma's best career, the proofs); during the pause before a search nothing runs, so a second edit kills nothing
-  if (engineBusy()) restartEngine();
-  // a comparison in flight is stopped with it: its panel goes back to idle, or a roll's quick figures stand unchecked
-  // (an answer that stands keeps her)
-  stopComparison();
-  runWaits(performance.now());
-  paint();
-  run.timer = setTimeout(search, 600);
-}
-
-// the answer the last visit drew, when it was for this setup (the solver's and data's fingerprints, the job, the places):
-// put among the answers kept (career/state.ts), so the first search draws it at once instead of planning (the solver is
-// deterministic for its job)
-async function preloadAnswer() {
-  let job;
-  try {
-    job = buildJob(settings.value);
-  } catch {
-    return;
-  }
-  const key = `${jobKey(job)}\n${placesKey()}`,
-    saved = await answerLoad(ERA);
-  if (saved?.key === `${stateKey()}\n${key}` && saved.value?.last) keepSavedAnswer(key, saved.value);
-}
-// A run: the search, then (with the trainee's place left to the planner) the plan, both on the one worker; the answer
-// is drawn once, at the end. Two solver jobs: the plan's reuses the search's (the solver keeps its last search, so the
-// plan job does none of that work again; a second job costs a few ms), and the page knows which phase is at work
-// without the solver reporting it. A newer edit stops a run in either phase (`runId`); nothing of it is drawn.
-async function search() {
-  const id = ++run.id;
-  outdateComparison();
-  let job;
-  try {
-    job = buildJob(settings.value);
-  } catch (e) {
-    endRun({
-      status: { kind: e.kind || 'error', text: e.message, act: e.act },
-      last: null,
-      planState: { state: 'none' },
-    });
-    return;
-  }
-  // edits that end where they started (a setting changed and back, a star clicked twice): the job is the one whose
-  // answer is on show (era, settings, veterans as the job carries them, and the same places), so it stands and nothing
-  // runs (her comparison, if the edits cut one short, is hers to start again); a failed plan makes it run again
-  const key = jobKey(job),
-    places = placesKey(),
-    answerKey = `${key}\n${places}`;
-  const { last, planState } = answer.value;
-  if (last && last.key === key && last.plan === places && planState.state !== 'error') {
-    runEnds();
-    clearInterval(run.tick);
-    renderAll();
-    paint();
-    resumeCheck(id);
-    return;
-  }
-  const hit = recallAnswer(answerKey);
-  if (hit) {
-    showKeptAnswer(hit);
-    const r = shown();
-    showAnalysis(r);
-    clearInterval(run.tick);
-    renderAll();
-    paint();
-    resumeCheck(id);
-    return;
-  }
-  run.inflight = answerKey;
-  searchStarts(performance.now());
-  clearInterval(run.tick);
-  run.tick = setInterval(paint, 1000);
-  paint();
-  const fail = (text) => {
-    answerFails(text);
-    clearAnalysis();
-  };
-  /** @type {DeepReadonly<PlanDone>|null} the plan to check once it is shown (`checkPhase`) */
-  let checkFor = null;
-  try {
-    const m = await runJob(job);
-    if (id !== run.id) return;
-    if ('error' in m.r) fail(`Not searched: ${m.r.error}`);
-    else {
-      const found = searchedText(m),
-        searched = searchStatus(m, found);
-      const best = m.r.results[0];
-      const planned = best && !plan.trainee ? await planPhase(id, job, found) : { state: 'none' };
-      if (planned === null) return; // a newer edit took over
-      // the answer: the plan's pick (the best odds when no plan ran or it failed), and the veteran you got, drawn once
-      // from it (a comparison on screen was for the old answer); a plan made becomes the reference (`refFor`)
-      showAnswer(
-        { status: searched, last: { r: m.r, job, key, plan: places }, planState: planned },
-        planned.state === 'done' ? { base: refBase(job), places: JSON.parse(places) } : null,
-      );
-      if (planned.state === 'done' && !planned.r.robust) checkFor = planned;
-      if (searched.kind === 'done' && planned.state !== 'error') {
-        keepAnswer(answerKey);
-        // kept across a reload too: the same setup draws it at once (`preloadAnswer`)
-        answerSave(ERA, `${stateKey()}\n${answerKey}`, answer.peek());
-      }
-      const r = shown();
-      showAnalysis(r);
-      if (best && !job.trainees.length && !job.fix.length) keepBaseline(baseKey(job), best);
-    }
-  } catch (e) {
-    if (id !== run.id) return;
-    fail(e.message);
-  }
-  runEnds();
-  run.inflight = null;
-  clearInterval(run.tick);
-  renderAll();
-  paint();
-  if (checkFor) checkPhase(checkDeps(id), checkFor);
-}
-// what the robustness check of run `id` needs of the page (career/run.ts `checkPhase`): its report shows in the plan's
-// table only, the tree and the veterans staying as they are (a redraw of the open veterans dialog under a click in
-// progress would lose the click, or land it on the dialog, which closes it); a plan Compare kept for the same job is the
-// same report, so it takes the check too (`reviseKeptPlan`)
-/** @type {(id: number) => import('./run.ts').CheckDeps} */
-const checkDeps = (id) => ({
-  runIsCurrent: () => id === run.id,
-  // (the engine posts the job, a copy: it writes nothing into it)
-  runCheck: (job) =>
-    Promise.race([runJob(/** @type {CareerJob} */ (job), undefined, true), nextKill().then(() => null)]),
-  redraw: () => {
-    keepFocus(renderResults);
-    paint();
+// The run machine (run.ts `createRun`), on this page: the solver, the clock, the answer store, the job of the
+// settings, veterans and places, the veteran analysis and the redraws. The status line and the answer are drawn from
+// the answer store's signals (career/state.ts) by these explicit redraws.
+const run = createRun({
+  engine: {
+    run: runJob,
+    busy: engineBusy,
+    restart: restartEngine,
+    nextKill,
+    saveState: engineSaveState,
+    key: stateKey,
   },
-  checked: (plan) => reviseKeptPlan(plan.job, plan.r),
+  clock: {
+    now: () => performance.now(),
+    setTimer: (f, ms) => setTimeout(f, ms),
+    every: (f, ms) => setInterval(f, ms),
+    clearTimer: (id) => clearTimeout(id),
+  },
+  store: answerStore,
+  page: {
+    job: () => buildJob(settings.peek()),
+    places: () => placesKey(),
+    trainee: () => plan.trainee,
+    refBase,
+    baseKey,
+    searched: searchStatus,
+    loadAnswer: () => answerLoad(ERA),
+    saveAnswer: (key, value) => answerSave(ERA, key, value),
+  },
+  analysis: {
+    outdate: outdateComparison,
+    stop: stopComparison,
+    show: showAnalysis,
+    clear: clearAnalysis,
+    keepBaseline,
+    keptPlan,
+    reviseKeptPlan,
+  },
+  view: {
+    shown,
+    paint,
+    drawAll: () => {
+      renderAll();
+      paint();
+    },
+    drawCheck: () => {
+      keepFocus(renderResults);
+      paint();
+    },
+  },
 });
-// an unfinished check of the plan on show, resumed where its answer is shown again (`checkPhase`; a check cut short by
-// an edit and its undoing, or by a newer answer): nothing where it is done or unavailable
-function resumeCheck(id) {
-  const { planState } = answer.value;
-  if (planState.state !== 'done' || planState.r.check_unavailable || checkComplete(planState.r.robust)) return;
-  checkPhase(checkDeps(id), planState);
-}
-// a run that ends without searching (the job can't be built): its message, no answer
-/** @param {Answer} next */
-function endRun(next) {
-  runEndsWith(next);
-  clearInterval(run.tick);
-  clearAnalysis();
-  renderAll();
-  paint();
-}
-// the search's lead line: how many careers it weighed, in what time
-function searchedText(m) {
-  const n = m.r.candidates,
-    seconds = (m.ms / 1000).toFixed(1);
-  return n > 1 ? `Weighed ${n.toLocaleString()} careers in ${seconds} s.` : `Scored in ${seconds} s.`;
-}
 // the search's status: done, with a caveat (proofs.mjs `searchCaveat`) when the search could not prove the best odds'
 // order (`proven_top`), or proved it only under a lower deck cap (`complete` false), saying what the report establishes
 // of why, or proved it while a scored deck beat its class's assumed cap (the caps are assumptions the proofs rest on);
@@ -290,42 +145,6 @@ function searchStatus(m, found) {
     : ' with these veterans.';
   return { kind: 'error', text: `No career can land all ${settings.value.targets.length} targets${why}${dropped}` };
 }
-// The plan (solver: career/plan/mod.rs `index_rule`, exact odds, no simulation): the same job with `next`, every owned uma's
-// best career scored by the careers it saves toward a fully looped parent (the cheapest trio). The page reads `next`
-// alone, so the solver skips the career reports. A trainee you chose leaves it nothing to pick (no plan phase).
-// Returns the plan's state, or null when a newer edit (run `id` no longer current) took over.
-async function planPhase(id, job, found) {
-  planStarts(found, performance.now());
-  paint();
-  const { rollout: _r, p_now: _p, ...plain } = job;
-  let planned;
-  try {
-    // Compare may have run this very plan job already (`keptPlan`): take its answer instead of planning again
-    const jp = { ...plain, next: { ...PLAN_NEXT }, no_reports: true },
-      kept = keptPlan(planKey(jp));
-    /** @type {{r: {next?: DeepReadonly<PlanReport>, error?: string}, ms: number}} */
-    const m2 = kept
-      ? { r: { next: kept.r }, ms: kept.ms }
-      : await runJob(jp, (p) => {
-          if (id === run.id) {
-            planProgresses(progText(p));
-            paint();
-          }
-        });
-    if (id !== run.id) return null;
-    const x = m2.r.next;
-    planned =
-      x && !x.error && x.options?.length
-        ? { state: 'done', id: newPlanId(), r: x, ms: m2.ms, job: jp }
-        : { state: 'error', text: m2.r.error || x?.error || 'no option found.' };
-  } catch (e) {
-    if (id !== run.id) return null;
-    planned = { state: 'error', text: e.message };
-  }
-  if (planned.state === 'done') engineSaveState(); // the worker's kept work, for the next page load
-  return planned;
-}
-
 // redraw everything, keeping the keyboard focus on the same control (every edit redraws)
 function renderAll() {
   keepFocus(() => {
@@ -381,12 +200,18 @@ function initSettings() {
       persist();
     }
     syncListings(); // a changed target set: its listings (kept, or one request)
-    schedule();
+    run.schedule();
     renderAll();
     paintFold();
   });
 }
 // ---------- start ----------
+// (the loop members kept per setup until the plan stopped running the loop planner's search: the old store goes)
+try {
+  localStorage.removeItem('llp:loops');
+} catch {
+  // storage blocked: nothing was kept to remove
+}
 document.addEventListener('click', (e) => {
   if (e.target instanceof HTMLDialogElement && e.target.open) e.target.close();
 }); // a backdrop click closes
@@ -413,7 +238,7 @@ loadData().then(
         dropAnswer();
         clearAnalysis();
       }
-      schedule();
+      run.schedule();
       renderAll();
     });
     for (const x of ['vets', 'new', 'auto']) $(`vp-tab-${x}`).onclick = () => vpTab(x);
@@ -460,8 +285,7 @@ loadData().then(
     for (const x of ['own', 'bor']) $(`v-tab-${x}`).onclick = () => setVTab(x);
     initVSort();
     renderAll();
-    await preloadAnswer(); // the last visit's answer, when nothing changed since: drawn at once
-    search();
+    await run.start(); // (the last visit's answer, when nothing changed since: drawn at once)
   },
   (e) => {
     loadFails(e.message);

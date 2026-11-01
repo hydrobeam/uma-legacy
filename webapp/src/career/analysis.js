@@ -3,8 +3,8 @@
 // running this career again or using her in the next one, on the plan's terms (expected careers to land).
 // This module owns the analysis' state (`simulation`, the comparison under way `simulationId`, the comparisons'
 // baseline `baselineCache`, the plan Compare kept `planKept`); the run machine (main.js) changes it only through
-// the transitions below. It reads the answer from the answer store (career/state.ts), the run's id from run.ts and the
-// job's helpers from job.js and keys.js.
+// the transitions below. It reads the answer from the answer store (career/state.ts), the job's helpers from job.js and
+// keys.js.
 import { $, $dialog, el, fmtIn } from '../dom.js';
 import { careerTables } from '../data.js';
 import { settings } from '../settings.ts';
@@ -15,9 +15,9 @@ import { vets, plan, changed, newVet, umaName, openWins } from '../vets.js';
 import { detailsEl, fitSparks } from '../details.js';
 import { scheduledRaces, rolledOutcome } from './roll.mjs';
 import { answer, runView } from './state.ts';
-import { run, runJob, PLAN_NEXT } from './run.ts';
+import { PLAN_NEXT } from './run.ts';
 import { keyOf, planKey } from './keys.js';
-import { shown, isFull, baseKey, ROLL_K } from './job.js';
+import { shown, isFull, baseKey, ROLL_K, runJob } from './job.js';
 import { btn, sectionEl, deckEl, fmtN, tableRows } from './view/parts.js';
 import { openNode } from './view/NodeDialog.js';
 import { must } from '../must.ts';
@@ -68,7 +68,9 @@ let planKept = null;
  */
 /** @type {Simulation} */
 let simulation = { state: 'none', draft: null, r: null, baseline: null, error: null };
-let simulationId = 0; // the comparison under way; a newer one (or a run) makes it stale
+// the comparison under way; a newer one makes it stale, and so does a run: the run machine calls `stopComparison` or
+// `outdateComparison` whenever a new run begins (career/run.ts, its node tests), so this one id covers both
+let simulationId = 0;
 /** @type {{key: string, result: DeepReadonly<CareerReport>} | null} key: baseKey(job); result: today's best career, the comparisons' baseline */
 let baselineCache = null;
 
@@ -246,8 +248,7 @@ function rollReq(d, r) {
 // worker keeps it and its caches; its answer is ignored)
 async function quickCompare(request) {
   const id = ++simulationId,
-    source = run.id,
-    gone = () => id !== simulationId || source !== run.id;
+    gone = () => id !== simulationId;
   simulation.state = 'busy';
   simulation.kind = 'quick';
   simulation.error = null;
@@ -305,7 +306,7 @@ async function quickCompare(request) {
     simulation.standing = true;
     renderSimulation();
     setTimeout(() => {
-      if (id === simulationId && source === run.id && simulation.standing && !simulation.refining) {
+      if (id === simulationId && simulation.standing && !simulation.refining) {
         simulation.standing = false;
         runComparison(true);
       }
@@ -331,8 +332,7 @@ async function quickCompare(request) {
     simulation.provisional = true;
     renderSimulation();
     setTimeout(() => {
-      if (id === simulationId && source === run.id && simulation.provisional && !simulation.refining)
-        runComparison(true);
+      if (id === simulationId && simulation.provisional && !simulation.refining) runComparison(true);
     }, 800);
   }
 }
@@ -429,8 +429,7 @@ function compare() {
 // the exact count; otherwise the panel waits on it
 async function runComparison(refine = false) {
   const id = ++simulationId,
-    source = run.id,
-    gone = () => id !== simulationId || source !== run.id;
+    gone = () => id !== simulationId;
   const base = comparisonJob();
   if (refine) simulation.refining = true;
   else {

@@ -267,12 +267,13 @@ const reports = [];
 // they stay outside these layers until each is split, reading the store only in handlers and in `on` bodies (untracked;
 // the review of step 4 traced every such read): loop/run.ts (the loop page's run machine: it changes loop/state.ts
 // through its transitions and reads it with .peek(); the settings come in its deps), umamoesetup.js (the uma.moe panel with its sync: `sigOf` and `query`
-// read the targets), loop/io.js (the loop page's Export and Import: it writes the store by design, an editor), career/main.js
-// (the career run machine, until step 8b) and career/job.js (the career job, built from the veterans and settings).
+// read the targets), loop/io.js (the loop page's Export and Import: it writes the store by design, an editor), career/job.js
+// (the career job, built from the veterans and settings). career/run.ts, the career run machine, is a model module: the
+// answer store's transitions come in its deps.
 const LAYERS = [
   ['types', ['globals.d', 'must', 'solver', 'store', 'loop/types']],
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved']],
-  ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'career/keys', 'loop/job']],
+  ['model', ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'career/keys', 'career/run', 'loop/job']],
   ['stores', ['settings', 'loop/state', 'vets', 'career/state']],
   ['shared', null], // every module not named elsewhere
   ['page:loop', ['loop/main', 'loop/run', 'loop/runnote', 'loop/results', 'loop/io', 'loop/affinity']],
@@ -282,7 +283,6 @@ const LAYERS = [
       'career/main',
       'career/analysis',
       'career/options',
-      'career/run',
       'career/job',
       'career/io',
       'career/view/parts',

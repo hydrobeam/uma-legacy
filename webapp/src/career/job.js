@@ -1,14 +1,17 @@
 // The career job: built from the settings, the veterans and the places (`buildJob`), the Use this choice it carries,
-// and what reads the job, the places and the career on show. The solver's career job and its reports are typed here.
+// what reads the job, the places and the career on show, and its run on the solver (`runJob`). The solver's career job
+// and its reports are typed here.
 import { $ } from '../dom.js';
 import { gameData } from '../data.js';
 import { settings } from '../settings.ts';
-import { stateKey } from '../engine.ts';
+import { run as engineRun, stateKey } from '../engine.ts';
 import { isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../job.js';
 import { vets, plan, chosen, persist, vetById, umaName, sampleVets, addVets, legaciesJob } from '../vets.js';
 import { answer, answerCareer, reference } from './state.ts';
 import { must, orNull } from '../must.ts';
 import { jobKey, planKey } from './keys.js';
+import { pickOutfit, outfitNote } from '../roster.js';
+import { unprovenWhy } from '../proofs.mjs';
 /** @import { LineagePlan } from '../vets.js' */
 /** @import { DeepReadonly } from '../store.ts' */
 
@@ -428,3 +431,32 @@ export function pairBlock(t, v, o, s) {
   if (v.borrowed && borrowChoice(s) !== 'allow') return 'setting';
   return '';
 }
+
+// ---------- the job on the solver
+// every career a result names gets one outfit (never "any outfit"): its trainee's outfits are reordered with the chosen
+// one first, filled with one of hers when none covers a target (`anyOutfit`); her popup says which
+function oneOutfit(t) {
+  if (!t || t.outfitNote != null) return;
+  const f = pickOutfit(t.id, t.outfits || []);
+  t.outfits = f.list;
+  t.anyOutfit = f.any;
+  t.outfitNote = outfitNote(f);
+}
+/** The solver's answer to a career job: its CareerSearch, or a refusal (`'error' in m.r`).
+ * @typedef {import('../solver.ts').SolverAnswer<CareerSearch>} CareerAnswer */
+/** @type {(job: CareerJob, progress?: (p: import('../solver.ts').PlanProgress) => void, background?: boolean) => Promise<CareerAnswer>} */
+export const runJob = async (job, progress, background = false) => {
+  // (a career job: its report is a CareerSearch)
+  const m = /** @type {CareerAnswer} */ (await engineRun(job, undefined, progress, background));
+  if ('error' in m.r) return m; // (a refusal: nothing to fill in)
+  const r = m.r;
+  for (const x of [...(r.results || []), r.next?.choice, ...(r.next?.options || [])]) oneOutfit(x?.trainee);
+  // (a plan's rows carry `proven` alone; why, the solver reports for the whole job: kept with the plan, so a plan
+  // taken again from `planKept` or `answers` says the same)
+  if (r.next?.options) {
+    r.next.unproven_why = unprovenWhy(r);
+    // (and the named assumptions any search of the job rests on: the status line's plan caveat, `planNote`)
+    r.next.job_assumes = r.job_assumes || [];
+  }
+  return m;
+};
