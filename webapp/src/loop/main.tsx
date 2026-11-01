@@ -138,7 +138,7 @@ function start() {
   // the odds popup: its own mount point at the end of <body> (the template has none)
   render(<OddsDialog />, document.body.appendChild(Object.assign(document.createElement('div'), { id: 'odds-root' })));
   $('ex-open').onclick = openExport;
-  initPopover({ drawn: true });
+  initPopover();
   initSetup();
   // every change of setup from here on searches again (made after initScenario: its swap of a scenario this era lacks is
   // the setup the first search starts from); what the result on show no longer owns greys at once (Results.tsx)

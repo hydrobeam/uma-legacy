@@ -14,7 +14,7 @@
 //   roll.mjs           a roll: a random result of a career (no page state; the suite runs it in node)
 //   analysis/          the veteran analysis ("Try a run"): state.ts its store (her draft, her comparison), compare.ts
 //                      the comparison's run machine, view.tsx Try a run's popup, Details.tsx her card
-//   options.js         the options table ("Other careers": the plan's careers, Use this) and its Saves popup
+//   options.js         the options table's figures and words ("Other careers": the plan's careers, Use this)
 //   view/RunNote.tsx   the status line
 //   view/Tree.tsx      the lineage tree, and the odds and Try a run beside the title
 //   view/NodeDialog.tsx  the tree's node popup, and the veterans dialog's pane (VeteranView)
@@ -22,7 +22,7 @@
 //   view/Sections.tsx  the career's sections in the tree: odds, deck and its popup, schedule, targets, counts
 //   view/Setup.tsx     the Borrowed parent choice, and the setup panel's fold and summary
 //   view/dialogs.ts    which popup is open, for what (the el() modules open them through it)
-//   view/Results.js    the results column (the options table: el(), step 11)
+//   view/Options.tsx   the results column (the options table) and its Saves popup
 //   view/Pool.tsx      the veterans dialog: its tabs, lists and the pane beside them
 //   view/parts.js      small parts the el() views share
 import '../errorlog.ts'; // first: it listens before any other module runs
@@ -76,7 +76,7 @@ import {
   isFull,
   ROLL_K,
 } from './job.js';
-import { Analysis, draftOf, drawnHere } from './analysis/view.tsx';
+import { Analysis, draftOf } from './analysis/view.tsx';
 import * as analysisStore from './analysis/state.ts';
 import { createComparison } from './analysis/compare.ts';
 import * as answerStore from './state.ts';
@@ -88,11 +88,11 @@ import { RunNote, tickNote } from './view/RunNote.tsx';
 import { Tree, Verdict } from './view/Tree.tsx';
 import { NodeDialog } from './view/NodeDialog.tsx';
 import { ParentPicker } from './view/ParentPicker.tsx';
-import { DeckDialog, drawnCard } from './view/Sections.tsx';
+import { DeckDialog } from './view/Sections.tsx';
 import { SkillDetails } from './view/SkillDetails.tsx';
 import { BorrowChoice, SetupSummary, initFold } from './view/Setup.tsx';
 import { nodeOpen, openNode, pickerFor } from './view/dialogs.ts';
-import { renderResults } from './view/Results.js';
+import { Results, SavesPopup } from './view/Options.tsx';
 import { PoolBody, PoolTabs, initVSort } from './view/Pool.tsx';
 import { poolTab, inTab, openPool, selected } from './view/poolState.ts';
 import { exportVets, copyExport, downloadExport, importText } from './io.js';
@@ -160,10 +160,8 @@ const run = createRun({
       drawUnported();
       paint();
     },
-    drawCheck: () => {
-      renderResults();
-      paint();
-    },
+    // (the check's report is in the answer store: the table follows it)
+    drawCheck: paint,
   },
 });
 // the search's status: done, with a caveat (proofs.mjs `searchCaveat`) when the search could not prove the best odds'
@@ -190,10 +188,8 @@ function searchStatus(m: { r: CareerSearch; ms: number }, found: string): Status
     : ' with these veterans.';
   return { kind: 'error', text: `No career can land all ${settings.value.targets.length} targets${why}${dropped}` };
 }
-// the views still built with el() after a change: the results column (step 11) and uma.moe's button (step 11); the
-// components follow their signals
+// the view still built with el() after a change: uma.moe's button (step 11); the components follow their signals
 function drawUnported() {
-  renderResults();
   umamoeButton();
 }
 // ---------- the views: each component into its mount point, behind a render guard (view/Guard.tsx) ----------
@@ -287,7 +283,7 @@ document.addEventListener('click', (e) => {
 loadData().then(
   async () => {
     initSettings();
-    initPopover({ drawn: (chip) => drawnCard(chip) || drawnHere(chip) });
+    initPopover();
     // uma.moe's listings for the targets, from the kept answer, before the first search (a request otherwise)
     initUmamoe({ open: (v) => openNode({ kind: 'v', id: v.id }) });
     syncListings();
@@ -360,6 +356,8 @@ loadData().then(
     mount('skill-root', <SkillDetails />, 'Skill Details');
     mount('vet-editors', <VetEditors />, "The veterans' editors");
     mount('add-pop', <AddList host={$('add-pop')} />, 'The "+" list');
+    mount('results', <Results />, 'The other careers');
+    mount('save-root', <SavesPopup />, 'The Saves popup');
     mount('sched-dlg', <ScheduleDialog />, 'The race schedule');
     mount('vpick-root', <ParentPicker />, 'The parent picker', pickerFor);
     mount('sim-top', <Analysis comparison={comparison} />, 'Try a run', simulationDrawn);

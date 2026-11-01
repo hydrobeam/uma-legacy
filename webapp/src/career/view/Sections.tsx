@@ -135,7 +135,6 @@ export function DeckDialog() {
   );
 }
 /** whether a deck card is this module's (popover.js leaves its markup alone) */
-export const drawnCard = (chip: HTMLElement) => !!chip.closest('#deck-dlg');
 
 // the deck cards that give target group g: by a hint, or by an event (a gold one, at its chain link)
 function cardsGiving(r: CareerReport, g: number) {

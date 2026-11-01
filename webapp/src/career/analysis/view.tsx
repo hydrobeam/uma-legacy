@@ -419,5 +419,3 @@ export function openTryRun() {
   $dialog('sim-dlg').showModal();
   fitSparks($('sim-top'));
 }
-/** whether a deck card is this module's (popover.js leaves its markup alone) */
-export const drawnHere = (chip: HTMLElement) => !!chip.closest('#sim-top');

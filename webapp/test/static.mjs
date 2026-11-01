@@ -359,14 +359,13 @@ const MOUNTS = {
 const MOUNT_READS = {
   'src/popover.js': {
     '.deck .dc':
-      "markOwn: the career page's el()-built decks; on the loop page it never runs (initPopover({drawn: true})); " +
-      'and the click delegation, which reads the opener it was clicked on (the Popover port, step 11)',
-    '.mem[data-uma]': "markOwn: the career page's member blocks (it has none); never run on the loop page",
-    '.mem': 'reads the clicked member block’s data-* for her panel (the Popover port, step 11)',
-    '.mem .memb': 'the click delegation, reading the opener (the Popover port, step 11)',
-    '.loop .facebtn': 'the click delegation, reading the opener (the Popover port, step 11)',
-    '.loop': "reads a portrait's result card for her member block (the Popover port, step 11)",
-    '.loop.first ${mem}': 'reads #1\'s member block for a "Same loop as #1" portrait (the Popover port, step 11)',
+      'the click delegation, which reads the opener it was clicked on (the panel stays el(): step 11 left it)',
+    '.mem': 'reads the clicked member block’s data-* for her panel (the panel stays el(): step 11 left it)',
+    '.mem .memb': 'the click delegation, reading the opener (the panel stays el(): step 11 left it)',
+    '.loop .facebtn': 'the click delegation, reading the opener (the panel stays el(): step 11 left it)',
+    '.loop': "reads a portrait's result card for her member block (the panel stays el(): step 11 left it)",
+    '.loop.first ${mem}':
+      'reads #1\'s member block for a "Same loop as #1" portrait (the panel stays el(): step 11 left it)',
   },
 };
 {
@@ -432,9 +431,9 @@ const MOUNT_READS = {
         'leaves it fresh across a new run)',
     ],
     [
-      /drawCheck: \(\) => \{\s*renderResults\(\);\s*paint\(\);\s*\}/,
-      'view.drawCheck redraws the results column and the status line only (a redraw of the open veterans dialog under ' +
-        'a click would lose it: run.ts RunDeps)',
+      /drawCheck: paint,/,
+      'view.drawCheck redraws the status line only (the results column follows the answer store; a redraw of the open ' +
+        'veterans dialog under a click would lose it: run.ts RunDeps)',
     ],
   ];
   for (const [wire, what] of WIRES)
@@ -544,6 +543,7 @@ const LAYERS = [
       'career/view/dialogs',
       'career/view/Guard',
       'career/view/SkillDetails',
+      'career/view/Options',
       'career/view/RunNote',
       'career/view/Tree',
       'career/view/NodeDialog',
