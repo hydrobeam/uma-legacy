@@ -9,49 +9,37 @@
 //! search kept from a proven run; the searches
 //! and plans after it, the kept search reused alone and both after the worker's state goes out and comes back into a
 //! process with the normal caps, all say so.
+mod common;
+use common::{State, TempFile, loopopt, run_with, val_job};
 use serde_json::{Value, json};
-use std::{fs, path::Path, process::Command};
 
-/// one process running `jobs` in turn (one output line each), with `env` set and the state in from / out to the files
-fn run(jobs: &[&Path], env: &[(&str, &str)], state_in: Option<&Path>, state_out: Option<&Path>) -> Vec<Value> {
-    let mut c = Command::new(env!("CARGO_BIN_EXE_loopopt"));
-    c.current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global")).arg("data.json").args(jobs);
-    c.env_remove("LOOPOPT_STATE_IN").env_remove("LOOPOPT_STATE_OUT").env_remove("CAPS_TEST");
-    for (key, value) in env {
-        c.env(key, value);
+/// The class caps lowered (`CAPS_TEST`) so that a search breaches them.
+const LOWERED_CAPS: &str = "1.0,1.0,1.0,1.0";
+
+/// one process running `jobs` in turn (one output line each), the caps lowered to `caps` (`CAPS_TEST`) where given
+fn run(tag: &str, jobs: &[&Value], caps: Option<&str>, state: State) -> Vec<Value> {
+    let mut command = loopopt("global", state);
+    command.env_remove("CAPS_TEST");
+    if let Some(caps) = caps {
+        command.env("CAPS_TEST", caps);
     }
-    if let Some(p) = state_in {
-        c.env("LOOPOPT_STATE_IN", p);
-    }
-    if let Some(p) = state_out {
-        c.env("LOOPOPT_STATE_OUT", p);
-    }
-    let output = c.output().unwrap();
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    String::from_utf8_lossy(&output.stdout).lines().map(|l| serde_json::from_str(l).unwrap()).collect()
+    run_with(command, tag, jobs).outputs
 }
 
-fn temp(name: &str, job: &Value) -> std::path::PathBuf {
-    let path = std::env::temp_dir().join(format!("uma-cap-shapes-{}-{name}.json", std::process::id()));
-    fs::write(&path, job.to_string()).unwrap();
-    path
+/// The fixture `tests/fixtures/{name}.json`.
+fn fixture(name: &str) -> Value {
+    let path = format!("{}/tests/fixtures/{name}.json", env!("CARGO_MANIFEST_DIR"));
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
 }
 
 #[test]
 fn nested_decks_match_the_cap_free_search() {
     for (name, assumes) in [("nested_nopal", false), ("nested_three_cards", true), ("nested_seeded", false)] {
-        let job: Value = serde_json::from_str(
-            &fs::read_to_string(format!("{}/tests/fixtures/{name}.json", env!("CARGO_MANIFEST_DIR"))).unwrap(),
-        )
-        .unwrap();
+        let job = fixture(name);
         let mut cap_free = job.clone();
         cap_free["cap_free"] = json!(true);
-        let (capped_path, free_path) =
-            (temp(&format!("{name}-capped"), &job), temp(&format!("{name}-free"), &cap_free));
-        let capped = &run(&[&capped_path], &[], None, None)[0];
-        let free = &run(&[&free_path], &[], None, None)[0];
-        fs::remove_file(capped_path).unwrap();
-        fs::remove_file(free_path).unwrap();
+        let capped = &run(&format!("{name}-capped"), &[&job], None, State::NONE)[0];
+        let free = &run(&format!("{name}-free"), &[&cap_free], None, State::NONE)[0];
         let p_all = |out: &Value| out["results"][0]["p_all"].as_f64().unwrap();
         assert!((p_all(capped) - p_all(free)).abs() <= 1e-12 * p_all(free), "{name}: {capped} vs {free}");
         assert_eq!(capped["results"][0]["deck"], free["results"][0]["deck"], "{name}: another deck");
@@ -71,10 +59,7 @@ fn nested_decks_match_the_cap_free_search() {
 
 /// val/plan p16: (the plan job with `no_reports`, the search job)
 fn p16_jobs() -> (Value, Value) {
-    let mut job: Value = serde_json::from_str(
-        &fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16.json")).unwrap(),
-    )
-    .unwrap();
+    let mut job = val_job("plan/p16.json");
     let mut search = job.clone();
     search.as_object_mut().unwrap().remove("next");
     job["no_reports"] = json!(true);
@@ -89,14 +74,9 @@ fn lists(out: &Value, field: &str, reason: &str) -> bool {
 #[test]
 fn a_breach_stays_unproven_through_a_reload() {
     let (job, search) = p16_jobs();
-    let (search_path, plan_path) = (temp("breach-search", &search), temp("breach-plan", &job));
-    let state = std::env::temp_dir().join(format!("uma-cap-shapes-{}-state.json", std::process::id()));
-    let lowered = [("CAPS_TEST", "1.0,1.0,1.0,1.0")];
-    let breached = run(&[&search_path, &plan_path], &lowered, None, Some(&state));
-    let reloaded = run(&[&search_path, &plan_path], &[], Some(&state), None);
-    for path in [&search_path, &plan_path, &state] {
-        fs::remove_file(path).unwrap();
-    }
+    let state = TempFile::new("cap-shapes-state");
+    let breached = run("breach", &[&search, &job], Some(LOWERED_CAPS), State { load: None, save: Some(state.path()) });
+    let reloaded = run("breach-reload", &[&search, &job], None, State { load: Some(state.path()), save: None });
     for (when, outs) in [("breached", &breached), ("after the reload", &reloaded)] {
         for out in outs {
             assert_eq!(out["complete"], json!(false), "{when}: {}", out["job_unproven"]);
@@ -115,18 +95,18 @@ fn a_breach_stays_unproven_through_a_reload() {
 #[test]
 fn a_breach_found_while_planning_unproves_the_kept_search() {
     let (job, search) = p16_jobs();
-    let (search_path, plan_path) = (temp("plan-breach-search", &search), temp("plan-breach-plan", &job));
-    let states = ["proven", "planned"]
-        .map(|name| std::env::temp_dir().join(format!("uma-cap-shapes-{}-{name}.json", std::process::id())));
+    let (proven_state, planned_state) = (TempFile::new("cap-shapes-proven"), TempFile::new("cap-shapes-planned"));
     // a proven main search, kept; then, under lowered caps, the plan on it (the main search kept: its deck searches
     // do not run again, so the breach is the plan's) and the search alone; then both after a reload with normal caps
-    let proven = run(&[&search_path], &[], None, Some(&states[0]));
-    let lowered = [("CAPS_TEST", "1.0,1.0,1.0,1.0")];
-    let planned = run(&[&plan_path, &search_path], &lowered, Some(&states[0]), Some(&states[1]));
-    let reloaded = run(&[&search_path, &plan_path], &[], Some(&states[1]), None);
-    for path in [&search_path, &plan_path, &states[0], &states[1]] {
-        fs::remove_file(path).unwrap();
-    }
+    let proven = run("plan-breach-search", &[&search], None, State { load: None, save: Some(proven_state.path()) });
+    let planned = run(
+        "plan-breach",
+        &[&job, &search],
+        Some(LOWERED_CAPS),
+        State { load: Some(proven_state.path()), save: Some(planned_state.path()) },
+    );
+    let reloaded =
+        run("plan-breach-reload", &[&search, &job], None, State { load: Some(planned_state.path()), save: None });
     let first = &proven[0];
     assert_eq!((&first["complete"], &first["proven_top"]), (&json!(true), &json!(true)), "{first}");
     assert!(first.get("unproven").is_none() && first.get("job_unproven").is_none(), "{first}");
@@ -152,10 +132,9 @@ fn a_breach_found_while_planning_unproves_the_kept_search() {
 #[test]
 fn a_breach_under_another_trainee_filter_reaches_the_kept_plan() {
     let (job, mut narrow) = p16_jobs();
-    let plan_path = temp("filter-plan", &job);
-    let states = ["filter-kept", "filter-breached"]
-        .map(|name| std::env::temp_dir().join(format!("uma-cap-shapes-{}-{name}.json", std::process::id())));
-    let first = run(&[&plan_path], &[], None, Some(&states[0]));
+    let (kept_state, breached_state) =
+        (TempFile::new("cap-shapes-filter-kept"), TempFile::new("cap-shapes-filter-breached"));
+    let first = run("filter-plan", &[&job], None, State { load: None, save: Some(kept_state.path()) });
     assert_eq!(first[0]["proven_top"], json!(true), "{}", first[0]["unproven"]);
     let mut ids: Vec<Value> = vec![];
     for row in first[0]["next"]["options"].as_array().unwrap() {
@@ -165,13 +144,13 @@ fn a_breach_under_another_trainee_filter_reaches_the_kept_plan() {
         }
     }
     narrow["trainees"] = json!(ids);
-    let narrow_path = temp("filter-narrow", &narrow);
-    let lowered = [("CAPS_TEST", "1.0,1.0,1.0,1.0")];
-    let narrowed = run(&[&narrow_path], &lowered, Some(&states[0]), Some(&states[1]));
-    let again = run(&[&plan_path], &[], Some(&states[1]), None);
-    for path in [&plan_path, &narrow_path, &states[0], &states[1]] {
-        fs::remove_file(path).unwrap();
-    }
+    let narrowed = run(
+        "filter-narrow",
+        &[&narrow],
+        Some(LOWERED_CAPS),
+        State { load: Some(kept_state.path()), save: Some(breached_state.path()) },
+    );
+    let again = run("filter-again", &[&job], None, State { load: Some(breached_state.path()), save: None });
     assert!(narrowed[0]["cap_breaches"].as_u64().is_some_and(|breaches| breaches > 0), "no breach: {}", narrowed[0]);
     let out = &again[0];
     assert_eq!(out["work"]["nodes"], json!(0), "the plan job searched its main search again");
@@ -190,18 +169,12 @@ fn a_breach_under_another_trainee_filter_reaches_the_kept_plan() {
 /// P(all) 0.005884; the nested bound's pre-review answer was Seiun Sky alone at 0.005472, reported proven).
 #[test]
 fn a_nested_card_beside_another_feeder_matches_the_cap_free_search() {
-    let mut job: Value = serde_json::from_str(
-        &fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nested_nopal.json")).unwrap(),
-    )
-    .unwrap();
+    let mut job = fixture("nested_nopal");
     job["exclude_cards"].as_array_mut().unwrap().retain(|card| card != 30027);
     let mut cap_free = job.clone();
     cap_free["cap_free"] = json!(true);
-    let (capped_path, free_path) = (temp("palmer-capped", &job), temp("palmer-free", &cap_free));
-    let capped = &run(&[&capped_path], &[], None, None)[0];
-    let free = &run(&[&free_path], &[], None, None)[0];
-    fs::remove_file(capped_path).unwrap();
-    fs::remove_file(free_path).unwrap();
+    let capped = &run("palmer-capped", &[&job], None, State::NONE)[0];
+    let free = &run("palmer-free", &[&cap_free], None, State::NONE)[0];
     let p_all = |out: &Value| out["results"][0]["p_all"].as_f64().unwrap();
     assert!((p_all(capped) - p_all(free)).abs() <= 1e-12 * p_all(free), "{} vs {}", p_all(capped), p_all(free));
     assert!((p_all(free) - 0.005_884).abs() < 5e-7, "the cap-free answer moved: {}", p_all(free));

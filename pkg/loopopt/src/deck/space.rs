@@ -205,35 +205,33 @@ impl<'data> DeckSpace<'data> {
     /// at `events`, and per entry the targets it touches (bit t: a miss chance other than exactly 1.0)
     pub(super) fn key_miss(&self, code: u64, events: ChainEvents) -> std::rc::Rc<KeyMisses> {
         let key = KeyMissKey { code, events: events.key() };
-        if let Some(cached) = self.key_miss_cache.borrow().get(&key) {
-            return std::rc::Rc::clone(cached);
-        }
-        let target_count = self.target_groups.len();
-        let entry_count = self.card_indices.len();
-        let marginals = chain_marginals(events, &self.kinds_of_code(code));
-        let empty: Vec<f64> = vec![];
-        let mut white_misses = vec![1.0f64; entry_count * target_count];
-        let mut gold_misses = vec![1.0f64; entry_count * target_count];
-        for j in 0..entry_count {
-            self.sources[j].src_miss(
-                marginals.get(&self.kind[j]).unwrap_or(&empty),
-                &mut white_misses[j * target_count..(j + 1) * target_count],
-                &mut gold_misses[j * target_count..(j + 1) * target_count],
-            );
-        }
-        assert!(target_count <= 32, "{target_count} uncertain targets: at most 32 (MAX_UNCERTAIN)");
-        let touched_targets: Vec<u32> = (0..entry_count)
-            .map(|j| {
-                (0..target_count)
-                    .filter(|&target| {
-                        white_misses[j * target_count + target] != 1.0 || gold_misses[j * target_count + target] != 1.0
-                    })
-                    .fold(0u32, |mask, target| mask | 1 << target)
-            })
-            .collect();
-        let key_misses = std::rc::Rc::new(KeyMisses { white: white_misses, gold: gold_misses, touched_targets });
-        self.key_miss_cache.borrow_mut().insert(key, std::rc::Rc::clone(&key_misses));
-        key_misses
+        crate::memoised(&self.key_miss_cache, key, |_| {
+            let target_count = self.target_groups.len();
+            let entry_count = self.card_indices.len();
+            let marginals = chain_marginals(events, &self.kinds_of_code(code));
+            let empty: Vec<f64> = vec![];
+            let mut white_misses = vec![1.0f64; entry_count * target_count];
+            let mut gold_misses = vec![1.0f64; entry_count * target_count];
+            for j in 0..entry_count {
+                self.sources[j].src_miss(
+                    marginals.get(&self.kind[j]).unwrap_or(&empty),
+                    &mut white_misses[j * target_count..(j + 1) * target_count],
+                    &mut gold_misses[j * target_count..(j + 1) * target_count],
+                );
+            }
+            assert!(target_count <= 32, "{target_count} uncertain targets: at most 32 (MAX_UNCERTAIN)");
+            let touched_targets: Vec<u32> = (0..entry_count)
+                .map(|j| {
+                    (0..target_count)
+                        .filter(|&target| {
+                            white_misses[j * target_count + target] != 1.0
+                                || gold_misses[j * target_count + target] != 1.0
+                        })
+                        .fold(0u32, |mask, target| mask | 1 << target)
+                })
+                .collect();
+            std::rc::Rc::new(KeyMisses { white: white_misses, gold: gold_misses, touched_targets })
+        })
     }
     /// The chain kinds of key `code` (counts in base 7 over `kinds_all`), each as often as the key holds it.
     pub(crate) fn kinds_of_code(&self, code: u64) -> Vec<ChainKind> {
@@ -482,101 +480,97 @@ impl<'data> DeckSpace<'data> {
         needed_groups: u64,
         misses: EntryMisses<'_>,
     ) -> std::rc::Rc<GroupTable> {
-        if let Some(cached) = self.group_miss_cache.borrow().get(&key) {
-            return std::rc::Rc::clone(cached);
-        }
-        // Each target's lowest misses, as the first `deck_size` of the stable ascending sort (`top_asc`).
-        let deck_size = self.deck_job.deck_size;
-        let (mut white_lowest, mut gold_lowest) = (Vec::with_capacity(deck_size), Vec::with_capacity(deck_size));
-        let mut table = GroupTable::new(groups.len(), needed_groups, (deck_size + 1) * 2 * misses.target_count);
-        for (group_index, group_entries) in groups.iter().enumerate() {
-            if needed_groups >> group_index & 1 == 0 {
-                continue;
-            }
-            let products = table.grp_mut(group_index);
-            for target in 0..misses.target_count {
-                white_lowest.clear();
-                gold_lowest.clear();
-                for &j in *group_entries {
-                    top_asc(&mut white_lowest, deck_size, misses.white[j * misses.target_count + target]);
-                    top_asc(&mut gold_lowest, deck_size, misses.gold[j * misses.target_count + target]);
+        crate::memoised(&self.group_miss_cache, key, |_| {
+            // Each target's lowest misses, as the first `deck_size` of the stable ascending sort (`top_asc`).
+            let deck_size = self.deck_job.deck_size;
+            let (mut white_lowest, mut gold_lowest) = (Vec::with_capacity(deck_size), Vec::with_capacity(deck_size));
+            let mut table = GroupTable::new(groups.len(), needed_groups, (deck_size + 1) * 2 * misses.target_count);
+            for (group_index, group_entries) in groups.iter().enumerate() {
+                if needed_groups >> group_index & 1 == 0 {
+                    continue;
                 }
-                for row in 1..=deck_size {
-                    products[row * 2 * misses.target_count + target] = products
-                        [(row - 1) * 2 * misses.target_count + target]
-                        * white_lowest.get(row - 1).copied().unwrap_or(1.0);
-                    products[(row * 2 + 1) * misses.target_count + target] = products
-                        [((row - 1) * 2 + 1) * misses.target_count + target]
-                        * gold_lowest.get(row - 1).copied().unwrap_or(1.0);
+                let products = table.grp_mut(group_index);
+                for target in 0..misses.target_count {
+                    white_lowest.clear();
+                    gold_lowest.clear();
+                    for &j in *group_entries {
+                        top_asc(&mut white_lowest, deck_size, misses.white[j * misses.target_count + target]);
+                        top_asc(&mut gold_lowest, deck_size, misses.gold[j * misses.target_count + target]);
+                    }
+                    for row in 1..=deck_size {
+                        products[row * 2 * misses.target_count + target] = products
+                            [(row - 1) * 2 * misses.target_count + target]
+                            * white_lowest.get(row - 1).copied().unwrap_or(1.0);
+                        products[(row * 2 + 1) * misses.target_count + target] = products
+                            [((row - 1) * 2 + 1) * misses.target_count + target]
+                            * gold_lowest.get(row - 1).copied().unwrap_or(1.0);
+                    }
                 }
             }
-        }
-        let table = std::rc::Rc::new(table);
-        self.group_miss_cache.borrow_mut().insert(key, std::rc::Rc::clone(&table));
-        table
+            std::rc::Rc::new(table)
+        })
     }
 
     /// `search`'s tables for one legal entry set (reduced list `legal`, its id, the trainees' ids), built on first use
     pub(super) fn legal_tabs(&self, legal: &[usize], set_id: usize, trainee_ids: &[u32]) -> std::rc::Rc<LegalTables> {
         let plain_pal_count = self.legal_plain(trainee_ids).len();
         let key = LegalTableKey { set_id, plain_pal_count };
-        if let Some(tables) = self.legal_table_cache.borrow().get(&key) {
-            return std::rc::Rc::clone(tables);
-        }
-        let mut character_index: HashMap<u32, usize> = HashMap::new();
-        for &j in legal {
-            let next_bit = character_index.len();
-            character_index.entry(self.cards[self.card_indices[j]].character_id).or_insert(next_bit);
-        }
-        let too_many_characters = character_index.len() > 128;
-        let character_bits: Vec<u128> = if too_many_characters {
-            vec![]
-        } else {
-            (0..self.card_indices.len())
-                .map(|j| {
-                    character_index.get(&self.cards[self.card_indices[j]].character_id).map_or(0, |&bit| 1u128 << bit)
-                })
-                .collect()
-        };
-        let kind_count = self.kinds_all.len();
-        let by_kind: Vec<Vec<usize>> = (0..kind_count)
-            .map(|i| {
-                legal
-                    .iter()
-                    .copied()
-                    .filter(|&j| self.kind[j] != ChainKind::NONE && self.kind[j] == self.kinds_all[i])
+        crate::memoised(&self.legal_table_cache, key, |_| {
+            let mut character_index: HashMap<u32, usize> = HashMap::new();
+            for &j in legal {
+                let next_bit = character_index.len();
+                character_index.entry(self.cards[self.card_indices[j]].character_id).or_insert(next_bit);
+            }
+            let too_many_characters = character_index.len() > 128;
+            let character_bits: Vec<u128> = if too_many_characters {
+                vec![]
+            } else {
+                (0..self.card_indices.len())
+                    .map(|j| {
+                        character_index
+                            .get(&self.cards[self.card_indices[j]].character_id)
+                            .map_or(0, |&bit| 1u128 << bit)
+                    })
                     .collect()
-            })
-            .collect();
-        let pal_dependent = self.deck_job.chain_model().pal_dependent();
-        let (pal_entries, other_entries): (Vec<usize>, Vec<usize>) = legal
-            .iter()
-            .copied()
-            .filter(|&j| self.kind[j] == ChainKind::NONE)
-            .partition(|&j| !pal_dependent || self.raises_rate(j));
-        // Locked cards each group (`by_kind`, then `pal_entries` and `other_entries`) can hold.
-        let lock_bit = |j: usize| {
-            self.locked
+            };
+            let kind_count = self.kinds_all.len();
+            let by_kind: Vec<Vec<usize>> = (0..kind_count)
+                .map(|i| {
+                    legal
+                        .iter()
+                        .copied()
+                        .filter(|&j| self.kind[j] != ChainKind::NONE && self.kind[j] == self.kinds_all[i])
+                        .collect()
+                })
+                .collect();
+            let pal_dependent = self.deck_job.chain_model().pal_dependent();
+            let (pal_entries, other_entries): (Vec<usize>, Vec<usize>) = legal
                 .iter()
-                .position(|&locked_card| locked_card == self.card_indices[j])
-                .map_or(0u8, |position| 1u8 << position)
-        };
-        let group_lock_bits: Vec<u8> = by_kind
-            .iter()
-            .chain([&pal_entries, &other_entries])
-            .map(|group_entries| group_entries.iter().fold(0u8, |mask, &j| mask | lock_bit(j)))
-            .collect();
-        let tables = std::rc::Rc::new(LegalTables {
-            too_many_characters,
-            character_bits,
-            by_kind,
-            pal_entries,
-            other_entries,
-            group_lock_bits,
-            plain_pal_count,
-        });
-        self.legal_table_cache.borrow_mut().insert(key, std::rc::Rc::clone(&tables));
-        tables
+                .copied()
+                .filter(|&j| self.kind[j] == ChainKind::NONE)
+                .partition(|&j| !pal_dependent || self.raises_rate(j));
+            // Locked cards each group (`by_kind`, then `pal_entries` and `other_entries`) can hold.
+            let lock_bit = |j: usize| {
+                self.locked
+                    .iter()
+                    .position(|&locked_card| locked_card == self.card_indices[j])
+                    .map_or(0u8, |position| 1u8 << position)
+            };
+            let group_lock_bits: Vec<u8> = by_kind
+                .iter()
+                .chain([&pal_entries, &other_entries])
+                .map(|group_entries| group_entries.iter().fold(0u8, |mask, &j| mask | lock_bit(j)))
+                .collect();
+            std::rc::Rc::new(LegalTables {
+                too_many_characters,
+                character_bits,
+                by_kind,
+                pal_entries,
+                other_entries,
+                group_lock_bits,
+                plain_pal_count,
+            })
+        })
     }
     /// every count vector over `kinds_all` (each entry the number of cards of that kind, summing to at most deck_size)
     pub(super) fn counts_all(&self) -> std::rc::Rc<Vec<Vec<usize>>> {

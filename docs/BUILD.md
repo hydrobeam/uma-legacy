@@ -37,7 +37,11 @@ Everything a build reads lives inside the repository folder, apart from the tool
 | Where | What | Used by |
 |---|---|---|
 | `pkg/loopopt/Cargo.toml` | `serde`, `serde_json` | the solver |
+| `pkg/loopopt/Cargo.toml` | `ts-rs` (pinned exactly; MIT): derives the TypeScript type of every report and job struct, so the page's types are generated from the solver's (*Generated types*); its derives are dead code in the wasm (none of the declarations' text is in it) | `types`, `lint` |
+| `pkg/loopopt/Cargo.toml` | `clap` (pinned exactly, its derive API; MIT or Apache-2.0): the native `loopopt` command line's arguments, subcommands and errors; a native-only dependency, not in the wasm | `native`, `val`, `pb` |
 | `webapp/package.json` (`npm ci` on first use) | the page's packages, below | `wasm`, `page`, `runners`, the tests, `deploy`, `lint` |
+| `webapp/chibi/package.json` (`npm ci` there by `runners`) | `three` 0.170.0: three.js, which `chibi.html` draws the running mini models with | `runners` |
+| `webapp/deploy/package.json` (`npm ci` there by `deploy`) | `wrangler` 4.147.0 (with its Cloudflare stack, about 210 MB, so the page's install goes without it) | `deploy` (Cloudflare Pages) |
 | `pyproject.toml` (`.venv/`, created by uv) | `fonttools`, `brotli` | `page` (/about's math font subset, `webapp/vite/mathfont.py`; `brotli` is fonttools' woff2 writer); the exporters use the standard library |
 | `pyproject.toml`, group `art` | `UnityPy`, `Pillow` | `images`, `runners`, `webapp/icons.py` |
 | `pyproject.toml`, group `dev` | `ruff`, `shellcheck-py` | `lint` |
@@ -56,17 +60,13 @@ The page's packages (`webapp/package.json`; build and dev tools pinned exactly),
 | `preact-render-to-string` 6.8.2 | each planner page's root drawn into its HTML at build time (`vite/prerender.mjs`), which the entry hydrates |
 | `vite-plugin-static-copy` 4.1.1 | copies the fonts' licences into `dist/licenses/` |
 | `@vitejs/plugin-basic-ssl` 2.3.0 | the self-signed certificate `vite preview` serves HTTP/2 with (`cache/tls/`), in place of `serve.mjs`'s openssl call |
-| `size-limit` 14.3.0, `@size-limit/file` 14.3.0 | each page's first-visit budget (`webapp/.size-limit.mjs`), in place of `build.py`'s `page_cost` |
 | `@fontsource/*` (4 fonts) | the self-hosted fonts' Latin subsets, imported by `src/style.css` |
 | `binaryen` | `wasm-opt` (`wasm`) |
-| `esbuild` | bundles for `test/samecode.mjs` and the node tests that draw views; the page itself is built by Vite |
 | `knip` 6.44.1 | dead exports, files and dependencies, imports of nothing (`lint`) |
-| `@happy-dom/global-registrator` 21.0.4 | the node tests' document (`webapp/test/unit/`): happy-dom's window as node's globals, in place of the hand-written `fakedom.mjs` |
+| `vitest` 5.0.5, `happy-dom` 21.0.4 | the node tests (`webapp/test/unit/`), compiled by the page's Vite config; happy-dom is the document of those that draw views, in place of the hand-written `fakedom.mjs` |
 | `dependency-cruiser` 18.7.0, `@swc/core` 1.16.21 | the module layers (`lint`); swc parses the TypeScript, as dependency-cruiser reads it through TypeScript's JavaScript API, which TypeScript 7 no longer has |
 | `purgecss` 8.0.0 | dead CSS (`lint`, `test/deadcss.mjs`) |
 | `playwright` (pinned) | the browser suite, `icons.mjs`, `runners` |
-| `three` | `runners` (the running mini models) |
-| `wrangler` | `deploy` (Cloudflare Pages) |
 | `@biomejs/biome`, `typescript` | `lint` |
 
 **Game files you supply**, all in `game/` (gitignored; needed only to refresh the data or make the art)
@@ -111,7 +111,8 @@ it stops; the `art` step instead says what it skipped.
 | `gametora` | GameTora's pinned data files into `cache/gametora/`; `GAMETORA_LATEST=1` moves the pins to the newest versions first; it also rewrites `pkg/loopopt/data/gametora_slugs.json`, the page's links to GameTora (tracked, so `page` downloads nothing), then the page's lists. Run by `events` |
 | `events` | each era's card event file from GameTora's files plus the hand-entered entries (pal first-year dates left out, as IT never fires them), then the page's lists |
 | `native` | the release binary, clippy (as `lint` runs it), then `cargo test --release` |
-| `lint` | every check below runs whatever the others found, and the step ends by naming the ones that failed: `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`shellcheck-py`, dev group); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); `val/test_validation.py` (planval's and the comparisons' gates on a fake solver, 3 s; it had gone four days failing unnoticed when nothing ran it); `biome check` on the page's JS (lint and formatting in one pass: 2-space indent, single quotes, 120 columns) with warnings as errors (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line); TypeScript's checker, twice: the page's TypeScript, strict (`webapp/tsconfig.json`; every module is `.ts` or `.tsx`, and with `allowJs` off an import of a stray `.js` fails), and the solver's worker with a worker's globals (`webapp/tsconfig.worker.json`, strict); what the browser suite can't see going stale, by standard tools first: knip (`webapp/knip.jsonc`: files no entry reaches, exports no other file imports, dependencies nothing uses, imports of a package not listed or a file that does not exist; an export a test reaches only through an esbuild bundle written as a string is tagged `@public` with why), dependency-cruiser (`webapp/.dependency-cruiser.mjs`: a value import points to its own layer of `LAYERS` or one below, nothing outside a page imports into it, so no logic module (types, io, model) reaches a store; a `.ts` module imports no `.tsx` one, a type import included), PurgeCSS (`webapp/test/deadcss.mjs`: a selector of `style.css` naming a class, id, element or attribute no script, page, partial or build plugin names; a name built from parts is listed in its `BUILT` with where), and Biome's rules (`webapp/biome.json`; each allowance an override or a plugin's `includes`, its reason in the rule's message or the plugin's header): import cycles (`noImportCycles`); effects (`effect` imported anywhere but `store.ts`: `noRestrictedImports`; a `.subscribe()` or a namespace's `.effect()`: `lint/effects.grit`); exported mutable bindings (`lint/mutable-export.grit`); `@ts-ignore` (`noTsIgnore`); storage, written only by `storage.ts`'s read-modify-write `update` (the `localStorage` global by `noRestrictedGlobals`, a `.setItem`/`.removeItem` by `lint/storage-write.grit`); a store module's state made by `store.ts`'s `store()`, which hands it out `DeepReadonly` (`signal` banned there); signals from `@preact/signals` alone; `render`/`hydrate` in the two entries alone (each page is one root); a lookup in the document outside the entries (`lint/dom-lookup.grit`); a `<dialog>` or `showModal()` outside `ui/Dialog.tsx` (`lint/dialogs.grit`); a `requestAnimationFrame` outside `veterans/store.ts` (`noRestrictedGlobals`); a listener added at a module's top level outside the entries, `errorlog.ts` and `gmtip.ts` (`lint/load-listener.grit`); a view built from a markup string (`lint/markup-string.grit`); then a grep for `@ts-expect-error` in `webapp/src` (tsc accepts it and no linter sees a comment); the page's node tests (`webapp/test/unit/`) |
+| `types` | the page's TypeScript types of the solver's replies and jobs, generated from the Rust structs into `webapp/src/gen/solver.ts` (see *Generated types*) |
+| `lint` | every check below runs whatever the others found, and the step ends by naming the ones that failed: `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); the generated types current (*Generated types*); shellcheck on `build.sh` and the hook (`shellcheck-py`, dev group); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); `val/test_validation.py` (planval's and the comparisons' gates on a fake solver, 3 s; it had gone four days failing unnoticed when nothing ran it); `research/test_s08_likelihood.py` (§8's chain likelihood on synthetic cases, research group, about 5 s; it reads the chain count from `loopopt constants`, so the release binary is built first); `biome check` on the page's JS (lint and formatting in one pass: 2-space indent, single quotes, 120 columns) with warnings as errors (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line); TypeScript's checker, twice: the page's TypeScript, strict (`webapp/tsconfig.json`; every module is `.ts` or `.tsx`, and with `allowJs` off an import of a stray `.js` fails), and the solver's worker with a worker's globals (`webapp/tsconfig.worker.json`, strict); what the browser suite can't see going stale, by standard tools first: knip (`webapp/knip.jsonc`: files no entry reaches, exports no other file imports, dependencies nothing uses, imports of a package not listed or a file that does not exist), dependency-cruiser (`webapp/.dependency-cruiser.mjs`: a value import points to its own layer of `LAYERS` or one below, nothing outside a page imports into it, so no logic module (types, io, model) reaches a store; a `.ts` module imports no `.tsx` one, a type import included), PurgeCSS (`webapp/test/deadcss.mjs`: a selector of `style.css` naming a class, id, element or attribute no script, page, partial or build plugin names; a name built from parts is listed in its `BUILT` with where), and Biome's rules (`webapp/biome.json`; each allowance an override or a plugin's `includes`, its reason in the rule's message or the plugin's header): import cycles (`noImportCycles`); effects (`effect` imported anywhere but `store.ts`: `noRestrictedImports`; a `.subscribe()` or a namespace's `.effect()`: `lint/effects.grit`); exported mutable bindings (`lint/mutable-export.grit`); `@ts-ignore` (`noTsIgnore`); storage, written only by `storage.ts`'s read-modify-write `update` (the `localStorage` global by `noRestrictedGlobals`, a `.setItem`/`.removeItem` by `lint/storage-write.grit`); a store module's state made by `store.ts`'s `store()`, which hands it out `DeepReadonly` (`signal` banned there); signals from `@preact/signals` alone; `render`/`hydrate` in the two entries alone (each page is one root); a lookup in the document outside the entries (`lint/dom-lookup.grit`); a `<dialog>` or `showModal()` outside `ui/Dialog.tsx` (`lint/dialogs.grit`); a `requestAnimationFrame` outside `veterans/store.ts` (`noRestrictedGlobals`); a listener added at a module's top level outside the entries, `errorlog.ts` and `gmtip.ts` (`lint/load-listener.grit`); a view built from a markup string (`lint/markup-string.grit`); then a grep for `@ts-expect-error` in `webapp/src` (tsc accepts it and no linter sees a comment); the page's node tests (`webapp/test/unit/`, Vitest) |
 | `hooks` | `git config core.hooksPath .githooks`: the tracked pre-commit hook (see *Rust style*); once per clone |
 | `pb` | the release solver (cargo's build, a no-op on an unchanged tree), then each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files, then the page's lists (`data.json` is one of their inputs); it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
 | `wasm` | the wasm32 build (stable; rebuilding std with `-Z build-std` was measured on 2026-10-31 to change neither the output nor the speed, and under 2 KB of size), `wasm-opt -O3 -ocimfs=0` (no inlining of single-caller functions, so long loops stay in functions V8 optimises: `docs/PERF.md`, *In the page*), then `webapp/example.json` (the result shown before the first search). `wasm-opt` (about a minute) is skipped when the compiled wasm, its flags (`WASM_OPT_FLAGS`, the one list the command also reads) and wasm-opt's version match its last run (`webapp/.loopopt.wasm.key`); the example always runs |
@@ -200,11 +201,6 @@ with a portrait in `webapp/img/`. It writes:
   when that era is chosen), the fonts, /about's math font (`vite/mathfont.mjs`) and `img.<hash>/` (the game's images,
   loaded by id). A revisit fetches only the HTML (about 10 KB per planner page). Each planner page's head carries the
   asset table (`data-assets`), from which its first script starts the solver's downloads.
-- each page's first-visit size, checked after the build by size-limit (`webapp/.size-limit.mjs`): the page, the local
-  files it names and, on the planner pages, the worker script, the wasm and the Global solver data, at brotli quality
-  11, about 22% under the host's transfer on the planner pages (it sends quality 4, which reproduced its transfer of the
-  wasm to within 0.1%). A page over its budget fails the build; a budget rises only in the commit that needs it, which
-  says why.
 - favicons, `og.png`, `_headers` (the host caches the pages 5 minutes, `assets/` a year), `_redirects` (`/loop` to `/`)
   and `robots.txt`, from `webapp/public/` as they are, and the fonts' licences in `licenses/`.
 
@@ -255,31 +251,37 @@ from data (a grade, a race's track, a sort) gets its type where it is first read
 fact such as two lists being as long, and a guard only where the missing case is a real state, named beside it.
 Never `x!` (Biome bans it), an `as` cast past the check, or `?? 0` on what must not be missing.
 
+## Generated types
+
+Every reply the solver gives (each command's report and its refusal, the CLI's outputs) and every job it reads is a Rust
+struct or enum deriving `serde::Serialize` or `Deserialize` and `ts_rs::TS`; nothing that leaves the crate is built as
+an untyped `serde_json::Value`. The page's TypeScript for them is generated from those structs, field docs included, into
+one file, `webapp/src/gen/solver.ts`, which is committed and never edited by hand: change the struct, then run
+`./build.sh types` (an ignored test, `pkg/loopopt/src/ts_gen.rs`, writes every type reachable from its roots; Biome
+formats it as the page's code). The page imports the generated types, adding only the fields it sets itself (a type
+like `CareerReport & { anyOutfit?: boolean }`). `./build.sh lint` regenerates the file and fails, with the diff, when
+the committed one differs.
+
+How serde's encoding reads in the TypeScript: an `Option` written as null is `T | null`; a field left out where it does
+not apply (`skip_serializing_if`) is `field?: T`; an untagged enum is a union of its variants' shapes (a reply is its
+report or a `Refusal`, told apart by `'error' in reply`); a flattened struct is an intersection; an f64 that can be
+infinite is written as null (serde_json), and such a field is typed `number | null`.
+
 ## Tests
 
 - **Solver:** `cargo test --release` in `pkg/loopopt` (part of `native`); `./build.sh lint` for formatting and clippy.
-- **Page logic in node:** `node --test 'test/unit/*.test.*'` in `webapp` (part of `lint` and the pre-commit hook; about
-  a second) runs the page's node tests, `webapp/test/unit/`. Those that draw views or run editors register happy-dom's
-  window as node's globals (`@happy-dom/global-registrator`) before the page's modules load, and mount them in its
-  document as the page does; `fakepage.mjs` supplies a small made-up game's data. happy-dom fires a dialog's `close`
-  at once where a browser queues it, so a test lets tasks run after a close before it reads what the close did.
-- **Same code:** `node test/samecode.mjs [BASE [HEAD]]` in `webapp` (BASE defaults to `HEAD`, HEAD to the working tree;
-  under a second) says whether a change to the page's code only moved or renamed it: each page bundle and the worker,
-  built unminified without JSDoc type comments and read as tokens (comments and line breaks dropped), must have the
-  same multiset of top-level units (each statement of the bundle whole, a function with its body in order, so a
-  statement reordered or moved between blocks or functions changes it) and the same ordered list of load-time steps
-  (the units that run when the bundle loads: storage reads, listeners, lookups, a declaration whose value calls
-  anything; and the declarations that read another top-level variable at load, a snapshot such as `var V = o.v`). A
-  bundle whose entry was moved or renamed is compared across it (`ENTRIES` lists each entry's names), and esbuild's
-  collision suffixes (`run`, `run2`), which a module order change reshuffles, are paired back first. In the
-  HEAD tree alone, no bundle may read a top-level variable at load before its declaration has run (esbuild prints
-  top-level `const` and `class` as `var`, so such a read finds `undefined`, with no TDZ error). The page's own build
-  keeps top-level `const` and `let` (`vite.config.mjs`: Rolldown's `topLevelVar` off), so there such a read throws at
-  load and the browser suite sees it. Its own cases, behaviour changes it must report and moves it must pass, are `test/unit/samecode.test.mjs`.
-  Not compared: the pages, CSS, the build's settings, and what functions called at load read through methods,
-  constructors or callbacks. It reads esbuild's bundles, which order modules as the page's Vite build does (both follow
-  the modules' evaluation order), but not byte for byte.
-  A commit it passes changes no behaviour and needs no browser run; one that changes behaviour fails it by design.
+  The integration tests (`pkg/loopopt/tests/`) run the solver binary through one harness, `tests/common/mod.rs`,
+  which clears the kept-state variables (`LOOPOPT_STATE_IN`, `LOOPOPT_STATE_OUT`) of the shell running them. When
+  results move on purpose, `BLESS=1 cargo test --release --test plan_roll rolls_equal` re-takes the roll fixture
+  (`tests/fixtures/plan_roll.json`) from the solver's own rolls, naming each roll that changed and any sample whose y
+  crossed 0.5 (the fixture keeps samples on both sides; pick another there); check the diff and commit it.
+- **Page logic in node:** `npx vitest run` in `webapp` (part of `lint` and the pre-commit hook; about 2 s) runs the
+  page's node tests, `webapp/test/unit/`, with the modules compiled as `vite.config.mjs` compiles them (its `test`
+  branch: none of the build's plugins). A test file that draws views or runs editors asks for happy-dom's document
+  (`// @vitest-environment happy-dom`) and mounts them in it as the page does; one that reads the game data mocks the
+  build's page data with a small made-up game's (`vi.mock('#page-data', () => import('./fakepage.mjs'))`). happy-dom
+  fires a dialog's `close` at once where a browser queues it, so a test lets tasks run after a close before it reads
+  what the close did.
 - **Browser suite:** `./build.sh test` builds the page and runs Playwright Test (`webapp/playwright.config.mjs`, from the pinned
   `playwright` package) against `webapp/dist`, served by `vite preview` over HTTP/2 with TLS as the host serves it (a
   self-signed certificate made once into `cache/tls/`; over HTTP/1.1 requests queue and timings mislead), or against
@@ -298,11 +300,12 @@ Never `x!` (Biome bans it), an `as` cast past the check, or `?? 0` on what must 
   draws from its replies (`REPLAY` in `groups.spec.mjs`), answer every solver job from the recorded replies
   (`webapp/test/solverreplay.mjs`): the page's worker is a stand-in and its wasm compile gets an empty module, so they
   cost about a third of their live CPU. The other groups run the real solver: they check its worker's live behaviour
-  (kills, restarts, progress, races, the stored work), the wasm as served, or the deck solver's odds. A reply's key is
-  the wasm's and era data's fingerprints, the jobs that worker ran before and the job, so a solver, data or page change
-  that alters a job fails its group with the job named; nothing falls back to the live solver. The replies of one
-  solver and data are one directory, `cache/solver-replies/WASM-GLOBAL-GM` (the fingerprints in the asset names of the
-  wasm and the two eras' engine data: `webapp/test/replaystore.mjs`). `LLP_SOLVER=live ./build.sh test` runs every
+  (kills, restarts, progress, races, the stored work), the wasm as served, or the deck solver's odds. The replies of one
+  solver and data are one directory, `cache/solver-replies/WASM-GLOBAL-GM-WORKER`, named by the SHA-256 of those files'
+  bytes (the wasm, the two eras' engine data and the worker script: `webapp/test/replaystore.mjs`), never by an asset's
+  name, so a page change that leaves them alone (a view, the stylesheet, the bundler's file names) replays. Within it a
+  reply's key is the era data's digest, the jobs that worker ran before and the job, so a page change that alters a job
+  fails its group with the job named; nothing falls back to the live solver. `LLP_SOLVER=live ./build.sh test` runs every
   group on the real solver and records the replies (about 45 MB). `test` and `testq` do so by themselves, saying so in
   one line, when the current directory holds no passing live run of their tier (`.recorded-full`, written by a passing
   live `test`, serves both; `.recorded-quick` serves `testq`), so after a solver or data change the first run records.
@@ -312,7 +315,7 @@ Never `x!` (Biome bans it), an `as` cast past the check, or `?? 0` on what must 
   not deterministic given its jobs and replay unsound. Replaying groups wait, before a reload, for the page's 100 ms
   state save to land, so the next worker's history does not depend on timing.
 - **Fast tier:** `./build.sh testq` (Chromium, the tests tagged `@quick`, with `LLP_QUICK=1` stopping career at its
-  one-run answer; about 30 s, 14 s with `LLP_JOBS=4`; popups, phone and contrast replay, career, load and about run live): run it after each
+  one-run answer; about 30 s, 14 s with `LLP_JOBS=4`; popups and phone replay, career, load and about run live): run it after each
   page change, and the full suite before a release.
 - **Validation:** `./build.sh val TAG` builds the release solver (so it never validates a binary left from before a
   change) and runs every validation check, each whatever the others found, and fails if any
@@ -352,7 +355,7 @@ Never `x!` (Biome bans it), an `as` cast past the check, or `?? 0` on what must 
   wall clocks aside, with `val/sim/ref__*.out` (`val/same.py TAG --sim`).
 - **Exactness:** `uv run val/owncheck.py BIN 3 "Yaeno Muteki"` and `uv run val/permcheck.py BIN 3` check the search
   against brute force on small owned sets; `uv run val/joint_check.py TAG` recomputes every deck result's odds
-  independently. `uv run val/milp_fixtures.py` recomputes the exact DP's reference fixtures (`pkg/loopopt/tests/fixtures/`)
+  independently. `uv run --group research val/milp_fixtures.py` recomputes the exact DP's reference fixtures (`pkg/loopopt/tests/fixtures/`)
   with an independent MILP after a change to the win model (about 12 minutes, one process; `--check` only compares).
 - **Speed work** follows `docs/PERF.md` (byte-identical outputs, one item per commit with its gain),
   which also holds the planner's speed record. `node webapp/nodebench.mjs <wasm> global pal_A2 …`
@@ -401,7 +404,7 @@ uv run shellcheck build.sh .githooks/pre-commit   # (from the repo root)
   clippy with warnings denied (about 5 s after a change; a minute the first time in a new worktree); Python, ruff check
   and format on the staged files; the page's JS, Biome (lint and formatting) on the staged files and `tsc`, and for any
   page source, test or build file, knip, dependency-cruiser, `webapp/test/deadcss.mjs` and a grep for
-  `@ts-expect-error` (about 4 s together), and for any page source or test the node tests (under a second). It checks
+  `@ts-expect-error` (about 4 s together), and for any page source or test the node tests (about 2 s). It checks
   the working tree's files, not only the staged parts. The wasm clippy and the whole-repo checks are left to `lint`.
 - **Blame:** commits that only reformat, move or rename code are listed in `.git-blame-ignore-revs`; to have `git blame` skip them, once
   per clone: `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
@@ -470,7 +473,7 @@ build's `git describe` version.
 Hosting is Cloudflare Pages by direct upload: project `uma-legacy` (`CF_PAGES_PROJECT` overrides), live at
 https://uma-legacy.pages.dev. `deploy` refuses when `webapp/`, `pkg/` or `research/results.json` have uncommitted changes
 (`DEPLOY_DIRTY=1` overrides); `CF_PAGES_BRANCH=preview` publishes to the preview address; `SITE_URL` sets the
-link-preview tags' host. One-time setup: `cd webapp && npx wrangler login`, then `npx wrangler pages project create
+link-preview tags' host. One-time setup: `cd webapp/deploy && npm ci && npx wrangler login`, then `npx wrangler pages project create
 uma-legacy --production-branch main --force` (`--force` keeps it on classic Pages; without it wrangler 4.147 delegated
 to Workers-based Pages and failed).
 
@@ -495,7 +498,8 @@ pkg/loopopt/data/    the solver's and the page's data: global/ and jp/ (the Gran
                      lists, export_page.py), plus upcoming.json for Global; and the files both eras share,
                      event_shares.json, gametora.json (GameTora's pinned versions), gametora_slugs.json (the page's
                      links to GameTora) and page_raceids.json
-val/                 validation: jobs/ (the job files), jobs.json and slow.json (which run), reference outputs, checks;
+val/                 validation: jobs/ (the job files), jobs.json and slow.json (which run), reference outputs, checks
+                     (solver.py: what they share, running the solver and reading and comparing its outputs);
                      plan/ and sim/ (the career planner's and the policy simulator's jobs and references)
 research/            scripts computing RESEARCH.md's numbers; RESEARCH.md is rendered from docs/RESEARCH.template.md (`./build.sh research`; research/README.md)
 docs/                USAGE, SOLVER, MODEL, RESEARCH, PERF and this file

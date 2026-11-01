@@ -1,6 +1,6 @@
 """Recompute the solver's exact reference fixtures with an independent MILP (scipy/HiGHS).
 
-usage: uv run val/milp_fixtures.py [--check]
+usage: uv run --group research val/milp_fixtures.py [--check]
 
 pkg/loopopt/tests/fixtures/ holds best responses (br_milp.json, br_rest_milp.json) and pair ceilings (pb_milp.json)
 on the frozen data_v1.json; `cargo test` checks the exact DP against them. This script solves each case as a MILP

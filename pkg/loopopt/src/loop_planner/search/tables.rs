@@ -563,7 +563,7 @@ impl<'data> Multi<'data> {
                     .sum::<f64>();
             let position = seeds
                 .iter()
-                .position(|seed| seed.0.partial_cmp(&value).unwrap() == std::cmp::Ordering::Less)
+                .position(|seed| seed.0.total_cmp(&value) == std::cmp::Ordering::Less)
                 .unwrap_or(seeds.len());
             if position < 3 && !deck.blocks(uma_id, &self.card_of, crate::checks::get()) {
                 seeds.insert(position, (value, deck));
@@ -629,7 +629,7 @@ impl<'data> Multi<'data> {
             tally.cap_hit = true;
             complete = false;
         }
-        candidates.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap());
+        candidates.sort_by(|a, b| b.value.total_cmp(&a.value));
         if complete {
             for ScoredDeck { value, deck: selected } in &candidates {
                 if cap * value * (1.0 + 1e-9) < entry.best.as_ref().unwrap().value {
@@ -778,8 +778,7 @@ impl<'data> Multi<'data> {
     }
 }
 /// (bound, cluster) ordered as the stable sort by bound, highest first, visits them: a heap's pops give the higher bound
-/// first and equal bounds (`partial_cmp`: 0 and -0 tie) in index order, the same sequence (a NaN bound panics in
-/// either)
+/// first (`total_cmp`: -0 below 0) and equal bounds in index order, the same sequence
 pub(super) struct ByBound {
     bound: f64,
     cluster: usize,
@@ -798,8 +797,7 @@ impl PartialOrd for ByBound {
 impl Ord for ByBound {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.bound
-            .partial_cmp(&other.bound)
-            .unwrap()
+            .total_cmp(&other.bound)
             // BinaryHeap pops the greatest item: reverse indices so earlier clusters win ties.
             .then(other.cluster.cmp(&self.cluster))
     }

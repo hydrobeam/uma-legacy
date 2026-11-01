@@ -1,5 +1,6 @@
 //! Exact career deck searches and their kept memos.
 use crate::career::outcomes::CornerKey;
+use crate::career::plan::report::ClassMaxDeck;
 use crate::career::search::DeckRes;
 use crate::career::{CareerSetup, DeckSearchAudit, Env, SearchState};
 use crate::deck::caps::{EXACT_BUDGET, EXACT_STEPS, NESTED_CHAIN};
@@ -8,7 +9,6 @@ use crate::deck::joint::joint_b;
 use crate::deck::joint::upper::upper_na;
 use crate::deck::nested::{NestedDeck, NestedTrainee};
 use crate::deck::space::SelectedDeck;
-use serde_json::{Value, json};
 /// What a `best_deck` call without start decks reads: the trainee's deck class (everything of her the deck search reads
 /// but the folded chances), her folded event-hint chances per outfit (`set_trainee`: the folded buffer the search runs on,
 /// to the bit), the spark scale c, the bar th (every th <= 0 as one: each gives no seed and passes the ceiling test),
@@ -268,8 +268,13 @@ impl CareerSetup<'_> {
         nested_trainee.pair_caps(&self.space, code, events).nested * self.product_value(state, trainee, deck)
     }
     /// per class, the deck that set `max_ratio` (trainee name, cards), for the cap audit
-    pub(crate) fn max_decks(&self, audit: &DeckSearchAudit) -> Value {
-        json!(audit.max_deck.iter().map(|max_deck| max_deck.as_ref().map(|(trainee, deck)| json!({"trainee": self.data.umas[*trainee].name, "cards": self.space.pdeck(deck, &[self.data.umas[*trainee].id]).names}))).collect::<Vec<_>>())
+    pub(crate) fn max_decks(&self, audit: &DeckSearchAudit) -> [Option<ClassMaxDeck>; 4] {
+        audit.max_deck.each_ref().map(|max_deck| {
+            max_deck.as_ref().map(|(trainee, deck)| ClassMaxDeck {
+                trainee: self.data.umas[*trainee].name.clone(),
+                cards: self.space.pdeck(deck, &[self.data.umas[*trainee].id]).names,
+            })
+        })
     }
 }
 
@@ -635,7 +640,7 @@ impl Env<'_> {
         );
         work += CF_NODE_WORK * (setup.space.nodes.get() - nodes_before) + 5 * more.len() + 10_000;
         let mut full = incomplete.is_none();
-        more.sort_by(|first, second| second.value.partial_cmp(&first.value).unwrap());
+        more.sort_by(|first, second| second.value.total_cmp(&first.value));
         for ScoredDeck { value: candidate_product_value, deck: candidate } in more {
             if work > budget {
                 full = false;
@@ -818,7 +823,7 @@ impl Env<'_> {
             audit.multi_searches += usize::from(multi);
             full = rho == setup.space.rho_top();
             let mut cut = false;
-            more.sort_by(|first, second| second.value.partial_cmp(&first.value).unwrap());
+            more.sort_by(|first, second| second.value.total_cmp(&first.value));
             // per deck its nested-chain bound (NEG_INFINITY where none applies: `nested_bound`), and the largest from it
             // on: a deck the bound covers may beat the best below the band's cap times its product value
             let nested_bounds: Vec<f64> =

@@ -1,8 +1,8 @@
 // must.ts: `must` and `assert` throw naming their reason. `orNull`: an expected error gives null quietly; any other is
 // reported through the page's error path (`reportError`, stood in for here) and gives null too, so the caller goes on.
-// node --test 'test/unit/*.test.*'
+// npx vitest run
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { assert as holds, must, orNull } from '../../src/must.ts';
 
 class Expected extends Error {}

@@ -8,10 +8,11 @@ usage: runval.py BIN TAG [--quick] [-j N]
 import argparse
 import json
 import os
-import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+
+import solver
 
 
 @dataclass(frozen=True)
@@ -24,8 +25,7 @@ class ValidationTask:
     job_path: str
 
 
-VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(VALIDATION_DIR)
+VALIDATION_DIR = solver.VALIDATION_DIR
 parser = argparse.ArgumentParser(description="Run the validation jobs in parallel.", allow_abbrev=False)
 parser.add_argument("binary", metavar="BIN")
 parser.add_argument("tag", help="writes val/TAG__*.out and val/TAGpu__*.out")
@@ -66,15 +66,8 @@ times = {"": {}, "pu": {}}
 
 def run(task):
     started = time.time()
-    result = subprocess.run(
-        [binary, "data.json", task.job_path],
-        cwd=os.path.join(REPO, "pkg", "loopopt", "data", task.era),
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode:
-        raise RuntimeError(f"{task.mode or 'shared'} {task.name}: solver exited {result.returncode}\n{result.stderr}")
-    open(os.path.join(VALIDATION_DIR, f"{tag}{task.mode}__{task.name}.out"), "w").write(result.stdout)
+    stdout = solver.run(binary, task.era, task.job_path, name=f"{task.mode or 'shared'} {task.name}")
+    open(os.path.join(VALIDATION_DIR, f"{tag}{task.mode}__{task.name}.out"), "w").write(stdout)
     times[task.mode][task.name] = round(time.time() - started, 1)
     if task.mode == "pu":
         os.remove(task.job_path)

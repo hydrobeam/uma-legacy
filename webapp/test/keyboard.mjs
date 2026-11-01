@@ -4,30 +4,25 @@
 // pattern, the check holds it to what it does, and the comment says what it lacks.
 // No check here sends the solver a job beyond the pages' own first ones (this group replays recorded replies): the
 // loop page's settings change with Auto-search off, and the career page's controls opened here change nothing.
-import { check, open, careerPage } from './helpers.mjs';
+import { expect } from 'playwright/test';
+import { check, open, openEditor, closeEditor, careerPage } from './helpers.mjs';
 
-// whether the focused element matches `selector`
-const focusOn = (pg, selector) => pg.evaluate((s) => !!document.activeElement?.matches(s), selector);
 // the focused element, for a failure's detail
 const focusName = (pg) =>
   pg.evaluate(() => {
     const a = document.activeElement;
     return a ? `${a.tagName.toLowerCase()}#${a.id}.${a.className} "${(a.textContent || '').trim().slice(0, 30)}"` : '';
   });
-const isOpen = (pg, id) => pg.evaluate((id) => !!document.getElementById(id)?.open, id);
 const opens = (pg, id) =>
   pg.waitForSelector(`#${id}[open]`, { timeout: 3000 }).then(
     () => true,
     () => false,
   );
-// whether dialog `id` has closed (its close lands on the render after the click or key that closes it)
-const shuts = (pg, id) =>
-  pg
-    .waitForFunction((id) => !document.getElementById(id)?.open, id, { timeout: 3000 })
-    .then(
-      () => true,
-      () => false,
-    );
+// dialog `id` is open (`open`), or closed (its close lands on the render after the click or key that closes it)
+const isOpen = (pg, id, name, open = true) =>
+  open
+    ? expect.soft(pg.locator(`#${id}`), name).toHaveAttribute('open')
+    : expect.soft(pg.locator(`#${id}`), name).not.toHaveAttribute('open');
 // a click on `button`, then whether dialog `id` opened (a failed open fails the checks that need it, not the group)
 const clickOpens = async (pg, button, id) => {
   await button.click();
@@ -41,19 +36,16 @@ const clickOpens = async (pg, button, id) => {
 // Deck and the trainee's popup passed without theirs in Chromium), so that clause fails when a page handler moves the
 // focus away (Deck's close focusing another button failed it), not when one is missing.
 async function dialogKeys(pg, name, button, id, back = button) {
+  const title = `keyboard, dialog ${name}`;
   await button.focus();
   await pg.keyboard.press('Enter');
-  const opened = await opens(pg, id);
-  const inside =
-    opened && (await pg.evaluate((id) => document.getElementById(id).contains(document.activeElement), id));
-  if (opened) await pg.keyboard.press('Escape');
-  const shut = !(await isOpen(pg, id));
-  const returned = await back.evaluate((e) => e === document.activeElement).catch(() => false);
-  check(
-    `keyboard, dialog ${name}: Enter on its button opens it, the focus inside; Escape closes it, the focus back on ${back === button ? 'the button' : 'its opener'}`,
-    opened && inside && shut && returned,
-    `opened ${opened}, focus inside ${inside}, closed ${shut}, then on ${await focusName(pg)}`,
-  );
+  await isOpen(pg, id, `${title}: Enter on its button opens it`);
+  await expect.soft(pg.locator(`#${id}:focus-within`), `${title}: … the focus inside`).toHaveCount(1);
+  if ((await pg.locator(`#${id}`).getAttribute('open')) !== null) await pg.keyboard.press('Escape');
+  await isOpen(pg, id, `${title}: Escape closes it`, false);
+  await expect
+    .soft(back, `${title}: … the focus back on ${back === button ? 'the button' : 'its opener'}`)
+    .toBeFocused();
 }
 // Switch (a checkbox with role switch): Space toggles it, and the page takes the change (`took`: whether it did, given
 // the new state)
@@ -61,53 +53,43 @@ async function switchKeys(pg, name, sw, took) {
   await sw.focus();
   const before = await sw.isChecked();
   await pg.keyboard.press('Space');
-  const after = await sw.isChecked();
-  check(
-    `keyboard, switch ${name}: Space toggles it and the page takes the change`,
-    after === !before && (await took(after)),
-    `${before} -> ${after}`,
-  );
+  await expect.soft(sw, `keyboard, switch ${name}: Space toggles it`).toBeChecked({ checked: !before });
+  check(`keyboard, switch ${name}: … and the page takes the change`, await took(!before), `${before} -> ${!before}`);
 }
 // Radio group: the checked radio is the group's Tab stop; ArrowRight checks and focuses the next, ArrowLeft goes back
 async function radioKeys(pg, name, group) {
-  const checked = () => group.locator('[role="radio"][aria-checked="true"]');
-  await checked().focus();
-  const first = await checked()
-    .getAttribute('data-v')
-    .catch(() => null);
-  const firstText = await checked().innerText();
+  const title = `keyboard, radio group ${name}`,
+    checked = group.locator('[role="radio"][aria-checked="true"]');
+  await checked.focus();
+  const firstText = await checked.innerText();
   await pg.keyboard.press('ArrowRight');
-  const movedTo = await checked().innerText();
-  const moved = movedTo !== firstText && (await checked().evaluate((e) => e === document.activeElement));
+  await expect
+    .soft(checked, `${title}: ArrowRight checks the next radio`)
+    .not.toHaveText(firstText, { useInnerText: true });
+  await expect.soft(checked, `${title}: … and focuses it`).toBeFocused();
   await pg.keyboard.press('ArrowLeft');
-  const backAgain =
-    (await checked().innerText()) === firstText && (await checked().evaluate((e) => e === document.activeElement));
-  check(
-    `keyboard, radio group ${name}: ArrowRight checks and focuses the next radio, ArrowLeft the one before`,
-    moved && backAgain && (await group.locator('[role="radio"][aria-checked="true"]').count()) === 1,
-    `${first ?? firstText} -> ${movedTo}, back: ${backAgain}`,
-  );
+  await expect.soft(checked, `${title}: ArrowLeft checks the one before`).toHaveText(firstText, { useInnerText: true });
+  await expect.soft(checked, `${title}: … and focuses it`).toBeFocused();
+  await expect.soft(checked, `${title}: one radio checked`).toHaveCount(1);
 }
 // Menu button: Enter opens the menu with the focus on its checked item; `move` (ArrowDown, or ArrowRight in the scenario
 // grid) moves the focus to another item; Escape closes the menu and returns the focus to the button
 async function menuKeys(pg, name, button, menu, move = 'ArrowDown') {
+  const title = `keyboard, menu ${name}`;
   await button.focus();
   await pg.keyboard.press('Enter');
-  const shown = await menu.isVisible();
-  const onChecked = await pg.evaluate(() => document.activeElement?.getAttribute('aria-checked') === 'true');
+  await expect.soft(menu, `${title}: Enter opens it`).toBeVisible();
+  await expect.soft(menu.locator('[aria-checked="true"]'), `${title}: … on the checked item`).toBeFocused();
   const from = await focusName(pg);
   await pg.keyboard.press(move);
-  const moved = (await focusName(pg)) !== from && (await menu.evaluate((m) => m.contains(document.activeElement)));
-  await pg.keyboard.press('Escape');
   check(
-    `keyboard, menu ${name}: Enter opens it on the checked item, ${move} moves, Escape closes it back to the button`,
-    shown &&
-      onChecked &&
-      moved &&
-      (await menu.isHidden()) &&
-      (await button.evaluate((e) => e === document.activeElement)),
-    `shown ${shown}, on the checked item ${onChecked}, moved ${moved}, then on ${await focusName(pg)}`,
+    `${title}: ${move} moves the focus to another item`,
+    (await focusName(pg)) !== from && (await menu.evaluate((m) => m.contains(document.activeElement))),
+    `from ${from} to ${await focusName(pg)}`,
   );
+  await pg.keyboard.press('Escape');
+  await expect.soft(menu, `${title}: Escape closes it`).toBeHidden();
+  await expect.soft(button, `${title}: … back to the button`).toBeFocused();
 }
 
 export default async function keyboard(b) {
@@ -121,10 +103,11 @@ export default async function keyboard(b) {
   });
   await pg.keyboard.press('Enter');
   check(
-    'the first Tab stop is a visible "Skip to results" link that moves the focus to the results',
-    skip.cls === 'skip' && skip.top >= 0 && skip.text === 'Skip to results' && (await focusOn(pg, '#rcol')),
+    'the first Tab stop is a visible "Skip to results" link',
+    skip.cls === 'skip' && skip.top >= 0 && skip.text === 'Skip to results',
     JSON.stringify(skip),
   );
+  await expect.soft(pg.locator('#rcol'), '… that moves the focus to the results').toBeFocused();
   // the deck card panel (a non-modal dialog): focus moves in on open; Tab past its end returns to the card
   await pg.locator('.deck .dc').first().focus();
   await pg.keyboard.press('Enter');
@@ -135,24 +118,16 @@ export default async function keyboard(b) {
   );
   await pg.keyboard.press('Tab');
   await pg.keyboard.press('Tab');
-  check(
-    'deck card panel: opening focuses its Owned switch; tabbing out closes it and returns to the card',
-    inPop &&
-      (await pg.evaluate(
-        () => document.querySelector('.cpop').hidden && document.activeElement.classList.contains('dc'),
-      )),
-  );
+  check('deck card panel: opening focuses its Owned switch', inPop);
+  await expect.soft(pg.locator('.cpop').first(), 'deck card panel: tabbing out closes it').toBeHidden();
+  await expect.soft(pg.locator('.dc:focus'), '… and returns to the card').toHaveCount(1);
   await pg.locator('.mem .memb').first().focus();
   await pg.keyboard.press('Enter');
   const memIn = await pg.evaluate(() => document.activeElement.getAttribute('role') === 'switch');
   await pg.keyboard.press('Shift+Tab');
-  check(
-    'member panel: the same (Shift+Tab out returns to her name)',
-    memIn &&
-      (await pg.evaluate(
-        () => document.querySelector('.cpop').hidden && document.activeElement.classList.contains('memb'),
-      )),
-  );
+  check('member panel: the same (opening focuses its Owned switch)', memIn);
+  await expect.soft(pg.locator('.cpop').first(), 'member panel: Shift+Tab out closes it').toBeHidden();
+  await expect.soft(pg.locator('.memb:focus'), '… and returns to her name').toHaveCount(1);
   // Tooltip (gmtip.ts): a control with a title shows it as the game's balloon on keyboard focus, and hides it when the
   // focus leaves it (APG: Escape would hide it too; the page does not). The focus leaves for nothing (a blur): moved to
   // another titled control, the balloon would show that one's title, and a check for this title gone would pass with
@@ -168,11 +143,8 @@ export default async function keyboard(b) {
   });
   const tip = / tip true hidden false "Automatically search/.test(tipSeen);
   await pg.evaluate(() => /** @type {HTMLElement} */ (document.activeElement).blur());
-  check(
-    'keyboard, tooltip: keyboard focus on a titled control shows its balloon; moving the focus away hides it',
-    tip && (await pg.evaluate(() => document.querySelector('.gmtip').hidden)),
-    tipSeen,
-  );
+  check('keyboard, tooltip: keyboard focus on a titled control shows its balloon', tip, tipSeen);
+  await expect.soft(pg.locator('.gmtip'), 'keyboard, tooltip: moving the focus away hides it').toBeHidden();
   // Auto-search off first, so the settings changed below send no job (the status line asks for a Search instead)
   const stored = () => pg.evaluate(() => localStorage.getItem('llp:settings') || '');
   await switchKeys(pg, 'Auto-search', auto, async (on) => !on && /"auto":false/.test(await stored()));
@@ -190,18 +162,24 @@ export default async function keyboard(b) {
     window.__actButton = document.activeElement;
     document.getElementById('c-peruma').click(); // an edit made elsewhere, the focus left where it is
   });
+  const line = 'keyboard, status line: a pending change shows Search beside it (role status)';
+  await expect.soft(pg.locator('#run-note'), line).toHaveAttribute('role', 'status');
+  await expect.soft(search, `${line}: the button`).toHaveText('Search', { useInnerText: true });
   check(
-    'keyboard, status line: a pending change shows Search beside it (role status), and another edit keeps the focus on that button',
+    'keyboard, status line: … and another edit keeps the focus on that button',
     pending &&
-      (await pg.getAttribute('#run-note', 'role')) === 'status' &&
-      (await search.innerText()) === 'Search' &&
       (await pg.evaluate(() => document.activeElement === window.__actButton && window.__actButton.isConnected)),
     await focusName(pg),
   );
   await radioKeys(pg, 'Results (1 or 3)', pg.locator('#c-top'));
   await radioKeys(pg, 'Rank', pg.locator('#rank'));
+  // the sort menus are in the Umas and Support cards dialogs
+  await openEditor(pg, 'umas');
   await menuKeys(pg, 'Sort umas', pg.locator('#rs'), pg.locator('#rs-menu'));
+  await closeEditor(pg, 'umas');
+  await openEditor(pg, 'cards');
   await menuKeys(pg, 'Sort cards', pg.locator('#cs'), pg.locator('#cs-menu'));
+  await closeEditor(pg, 'cards');
   await menuKeys(pg, 'Scenario', pg.locator('#x-scen'), pg.locator('#scen-menu'), 'ArrowRight');
   await dialogKeys(pg, 'Umas', pg.locator('#o-umas'), 'set-umas');
   await dialogKeys(pg, 'Support cards', pg.locator('#o-cards'), 'set-cards');
@@ -209,7 +187,8 @@ export default async function keyboard(b) {
   // (a dialog over a dialog: Escape closes the top one only)
   const presets = await clickOpens(pg, pg.locator('#t-preset'), 'preset-dlg');
   await dialogKeys(pg, 'Save current skills (over Presets)', pg.locator('#pr-save'), 'pr-new');
-  check('keyboard, dialog over a dialog: Escape left Presets open', presets && (await isOpen(pg, 'preset-dlg')));
+  check('keyboard, dialog over a dialog: Presets opened', presets);
+  await isOpen(pg, 'preset-dlg', 'keyboard, dialog over a dialog: Escape left Presets open');
   await pg.keyboard.press('Escape');
   await dialogKeys(pg, 'Export / import settings', pg.locator('#ex-open'), 'ex-dlg');
   await dialogKeys(pg, 'Odds', pg.locator('.loop .lacts button', { hasText: 'Odds' }).first(), 'odds-dlg');
@@ -233,13 +212,11 @@ export default async function keyboard(b) {
     ),
   );
   check(
-    'schedule tabs: ArrowRight selects and focuses the next tab, one tab in the Tab order, each controls the panel',
-    sched &&
-      tabs[1] === 'true:0:sched-view' &&
-      tabs.filter((t) => t.startsWith('true')).length === 1 &&
-      (await pg.evaluate(() => document.activeElement === document.querySelectorAll('#sched-dlg .stab')[1])),
+    'schedule tabs: ArrowRight selects the next tab, one tab in the Tab order, each controls the panel',
+    sched && tabs[1] === 'true:0:sched-view' && tabs.filter((t) => t.startsWith('true')).length === 1,
     tabs.join(' '),
   );
+  await expect.soft(pg.locator('#sched-dlg .stab').nth(1), 'schedule tabs: … and focuses it').toBeFocused();
   await pg.keyboard.press('Escape');
   await dialogKeys(pg, 'Affinity', pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first(), 'why-dlg');
   // affinity: the careers are a radio group of pills; the arrows move and show one
@@ -247,16 +224,16 @@ export default async function keyboard(b) {
   const cap0 = why ? await pg.locator('#why-dlg table caption').innerText() : '';
   if (why) await pg.locator('#why-dlg .afpick:not(.afpar) [aria-checked="true"]').focus();
   await pg.keyboard.press('ArrowRight');
-  check(
-    'affinity: the careers are pill switches; an arrow key shows the next one',
-    why &&
-      (await pg.evaluate(
-        () =>
-          document.activeElement.getAttribute('aria-checked') === 'true' &&
-          document.activeElement.closest('.afpick') !== null,
-      )) &&
-      (await pg.locator('#why-dlg table caption').innerText()) !== cap0,
-  );
+  check('affinity: the dialog opened', why);
+  await expect
+    .soft(
+      pg.locator('.afpick [aria-checked="true"]:focus'),
+      'affinity: the careers are pill switches, the arrow moves the focus',
+    )
+    .toHaveCount(1);
+  await expect
+    .soft(pg.locator('#why-dlg table caption'), 'affinity: … an arrow key shows the next one')
+    .not.toHaveText(cap0, { useInnerText: true });
   await pg.keyboard.press('Escape');
   check('no page errors (the loop planner)', !pg.errors.length, pg.errors.join(' | '));
   await pg.context().close();
@@ -275,16 +252,15 @@ export default async function keyboard(b) {
   const guests = (await cp.getAttribute('#v-tab-bor', 'aria-selected')) === 'true';
   await cp.locator('#v-tab-own').focus();
   await cp.keyboard.press('Enter');
-  check(
-    'keyboard, tabs Veteran Umamusume / Guests: Enter selects the focused tab, the other unselected',
-    vets &&
-      guests &&
-      (await cp.getAttribute('#v-tab-own', 'aria-selected')) === 'true' &&
-      (await cp.getAttribute('#v-tab-bor', 'aria-selected')) === 'false' &&
-      (await focusOn(cp, '#v-tab-own')),
-  );
+  const vtabs = 'keyboard, tabs Veteran Umamusume / Guests: Enter selects the focused tab';
+  check(`${vtabs} (the dialog open, Guests selected first)`, vets && guests);
+  await expect.soft(cp.locator('#v-tab-own'), vtabs).toHaveAttribute('aria-selected', 'true');
+  await expect
+    .soft(cp.locator('#v-tab-bor'), `${vtabs}, the other unselected`)
+    .toHaveAttribute('aria-selected', 'false');
+  await expect.soft(cp.locator('#v-tab-own'), `${vtabs}: … the focus stays on it`).toBeFocused();
   await menuKeys(cp, 'Sort veterans', cp.locator('#vs'), cp.locator('#vs-menu'));
-  check('keyboard, a menu in a dialog: its Escape left Veteran Umamusume open', vets && (await isOpen(cp, 'set-vets')));
+  await isOpen(cp, 'set-vets', 'keyboard, a menu in a dialog: its Escape left Veteran Umamusume open');
   await dialogKeys(cp, 'Paste (over Veteran Umamusume)', cp.locator('#v-paste'), 'paste-dlg');
   await cp.keyboard.press('Escape');
   await dialogKeys(cp, 'Export veterans', cp.locator('#v-export'), 'vx-dlg');
@@ -318,10 +294,8 @@ export default async function keyboard(b) {
     (await cp.getAttribute('#vp-tab-new', 'aria-selected')) === 'true' &&
     (await cp.getAttribute('#vp-tab-vets', 'aria-selected')) === 'false';
   await cp.keyboard.press('Escape');
-  check(
-    'keyboard, tabs in the parent picker: Enter selects the focused tab; Escape closes the picker',
-    picker && pickNew && !(await isOpen(cp, 'vpick-dlg')),
-  );
+  check('keyboard, tabs in the parent picker: Enter selects the focused tab', picker && pickNew);
+  await isOpen(cp, 'vpick-dlg', 'keyboard, tabs in the parent picker: Escape closes the picker', false);
   // ---------- the focus comes back to what opened a popup (review-8c §6): by the keyboard, opened then closed
   // the node popup, closed by its Close button: back on the tree's parent place it opened from
   const place = cp.locator('#tree [data-k="node:p0"]');
@@ -329,11 +303,10 @@ export default async function keyboard(b) {
   await cp.keyboard.press('Enter');
   const nodeIn = await opens(cp, 'node-dlg');
   await cp.locator('#node-dlg').getByRole('button', { name: 'Close', exact: true }).click();
-  check(
-    'focus: the node popup, closed by Close, gives the focus back to the tree place that opened it',
-    nodeIn && (await shuts(cp, 'node-dlg')) && (await focusOn(cp, '#tree [data-k="node:p0"]')),
-    await focusName(cp),
-  );
+  const byClose = 'focus: the node popup, closed by Close';
+  check(`${byClose} (opened by Enter)`, nodeIn);
+  await isOpen(cp, 'node-dlg', byClose, false);
+  await expect.soft(place, `${byClose}, gives the focus back to the tree place that opened it`).toBeFocused();
   // the parent picker, from that place's popup (which closes as the picker opens): Escape gives it back to the place
   await place.focus();
   await cp.keyboard.press('Enter');
@@ -343,11 +316,10 @@ export default async function keyboard(b) {
   await cp.keyboard.press('Enter');
   const pickIn = !!choose && (await opens(cp, 'vpick-dlg'));
   await cp.keyboard.press('Escape');
-  check(
-    'focus: the parent picker opened from a node popup, closed by Escape, gives the focus back to the tree place',
-    pickIn && (await shuts(cp, 'vpick-dlg')) && (await focusOn(cp, '#tree [data-k="node:p0"]')),
-    await focusName(cp),
-  );
+  const pickEsc = 'focus: the parent picker opened from a node popup, closed by Escape';
+  check(`${pickEsc} (it opened)`, pickIn);
+  await isOpen(cp, 'vpick-dlg', pickEsc, false);
+  await expect.soft(place, `${pickEsc}, gives the focus back to the tree place`).toBeFocused();
   // in Veteran Umamusume's pane: the colour picker from her blue bar, and the "+" list from her sparks' "+"
   const vetsIn = await clickOpens(cp, cp.locator('#v-toggle'), 'set-vets');
   const bar = cp.locator('#v-pane .vsb.blue button.vskb').first(),
@@ -356,40 +328,23 @@ export default async function keyboard(b) {
   await cp.keyboard.press('Enter');
   const colourIn = !!barKey && (await opens(cp, 'col-dlg'));
   await cp.keyboard.press('Escape');
-  check(
-    'focus: the colour picker, closed by Escape, gives the focus back to the spark bar that opened it',
-    colourIn &&
-      (await shuts(cp, 'col-dlg')) &&
-      (await focusOn(cp, `[data-k="${barKey}"]`)) &&
-      (await isOpen(cp, 'set-vets')),
-    await focusName(cp),
-  );
+  const colourEsc = 'focus: the colour picker, closed by Escape';
+  check(`${colourEsc} (it opened)`, colourIn);
+  await isOpen(cp, 'col-dlg', colourEsc, false);
+  await expect
+    .soft(cp.locator(`[data-k="${barKey}"]`), `${colourEsc}, gives the focus back to the spark bar that opened it`)
+    .toBeFocused();
+  await isOpen(cp, 'set-vets', `${colourEsc}: Veteran Umamusume stays open`);
   const plus = cp.locator('#v-pane .vskadd').first(),
     plusKey = vetsIn ? await plus.getAttribute('data-k') : null;
   if (plusKey) await plus.focus();
   await cp.keyboard.press('Enter');
-  const listIn =
-    !!plusKey &&
-    (await cp
-      .waitForFunction(() => document.getElementById('add-pop')?.contains(document.activeElement), null, {
-        timeout: 3000,
-      })
-      .then(
-        () => true,
-        () => false,
-      ));
+  const listEsc = 'focus: the "+" list, closed by Escape';
+  await expect.soft(cp.locator('#add-pop:focus-within'), `${listEsc} (it opened, the focus in it)`).toHaveCount(1);
   await cp.keyboard.press('Escape');
-  const listShut = await cp
-    .waitForFunction(() => document.getElementById('add-pop')?.hidden, null, { timeout: 3000 })
-    .then(
-      () => true,
-      () => false,
-    );
-  check(
-    'focus: the "+" list, closed by Escape, gives the focus back to its "+" (Veteran Umamusume stays open)',
-    listIn && listShut && (await focusOn(cp, `[data-k="${plusKey}"]`)) && (await isOpen(cp, 'set-vets')),
-    await focusName(cp),
-  );
+  await expect.soft(cp.locator('#add-pop'), listEsc).toBeHidden();
+  await expect.soft(cp.locator(`[data-k="${plusKey}"]`), `${listEsc}, gives the focus back to its "+"`).toBeFocused();
+  await isOpen(cp, 'set-vets', `${listEsc}: Veteran Umamusume stays open`);
   check('no page errors (the career planner)', !cp.errors.length, cp.errors.join(' | '));
   await career.ctx.close();
 }

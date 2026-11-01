@@ -398,7 +398,7 @@ impl DominanceIndex {
 /// The order k_filter(list, 1, nd).into_list() produces when it keeps every deck: stable by
 /// (bucket of the sum ascending, sum descending), ties in input order.
 pub(super) fn kfilter_order(mut decks: Vec<DeckEval>, coordinate_count: usize) -> Vec<DeckEval> {
-    decks.sort_by(|a, b| b.coordinate_sum.partial_cmp(&a.coordinate_sum).unwrap());
+    decks.sort_by(|a, b| b.coordinate_sum.total_cmp(&a.coordinate_sum));
     let kept = DominanceIndex::new(coordinate_count);
     decks.sort_by_key(|deck| kept.bucket_of(deck.coordinate_sum));
     decks
@@ -406,7 +406,7 @@ pub(super) fn kfilter_order(mut decks: Vec<DeckEval>, coordinate_count: usize) -
 /// Keep each deck unless `kmax` decks scoring at least as high in every coordinate are kept before it (sorted
 /// pass). A dominator's coordinate sum is at least the deck's, so only kept decks above that sum are checked.
 pub(super) fn k_filter(mut decks: Vec<DeckEval>, kmax: usize, coordinate_count: usize) -> DominanceIndex {
-    decks.sort_by(|a, b| b.coordinate_sum.partial_cmp(&a.coordinate_sum).unwrap());
+    decks.sort_by(|a, b| b.coordinate_sum.total_cmp(&a.coordinate_sum));
     let mut kept = DominanceIndex::new(coordinate_count);
     for deck in decks {
         let query_signature = sig_of(&deck.dominance_values, true);
@@ -494,10 +494,9 @@ pub(super) fn split<D: Odds>(skyline: &[D], members: &mut [usize], uncertain_cou
             hi[uncertain_count + k] = hi[uncertain_count + k].max(skyline[j].gold_hint_chances()[k]);
         }
     }
-    let widest =
-        (0..2 * uncertain_count).max_by(|&a, &b| (hi[a] - lo[a]).partial_cmp(&(hi[b] - lo[b])).unwrap()).unwrap();
+    let widest = (0..2 * uncertain_count).max_by(|&a, &b| (hi[a] - lo[a]).total_cmp(&(hi[b] - lo[b]))).unwrap();
     let mid = members.len() / 2;
-    members.select_nth_unstable_by(mid, |&a, &b| coord(a, widest).partial_cmp(&coord(b, widest)).unwrap());
+    members.select_nth_unstable_by(mid, |&a, &b| coord(a, widest).total_cmp(&coord(b, widest)));
     let (lower, upper) = members.split_at_mut(mid);
     split(skyline, lower, uncertain_count, out);
     split(skyline, upper, uncertain_count, out);

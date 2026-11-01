@@ -7,7 +7,7 @@
 //! - `shared`: exact shared-deck scans and their cached results.
 //! - `deck_bounds`: individual-deck ceilings for small fixed-pal spaces.
 //! - `bands`: loop-structure bands, schedule solving and the budgeted certification passes.
-//! - `report`: the picks, JSON results and diagnostic summaries.
+//! - `report`: the picks, the loop report and diagnostic summaries.
 use self::shared::SharedResult;
 use self::tables::{
     ByBound, ExactCacheEntry, ExactCeiling, Grid, NG, class_clusters, classes, full_clusters, pair_table,
@@ -18,10 +18,11 @@ use crate::deck::sources::{SourceEntry, TargetSources};
 use crate::deck::space::DeckSpace;
 use crate::deck::{Card, CardsRaw, DeckJob};
 use crate::loop_planner::dominance::DeckCluster;
+use crate::loop_planner::output::{DeckReply, DeckStats};
 use crate::loop_planner::schedules::{Res, members};
+use crate::refusal::Refusal;
 use crate::skills::{MemberLineage, Model, SkillJob, check_sizes, lins};
 use crate::uma::{UmaIndex, UmaTable};
-use serde_json::{Value, json};
 use std::borrow::Cow;
 mod bands;
 mod deck_bounds;
@@ -48,10 +49,10 @@ pub(super) struct LoopJobInputs<'data> {
 /// The skyline bounds product values without enforcing each trainee's card restrictions. Legal skyline decks
 /// seed exact scoring; `DeckSpace` searches the remaining legal decks under their assumed structure-class caps.
 /// `stats`: the deck enumeration's counters, reported with the loops.
-pub(super) fn run_multi(inputs: LoopJobInputs, stats: Value) -> Value {
+pub(super) fn run_multi(inputs: LoopJobInputs, stats: DeckStats) -> DeckReply {
     let (mut search, mut state) = match Multi::new(inputs) {
         Ok(search) => search,
-        Err(error) => return error,
+        Err(refusal) => return DeckReply::Refusal(refusal),
     };
     state.deck_bounds = search.deck_bounds(&mut state.state_bounds);
     if let Some(bounds) = &state.deck_bounds {
@@ -60,10 +61,10 @@ pub(super) fn run_multi(inputs: LoopJobInputs, stats: Value) -> Value {
     }
     let (pass, certified_cap) = search.certify(&mut state);
     if pass.solved.is_empty() {
-        return json!({"error": "No loop contains all the required umas."});
+        return DeckReply::Refusal(Refusal::new("No loop contains all the required umas."));
     }
     report::upper_check_summary();
-    search.report(&state.tally, pass, certified_cap, stats)
+    DeckReply::Loops(Box::new(search.report(&state.tally, pass, certified_cap, stats)))
 }
 
 /// A memo key of up to 12 chances (a loop's lineages): their bits and count, a fixed array (equal exactly when the
@@ -279,7 +280,7 @@ impl LoopJobInputs<'_> {
 impl<'data> Multi<'data> {
     /// Setup: the pool, its pair ceilings and chance grid, the skyline's classes and clusters, and the pool's order;
     /// Err with the job's error when the required umas cannot train or the sizes do not fit
-    fn new(inputs: LoopJobInputs<'data>) -> Result<(Self, LoopSearchState), Value> {
+    fn new(inputs: LoopJobInputs<'data>) -> Result<(Self, LoopSearchState), Refusal> {
         let target_groups: Vec<u32> =
             inputs.model.uncertain.iter().map(|&i| inputs.skill_job.targets[i].group).collect();
         let target_count = target_groups.len();
@@ -287,10 +288,10 @@ impl<'data> Multi<'data> {
         let uma_count = inputs.data.umas.len();
         let TrainingPool { eligible: pool, required: required_umas } = inputs.trainable(&card_of);
         if required_umas.iter().any(|required| !pool.contains(required)) {
-            return Err(json!({"error": "A required uma cannot train with a locked card of her own."}));
+            return Err(Refusal::new("A required uma cannot train with a locked card of her own."));
         }
         if let Err(error) = check_sizes(&inputs.skill_job.sizes, pool.len(), required_umas.len()) {
-            return Err(json!({"error": error}));
+            return Err(Refusal::new(error));
         }
         let (allow_three, allow_four) = (inputs.skill_job.sizes.contains(&3), inputs.skill_job.sizes.contains(&4));
         let fixed_schedules: Option<UmaTable<Option<Sched>>> = inputs.deck_job.schedule.as_deref().map(|mode| {

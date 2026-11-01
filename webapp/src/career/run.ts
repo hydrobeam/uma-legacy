@@ -5,6 +5,8 @@
 // solver, the clock, the job its settings and veterans make, the analysis, the redraws) comes in `deps` too, so the
 // node tests run the machine on fakes. It reads no store itself (a model module: .dependency-cruiser.mjs checks it).
 import type { PlanProgress } from '../solver.ts';
+import { checkIn, planIn, searchIn } from './reply.ts';
+import { must } from '../must.ts';
 import type { CareerAnswer, CareerJob, CareerReport, CareerSearch, PlanReport } from './job.ts';
 import type { DeepReadonly } from '../store.ts';
 import type * as AnswerStore from './state.ts';
@@ -100,7 +102,7 @@ export interface CheckDeps {
   /** the run the check belongs to is still the newest (no edit since) */
   runIsCurrent: () => boolean;
   /** a check job on the worker, in the background: its answer, or null when the worker was killed meanwhile */
-  runCheck: (job: DeepReadonly<CareerJob>) => Promise<{ r: { next?: PlanReport; error?: string } } | null>;
+  runCheck: (job: DeepReadonly<CareerJob>) => Promise<CareerAnswer | null>;
   /** the check as far as it has run, drawn (the plan's table) */
   redraw: () => void;
   /** the plan with its check written, for what else keeps the same report (Compare's kept plan, `reviseKeptPlan`) */
@@ -163,8 +165,9 @@ export async function checkPhase(deps: CheckDeps, planned: DeepReadonly<PlanDone
     }
     if (!current()) return;
     // (a kill loses the check: the stored state keeps no check, so the next worker could not run it; REPORT N7)
-    const check = m?.r.next?.robust;
-    if (!check || check.unavailable || check.error) {
+    const check = m && !('error' in m.r) ? checkIn(m.r) : undefined;
+    // (no check: the worker kept no plan to check, `unavailable`, or refused, `error`)
+    if (!check || 'unavailable' in check || 'error' in check) {
       deps.checked(checkUnavailable(planned.id));
       deps.redraw();
       return;
@@ -297,16 +300,17 @@ export function createRun(deps: RunDeps) {
       if (runId !== id) return;
       if ('error' in m.r) fail(`Not searched: ${m.r.error}`);
       else {
-        const result = { r: m.r, ms: m.ms },
+        const r = must(searchIn(m.r), 'a career job without a roll or check is answered with its search'),
+          result = { r, ms: m.ms },
           found = searchedText(result),
           status = page.searched(result, found);
-        const best = m.r.results[0];
+        const best = r.results[0];
         const planned = best && !page.trainee() ? await planPhase(runId, job, found) : { state: 'none' as const };
         if (planned === null) return; // a newer edit took over
         // the answer: the plan's pick (the best odds when no plan ran or it failed), and the veteran you got, drawn
         // once from it (a comparison on screen was for the old answer); a plan made becomes the reference (`refFor`)
         store.showAnswer(
-          { status, last: { r: m.r, job, key, plan: places }, planState: planned },
+          { status, last: { r, job, key, plan: places }, planState: planned },
           planned.state === 'done' ? { base: page.refBase(job), places: JSON.parse(places) } : null,
           pool,
         );
@@ -364,14 +368,14 @@ export function createRun(deps: RunDeps) {
   async function planPhase(runId: number, job: CareerJob, found: string): Promise<PlanState | null> {
     store.planStarts(found, clock.now());
     view.paint();
-    const { rollout: _r, p_now: _p, ...plain } = job;
+    const plain = job;
     let planned: PlanState;
     try {
       // Compare may have run this very plan job already (`keptPlan`): take its answer instead of planning again
       const jp = { ...plain, next: { ...PLAN_NEXT }, no_reports: true },
         kept = store.keptPlan(planKey(jp));
-      const m2: { r: { next?: DeepReadonly<PlanReport>; error?: string }; ms: number } = kept
-        ? { r: { next: kept.r }, ms: kept.ms }
+      const m2: CareerAnswer | { plan: DeepReadonly<PlanReport>; ms: number } = kept
+        ? { plan: kept.r, ms: kept.ms }
         : await engine.run(jp, (p) => {
             if (runId === id) {
               store.planProgresses(progText(p));
@@ -379,11 +383,13 @@ export function createRun(deps: RunDeps) {
             }
           });
       if (runId !== id) return null;
-      const x = m2.r.next;
+      // (the job's refusal, or the plan's: `error`)
+      const refusal = 'r' in m2 && 'error' in m2.r ? m2.r.error : undefined,
+        x = 'plan' in m2 ? m2.plan : 'error' in m2.r ? undefined : planIn(m2.r);
       planned =
-        x && !x.error && x.options?.length
+        x && !('error' in x) && x.options?.length
           ? { state: 'done', id: store.newPlanId(), r: x as PlanReport, ms: m2.ms, job: jp }
-          : { state: 'error', text: m2.r.error || x?.error || 'no option found.' };
+          : { state: 'error', text: refusal || (x && 'error' in x ? x.error : undefined) || 'no option found.' };
     } catch (e) {
       if (runId !== id) return null;
       planned = { state: 'error', text: (e as Error).message };

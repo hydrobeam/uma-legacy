@@ -6,6 +6,8 @@ use crate::career::state::{KeptSolve, KeptState, ProductProof, SOLVE_KEEP};
 use crate::career::{CareerSetup, ClassFlags, Env, Lineage, SearchState};
 use crate::deck::space::SelectedDeck;
 use crate::uma::{UmaIndex, UmaTable};
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 /// How a bound proves a career out (`CareerSetup::ceiling_out`, `refs_out`, `ruled_out`): `Below(threshold)`, `solve`'s
 /// prune, the bound below the bar with its slack s, b (1 + s) < threshold (a computed bound a hair under the true one
 /// still proves it); or `AtMost(limit)`, `certified`'s, the bound at most limit up to rounding, b <= limit (1 + 1e-12):
@@ -29,7 +31,7 @@ impl Bar {
 }
 
 /// `CareerSetup::ranked_pairs`' pairs, sorted lazily as `solve`'s candidates are: `gen_cands` emits one trainee's pairs
-/// in (a, b) order, so the stable sort by ceiling (descending, `partial_cmp`: 0 and -0 tie) is the total order (ceiling
+/// in (a, b) order, so the stable sort by ceiling (descending, `total_cmp`) is the total order (ceiling
 /// descending, a, b), unique per pair; each step past the ordered prefix `candidates[..sorted_until]` selects the next
 /// chunk (everything before it orders before everything after it) and sorts only the chunk, so the sequence is the full
 /// sort's, element for element, and a caller that stops early sorts little
@@ -62,8 +64,7 @@ impl Iterator for Ranked {
             let order = |first: &RankedPair, second: &RankedPair| {
                 second
                     .ceiling
-                    .partial_cmp(&first.ceiling)
-                    .unwrap()
+                    .total_cmp(&first.ceiling)
                     .then(first.content_rank.cmp(&second.content_rank))
                     .then(first.first_parent.cmp(&second.first_parent))
                     .then(first.second_parent.cmp(&second.second_parent))
@@ -124,8 +125,10 @@ pub(crate) enum DeckRes {
     Done(f64, SelectedDeck, bool),
 }
 
-/// Why a career search is not complete (`CareerSearchResult::complete` false), each reason that occurred.
-#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+/// Why a career search is not complete (`CareerSearchResult::complete` false), each reason that occurred; written as
+/// the list of their names (`UnprovenReason`).
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, TS)]
+#[ts(as = "Vec<UnprovenReason>")]
 pub(crate) struct Unproven {
     /// The work ran out: a deck search passed the work budget (it scored only some of its band), or the hard work cap
     /// stopped taking candidates.
@@ -140,8 +143,9 @@ pub(crate) struct Unproven {
 }
 
 /// The named assumptions a proof rests on beyond the derived bounds and the measured class caps (docs/SOLVER.md, *What
-/// "proven" rests on*), each that occurred.
-#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+/// "proven" rests on*), each that occurred; written as the list of their names (`Assumption`).
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, TS)]
+#[ts(as = "Vec<Assumption>")]
 pub(crate) struct Assumes {
     /// The class cap for decks of a pair of chain-varying targets fed by two or more chain cards
     /// (`DeckSearchAudit::assumed_searches`): two cards each feeding one target, a nested pair with another feeder.
@@ -156,52 +160,94 @@ impl Assumes {
     pub(crate) const fn union(self, other: Self) -> Self {
         Self { two_feeder: self.two_feeder || other.two_feeder, multi_feeder: self.multi_feeder || other.multi_feeder }
     }
-    /// The assumptions' names, as the output lists them (`assumes`, `job_assumes`).
-    pub(crate) fn names(self) -> Vec<&'static str> {
-        [(self.two_feeder, "two_feeder_cap"), (self.multi_feeder, "multi_feeder_cap")]
+    /// The assumptions, as the output lists them (`assumes`, `job_assumes`).
+    pub(crate) fn names(self) -> Vec<Assumption> {
+        [(self.two_feeder, Assumption::TwoFeederCap), (self.multi_feeder, Assumption::MultiFeederCap)]
             .into_iter()
             .filter_map(|(holds, name)| holds.then_some(name))
             .collect()
     }
-    /// The assumptions from their names (`names`; absent: none); None for an unknown name.
-    pub(crate) fn from_names(value: Option<&serde_json::Value>) -> Option<Self> {
-        let mut assumes = Self::default();
-        for name in value.map_or(Some(&vec![]), serde_json::Value::as_array)? {
-            match name.as_str()? {
-                "two_feeder_cap" => assumes.two_feeder = true,
-                "multi_feeder_cap" => assumes.multi_feeder = true,
-                _ => return None,
-            }
-        }
-        Some(assumes)
-    }
 }
 
 impl Unproven {
-    /// The reasons from their names (`names`); None for an unknown name.
-    pub(crate) fn from_names(value: &serde_json::Value) -> Option<Self> {
-        let mut unproven = Self::default();
-        for name in value.as_array()? {
-            match name.as_str()? {
-                "work_cap" => unproven.work_cap = true,
-                "band_overflow" => unproven.band_overflow = true,
-                "cap_breach" => unproven.cap_breach = true,
-                _ => return None,
-            }
-        }
-        Some(unproven)
-    }
     /// Whether any reason occurred.
     pub(crate) const fn any(self) -> bool {
         self.work_cap || self.band_overflow || self.cap_breach
     }
-    /// The reasons' names, as the output lists them (`unproven`).
-    pub(crate) fn names(self) -> Vec<&'static str> {
-        [(self.work_cap, "work_cap"), (self.band_overflow, "band_overflow"), (self.cap_breach, "cap_breach")]
-            .into_iter()
-            .filter_map(|(occurred, name)| occurred.then_some(name))
-            .collect()
+    /// The reasons, as the output lists them (`unproven`).
+    pub(crate) fn names(self) -> Vec<UnprovenReason> {
+        [
+            (self.work_cap, UnprovenReason::WorkCap),
+            (self.band_overflow, UnprovenReason::BandOverflow),
+            (self.cap_breach, UnprovenReason::CapBreach),
+        ]
+        .into_iter()
+        .filter_map(|(occurred, name)| occurred.then_some(name))
+        .collect()
     }
+}
+
+impl Serialize for Unproven {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.names().serialize(serializer)
+    }
+}
+
+impl Serialize for Assumes {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.names().serialize(serializer)
+    }
+}
+
+/// The reasons from their names (a kept search, `state_in`); an unknown name does not parse.
+impl<'de> Deserialize<'de> for Unproven {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let mut unproven = Self::default();
+        for reason in Vec::<UnprovenReason>::deserialize(deserializer)? {
+            match reason {
+                UnprovenReason::WorkCap => unproven.work_cap = true,
+                UnprovenReason::BandOverflow => unproven.band_overflow = true,
+                UnprovenReason::CapBreach => unproven.cap_breach = true,
+            }
+        }
+        Ok(unproven)
+    }
+}
+
+/// The assumptions from their names (a kept search, `state_in`); an unknown name does not parse.
+impl<'de> Deserialize<'de> for Assumes {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let mut assumes = Self::default();
+        for assumption in Vec::<Assumption>::deserialize(deserializer)? {
+            match assumption {
+                Assumption::TwoFeederCap => assumes.two_feeder = true,
+                Assumption::MultiFeederCap => assumes.multi_feeder = true,
+            }
+        }
+        Ok(assumes)
+    }
+}
+
+/// Why a search is not complete.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum UnprovenReason {
+    /// the work ran out (a deck search passed its budget, or the hard work cap stopped taking candidates)
+    WorkCap,
+    /// a deck band too large to check in full was certified at a lower cap only
+    BandOverflow,
+    /// a capped deck search scored a deck past its class's cap
+    CapBreach,
+}
+
+/// A named assumption a proof rests on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Assumption {
+    /// the class cap for decks of two chain-varying targets fed by two or more chain cards
+    TwoFeederCap,
+    /// the nested-chain bound beside other chain feeders, their dependence left out
+    MultiFeederCap,
 }
 
 #[derive(Clone)]
@@ -710,7 +756,7 @@ impl Env<'_> {
             },
         );
         // Best ceiling first, ties by the trainee's place, then the pair's content rank (`pool::pair_rank`, so the pool's
-        // order chooses nothing among equal ceilings), then generation order (partial_cmp, so 0 and -0 tie as there):
+        // order chooses nothing among equal ceilings), then generation order (`total_cmp`, as there):
         // a total order on (ceiling descending, trainee_position, pair key, a, b), unique per candidate.
         // Sorted lazily (`sorted_until`): the loop below reads a short prefix, so each step selects the next chunk
         // (everything before it is ordered before everything after it) and sorts only the chunk; the prefix is the full
@@ -718,8 +764,7 @@ impl Env<'_> {
         let candidate_order = |first: &Candidate, second: &Candidate| {
             second
                 .ceiling
-                .partial_cmp(&first.ceiling)
-                .unwrap()
+                .total_cmp(&first.ceiling)
                 .then(first.trainee_position.cmp(&second.trainee_position))
                 .then(first.content_rank.cmp(&second.content_rank))
                 .then(first.first_parent.cmp(&second.first_parent))

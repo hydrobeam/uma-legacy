@@ -70,7 +70,7 @@ impl Multi<'_> {
                         )
                 })
                 .collect();
-            product_values.sort_by(|a, b| b.partial_cmp(a).unwrap());
+            product_values.sort_by(|a, b| b.total_cmp(a));
             let possible = [3, 4].into_iter().any(|size| {
                 ((size == 3 && self.allow_three) || (size == 4 && self.allow_four))
                     && product_values.len() >= size
@@ -101,7 +101,7 @@ impl Multi<'_> {
                     (value, uma)
                 })
                 .collect();
-            ranked.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+            ranked.sort_by(|a, b| b.0.total_cmp(&a.0));
             let possible = [3, 4].into_iter().any(|size| {
                 ((size == 3 && self.allow_three) || (size == 4 && self.allow_four))
                     && ranked.len() >= size

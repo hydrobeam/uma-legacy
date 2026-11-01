@@ -14,7 +14,9 @@ package = false
 
 [dependency-groups]
 dev = [
+    "basedpyright==1.40.2",
     "ruff>=0.17.1",
+    "scipy-stubs==1.18.1.1",
     "shellcheck-py>=0.11.0.1",
 ]
 research = [
@@ -38,4 +40,22 @@ ignore = [
   "B905",                        # zip(strict=...) would change behaviour where lengths differ on purpose
   "SIM115",                      # json.load(open(p)) in a script reads better than a with-block; nothing leaks that matters
   "RUF001", "RUF002", "RUF003",  # ×, ≤, − and the like are deliberate in strings, docstrings and comments
+]
+
+# the type checker (./build.sh lint, the pre-commit hook): pyright's standard rules over every Python tree but
+# webapp/build.py (Vite replaces it), run with the research and art groups so numpy, scipy, UnityPy and Pillow resolve
+[tool.basedpyright]
+include = ["research", "val", "pkg/loopopt/export", "webapp/icons.py", "webapp/images.py", "webapp/chibi", "webapp/test"]
+exclude = ["**/node_modules", "research/data"]
+pythonVersion = "3.14"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+executionEnvironments = [
+  # each tree as its scripts run it: val/sim's scripts put val/ on the path; val/ and research/ read export's gametora
+  { root = "val/sim", extraPaths = ["val"] },
+  { root = "val", extraPaths = ["pkg/loopopt/export", "research"] },
+  { root = "research", extraPaths = ["pkg/loopopt/export", "val"] },
+  { root = "pkg/loopopt/export" },
+  { root = "webapp" },
 ]

@@ -2,10 +2,10 @@
 //! name strings (`Name`) and identity key (`DeckId`).
 use crate::deck::Card;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use ts_rs::TS;
 /// A deck detached from the search that built it (names and ids instead of indices), for per-uma mode. Its names are
 /// shared strings (`Name`: a skyline of 50k decks repeats about a hundred distinct ones), written as plain strings
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, TS)]
 pub(crate) struct PDeck {
     pub(crate) names: Vec<Name>,
     pub(crate) ids: Vec<u32>,
@@ -26,13 +26,60 @@ pub(crate) struct PDeck {
 }
 /// A card or deck name shared between decks (serde's `rc`: serialised as the string)
 pub(crate) type Name = std::rc::Rc<str>;
+/// A deck in a result. Parallel lists: `cards[i]` is named with ` (borrowed)` or ` (end chain at link N)` appended
+/// where that applies; `card_ids[i]` is its id (plain pals have a name but no id here: `plain_ids`).
+/// It owns its lists: a result outlives the search that holds the deck.
+#[derive(Clone, Serialize, TS)]
+pub(crate) struct ResultDeck {
+    pub(crate) cards: Vec<Name>,
+    pub(crate) card_ids: Vec<u32>,
+    /// the cards in it that are pals, by name
+    pub(crate) pal_cards: Vec<Name>,
+    /// per card with an id (`card_ids`' order): the chain link to end its story at (0: none)
+    pub(crate) end_chain_at: Vec<u8>,
+    /// per card with an id (`card_ids`' order): the skill to prioritise at its chain link
+    pub(crate) choices: Vec<Name>,
+    /// per uncertain target: the chance the deck hints its white skill, its gold
+    pub(crate) odds: Vec<TargetHintOdds>,
+    /// the plain pals' ids
+    pub(crate) plain_ids: Vec<u32>,
+    /// how many pals it holds
+    pub(crate) pals: usize,
+    /// the borrowed card, by name (null: none)
+    pub(crate) borrowed: Option<Name>,
+}
+
+/// A deck's hint odds for one target.
+#[derive(Clone, Serialize, TS)]
+pub(crate) struct TargetHintOdds {
+    /// the target's skill group
+    pub(crate) group: u32,
+    pub(crate) white: f64,
+    pub(crate) gold: f64,
+}
+
 impl PDeck {
-    pub(crate) fn out(&self, uncertain_groups: &[u32]) -> Value {
-        let odds: Vec<Value> = (0..uncertain_groups.len())
-            .map(|k| json!({"group": uncertain_groups[k], "white": self.white_hint_chances[k], "gold": self.gold_hint_chances[k]}))
+    /// The deck as a result shows it; `uncertain_groups`: the targets its odds are indexed by. (A copy: the result is
+    /// handed out of the search that holds the deck; a few short lists, once per reported deck. Names are shared.)
+    pub(crate) fn out(&self, uncertain_groups: &[u32]) -> ResultDeck {
+        let odds = (0..uncertain_groups.len())
+            .map(|k| TargetHintOdds {
+                group: uncertain_groups[k],
+                white: self.white_hint_chances[k],
+                gold: self.gold_hint_chances[k],
+            })
             .collect();
-        json!({"pals": self.pals, "cards": self.names, "odds": odds, "pal_cards": self.pal_names, "borrowed": self.borrowed,
-               "card_ids": self.ids, "end_chain_at": self.ends, "choices": self.choices, "plain_ids": self.plain_ids})
+        ResultDeck {
+            cards: self.names.clone(),
+            card_ids: self.ids.clone(),
+            pal_cards: self.pal_names.clone(),
+            end_chain_at: self.ends.clone(),
+            choices: self.choices.clone(),
+            odds,
+            plain_ids: self.plain_ids.clone(),
+            pals: self.pals,
+            borrowed: self.borrowed.clone(),
+        }
     }
     pub(crate) fn blocks(&self, uma: u32, card_of: &crate::FxMap<u32, &Card>, checks: &crate::checks::Checks) -> bool {
         self.ids.iter().chain(&self.plain_ids).any(|id| card_of.get(id).is_some_and(|card| card.blocks(uma, checks)))

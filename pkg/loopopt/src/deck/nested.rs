@@ -104,12 +104,7 @@ impl NestedChains {
     /// The chain law of chain key `code` (its kinds `kinds`) at `events`, memoised
     fn law(&self, code: u64, events: ChainEvents, kinds: Vec<ChainKind>) -> std::rc::Rc<ChainLaw> {
         let key = (code, events.key());
-        if let Some(law) = self.laws.borrow().get(&key) {
-            return std::rc::Rc::clone(law);
-        }
-        let law = std::rc::Rc::new(ChainLaw::new(events, kinds));
-        self.laws.borrow_mut().insert(key, std::rc::Rc::clone(&law));
-        law
+        crate::memoised(&self.laws, key, |_| std::rc::Rc::new(ChainLaw::new(events, kinds)))
     }
 }
 
@@ -278,27 +273,24 @@ impl NestedTrainee {
     /// The pair caps of chain key `code` at `events` for her (module notes): over every entry of the space (a superset of
     /// any search's legal ones); memoised for the search.
     pub(crate) fn pair_caps(&self, space: &DeckSpace, code: u64, events: ChainEvents) -> PairCaps {
-        if let Some(&caps) = self.caps.borrow().get(&(code, events.key())) {
-            return caps;
-        }
-        let chains = &space.nested_chains;
-        let kinds = space.kinds_of_code(code);
-        let present = |j: usize| kinds.contains(&chains.kinds[j]);
-        let target_count = chains.target_count;
-        let any_pair = (0..target_count).filter(|&t| chains.feeders[t].iter().any(|&j| present(j))).count() >= 2;
-        let caps = if any_pair {
-            let law = chains.law(code, events, kinds);
-            let key_misses = space.key_miss(code, events);
-            let marginal = |j: usize, t: usize| {
-                let index = j * target_count + t;
-                (key_misses.gold[index], key_misses.gold[index] * key_misses.white[index])
-            };
-            chains.caps_with(&law, &marginal, self)
-        } else {
-            PairCaps::default()
-        };
-        self.caps.borrow_mut().insert((code, events.key()), caps);
-        caps
+        crate::memoised(&self.caps, (code, events.key()), |_| {
+            let chains = &space.nested_chains;
+            let kinds = space.kinds_of_code(code);
+            let present = |j: usize| kinds.contains(&chains.kinds[j]);
+            let target_count = chains.target_count;
+            let any_pair = (0..target_count).filter(|&t| chains.feeders[t].iter().any(|&j| present(j))).count() >= 2;
+            if any_pair {
+                let law = chains.law(code, events, kinds);
+                let key_misses = space.key_miss(code, events);
+                let marginal = |j: usize, t: usize| {
+                    let index = j * target_count + t;
+                    (key_misses.gold[index], key_misses.gold[index] * key_misses.white[index])
+                };
+                chains.caps_with(&law, &marginal, self)
+            } else {
+                PairCaps::default()
+            }
+        })
     }
     /// The deck's value at one outfit at its odds `white` (given no gold) and `gold`: fixed factor times the product of
     /// its landing factors (`land_dw`'s form)

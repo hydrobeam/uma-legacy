@@ -16,8 +16,10 @@ use crate::career::plan::sweep::deck_odds;
 use crate::career::plan::{PlanContext, found_career};
 use crate::career::search::{Found, RankedPair};
 use crate::career::sim::Sim;
+use crate::refusal::Refusal;
 use crate::uma::UmaIndex;
-use serde_json::{Value, json};
+use serde::Serialize;
+use ts_rs::TS;
 
 /// Starts after the plan's pick: the best-scoring trainees' best rows.
 const ASCENT_STARTS: usize = 3;
@@ -155,10 +157,10 @@ pub(crate) fn pair_ascent(
     runs: &[PlanRow],
     scores: &PlanScores,
     buf: &mut Vec<f64>,
-) -> Value {
+) -> Option<PairAscent> {
     let input = context.input;
     if !input.settings.pair_ascent || !scores.any_scored || !scores.fit.current_value.is_finite() {
-        return Value::Null;
+        return None;
     }
     let started_ms = now_ms();
     let data = context.data();
@@ -189,15 +191,22 @@ pub(crate) fn pair_ascent(
         scratch: vec![],
     };
     let ((ascents, legal), scoring_complete) = aside_complete(simulator, |simulator| {
-        let ascents: Vec<Value> = starts
+        let ascents: Vec<AscentRun> = starts
             .iter()
             .map(|&start| {
                 let (scorings_before, started) = (scorer.scorings, now_ms());
                 let ended = ascend(simulator, context, &mut scorer, start, buf);
-                let name = |lineage: Lineage| json!([data.umas[lineage.trainee].name, [lineage.first_parent, lineage.second_parent]]);
-                json!({"start": name(start), "end": ended.as_ref().map(|ascent| name(ascent.lineage)),
-                    "score": ended.as_ref().map(|ascent| ascent.score), "rounds": ended.as_ref().map(|ascent| ascent.rounds),
-                    "scorings": scorer.scorings - scorings_before, "ms": now_ms() - started})
+                let name = |lineage: Lineage| {
+                    (data.umas[lineage.trainee].name.clone(), [lineage.first_parent, lineage.second_parent])
+                };
+                AscentRun {
+                    start: name(start),
+                    end: ended.as_ref().map(|ascent| name(ascent.lineage)),
+                    score: ended.as_ref().map(|ascent| ascent.score),
+                    rounds: ended.as_ref().map(|ascent| ascent.rounds),
+                    scorings: scorer.scorings - scorings_before,
+                    ms: now_ms() - started,
+                }
             })
             .collect();
         // the facts: legal pairs per allowed uma with a cached deck
@@ -210,17 +219,58 @@ pub(crate) fn pair_ascent(
         counts.sort_unstable();
         (ascents, counts)
     });
-    let per = |total: f64, count: usize| if count == 0 { Value::Null } else { json!(total / count as f64) };
-    json!({
-        "legal_pairs": {"umas": legal.len(), "total": legal.iter().sum::<usize>(), "min": legal.first(),
-            "median": legal.get(legal.len() / 2), "max": legal.last()},
-        "ascents": ascents,
-        "scorings": scorer.scorings,
-        "ms_per_scoring": per(scorer.score_ms, scorer.scorings),
-        "ms_per_odds": per(scorer.odds_ms, scorer.odds_evaluations),
-        "ascent_ms": now_ms() - started_ms,
-        "scoring_complete": scoring_complete,
+    let per = |total: f64, count: usize| (count != 0).then(|| total / count as f64);
+    Some(PairAscent {
+        legal_pairs: LegalPairs {
+            umas: legal.len(),
+            total: legal.iter().sum::<usize>(),
+            min: legal.first().copied(),
+            median: legal.get(legal.len() / 2).copied(),
+            max: legal.last().copied(),
+        },
+        ascents,
+        scorings: scorer.scorings,
+        ms_per_scoring: per(scorer.score_ms, scorer.scorings),
+        ms_per_odds: per(scorer.odds_ms, scorer.odds_evaluations),
+        ascent_ms: now_ms() - started_ms,
+        scoring_complete,
     })
+}
+
+/// The pair ascent (`next.pair_ascent`): coordinate ascent over (trainee, parent pair) by score from each start.
+#[derive(Serialize, TS)]
+pub(crate) struct PairAscent {
+    pub(crate) legal_pairs: LegalPairs,
+    pub(crate) ascents: Vec<AscentRun>,
+    pub(crate) scorings: usize,
+    /// the cost per scoring and per P(all) evaluation over every ascent (null: none)
+    pub(crate) ms_per_scoring: Option<f64>,
+    pub(crate) ms_per_odds: Option<f64>,
+    pub(crate) ascent_ms: f64,
+    pub(crate) scoring_complete: bool,
+}
+
+/// The legal pairs per allowed uma with a cached deck: how many umas, the pairs in all, and the least, median and most
+/// of an uma's (null: no uma).
+#[derive(Serialize, TS)]
+pub(crate) struct LegalPairs {
+    pub(crate) umas: usize,
+    pub(crate) total: usize,
+    pub(crate) min: Option<usize>,
+    pub(crate) median: Option<usize>,
+    pub(crate) max: Option<usize>,
+}
+
+/// One ascent: its start and end (trainee by name, parents), the score and rounds at its end (null: it found no
+/// career), the scorings it added and its time.
+#[derive(Serialize, TS)]
+pub(crate) struct AscentRun {
+    pub(crate) start: (String, [usize; 2]),
+    pub(crate) end: Option<(String, [usize; 2])>,
+    pub(crate) score: Option<f64>,
+    pub(crate) rounds: Option<usize>,
+    pub(crate) scorings: usize,
+    pub(crate) ms: f64,
 }
 
 /// The decomposition measurement (`PlanJob::pair_decompose`), or null without it: per requested (chara, pair), her best
@@ -233,27 +283,28 @@ pub(crate) fn pair_decompose(
     context: &PlanContext,
     scores: &PlanScores,
     buf: &mut Vec<f64>,
-) -> Value {
-    let Some(requests) = &context.input.settings.pair_decompose else { return Value::Null };
+) -> Option<Vec<PairDecomposition>> {
+    let Some(requests) = &context.input.settings.pair_decompose else { return None };
     if !scores.fit.current_value.is_finite() {
-        return Value::Null;
+        return None;
     }
     let data = context.data();
     let candidates = context.candidates;
     let base = scores.fit.score_base(candidates);
     let (mut chances, mut scratch) = (vec![], vec![]);
-    let rows: Vec<Value> = aside(simulator, |simulator| {
+    let rows: Vec<PairDecomposition> = aside(simulator, |simulator| {
         requests
             .iter()
             .map(|&(chara, first_parent, second_parent)| {
-                let Some(trainee) = simulator.env.setup.uma_index(chara) else { return json!({"error": "no such uma"}) };
+                let refused = |why: &str| PairDecomposition::Refusal(Refusal::new(why));
+                let Some(trainee) = simulator.env.setup.uma_index(chara) else { return refused("no such uma") };
                 let lineage = Lineage { trainee, first_parent, second_parent };
                 if !legal_pair(data, context.input.pool, lineage) {
-                    return json!({"error": "not a legal pair"});
+                    return refused("not a legal pair");
                 }
                 let odds = deck_odds(simulator, context.input.pool, lineage, &mut chances, &mut scratch);
                 let Some(deck) = (0..odds.len()).max_by(|&first, &second| odds[first].total_cmp(&odds[second])) else {
-                    return json!({"error": "no cached deck"});
+                    return refused("no cached deck");
                 };
                 let career = Found {
                     trainee,
@@ -263,43 +314,100 @@ pub(crate) fn pair_decompose(
                     ceiling: odds[deck],
                     deck: simulator.evaluator.cache.decks[trainee][deck].deck.clone(),
                 };
-                let incomplete_before = crate::career::plan::robust::incompleteness_so_far();
-                let dropped_before = crate::career::clock::PROF
-                    .with(|prof| prof.borrow().get("sc_routes_dropped").copied().unwrap_or(0.0));
-                let scored =
-                    score_career(simulator, &context.scoring(&base), found_career(trainee, &career), Want::Classes, buf);
-                let dropped = crate::career::clock::PROF
-                    .with(|prof| prof.borrow().get("sc_routes_dropped").copied().unwrap_or(0.0))
-                    - dropped_before;
+                let scored = score_career(
+                    simulator,
+                    &context.scoring(&base),
+                    found_career(trainee, &career),
+                    Want::Classes,
+                    buf,
+                );
                 // (the plain scoring beside it: the class split must sum to the same saving)
                 let plain =
                     score_career(simulator, &context.scoring(&base), found_career(trainee, &career), Want::Score, buf);
                 let mut classes = scored.classes;
                 classes.sort_by(|first, second| second.saving_sum.total_cmp(&first.saving_sum));
-                let classes: Vec<Value> = classes
+                let classes = classes
                     .iter()
                     .map(|class| {
-                        let lifted: Vec<Value> = class
+                        let lifted = class
                             .lifted_odds_sums
                             .iter()
                             .map(|&(candidate, odds_sum)| {
                                 let lifted_to = odds_sum / class.chance;
-                                json!({"candidate": data.umas[candidates.trainees[candidate]].name,
-                                    "odds_now": candidates.current_odds[candidate], "lifted_to": lifted_to,
-                                    "builds_there": base.step_plan(candidate, lifted_to).1})
+                                LiftedCandidate {
+                                    candidate: data.umas[candidates.trainees[candidate]].name.clone(),
+                                    odds_now: candidates.current_odds[candidate],
+                                    lifted_to,
+                                    builds_there: base.step_plan(candidate, lifted_to).1,
+                                }
                             })
                             .collect();
-                        json!({"full": class.full, "chance": class.chance, "contribution": class.saving_sum,
-                            "mean_saving": class.saving_sum / class.chance, "lifted": lifted})
+                        OutcomeClassReport {
+                            full: class.full,
+                            chance: class.chance,
+                            contribution: class.saving_sum,
+                            mean_saving: class.saving_sum / class.chance,
+                            lifted,
+                        }
                     })
                     .collect();
-                json!({"trainee": data.umas[trainee].name, "parents": [first_parent, second_parent], "p_all": odds[deck],
-                    "saving": scored.expected_saving, "score": scored.expected_saving - 1.0, "routes_dropped": dropped,
-                    "score_plain": plain.expected_saving - 1.0,
-                    "scoring_complete": crate::career::plan::robust::incompleteness_so_far() == incomplete_before,
-                    "classes": classes})
+                PairDecomposition::Done(Decomposed {
+                    trainee: data.umas[trainee].name.clone(),
+                    parents: [first_parent, second_parent],
+                    p_all: odds[deck],
+                    saving: scored.expected_saving,
+                    score: scored.expected_saving - 1.0,
+                    routes_dropped: scored.truncation.routes_dropped as f64,
+                    score_plain: plain.expected_saving - 1.0,
+                    scoring_complete: scored.truncation.is_complete() && plain.truncation.is_complete(),
+                    classes,
+                })
             })
             .collect()
     });
-    Value::Array(rows)
+    Some(rows)
+}
+
+/// One requested (chara, pair) of the decomposition (`next.pair_decompose`), or why it has none.
+#[derive(Serialize, TS)]
+#[serde(untagged)]
+pub(crate) enum PairDecomposition {
+    Done(Decomposed),
+    Refusal(Refusal),
+}
+
+/// Her best cached deck on the pair, scored with its saving split by outcome class, beside the plain scoring.
+#[derive(Serialize, TS)]
+pub(crate) struct Decomposed {
+    pub(crate) trainee: String,
+    pub(crate) parents: [usize; 2],
+    pub(crate) p_all: f64,
+    pub(crate) saving: f64,
+    pub(crate) score: f64,
+    /// routes the scoring's memory budget dropped
+    pub(crate) routes_dropped: f64,
+    pub(crate) score_plain: f64,
+    pub(crate) scoring_complete: bool,
+    /// the outcome classes, by contribution, most first
+    pub(crate) classes: Vec<OutcomeClassReport>,
+}
+
+/// An outcome class: whether her veteran is full there, its chance, its contribution to the saving (chance x mean
+/// saving) and mean saving, and per lifted candidate her odds now, the mean odds she is lifted to and whether her step
+/// still builds at them.
+#[derive(Serialize, TS)]
+pub(crate) struct OutcomeClassReport {
+    pub(crate) full: bool,
+    pub(crate) chance: f64,
+    pub(crate) contribution: f64,
+    pub(crate) mean_saving: f64,
+    pub(crate) lifted: Vec<LiftedCandidate>,
+}
+
+#[derive(Serialize, TS)]
+pub(crate) struct LiftedCandidate {
+    pub(crate) candidate: String,
+    pub(crate) odds_now: f64,
+    pub(crate) lifted_to: f64,
+    pub(crate) builds_there: bool,
 }

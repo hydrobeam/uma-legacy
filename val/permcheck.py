@@ -3,17 +3,18 @@ deck, each lineage's value read from the shared solver (deck locked, structure r
 rule off), then per uma the best legal deck over her lineages (three in a loop, one in a rotation), and a structure's
 value the mean over its lineages (12 or 3). usage: permcheck.py BIN [K]"""
 
-import argparse, json, itertools, subprocess, os, concurrent.futures as cf
+import argparse, json, itertools, os, tempfile, concurrent.futures as cf
 
-S = os.path.dirname(os.path.abspath(__file__)) + "/../pkg/loopopt/data/global/"
-SC = os.path.dirname(os.path.abspath(__file__)) + "/../"
+import solver
+
+S = solver.era_dir("global") + "/"
 parser = argparse.ArgumentParser(
     description="Brute-force check of per-uma decks on a small instance.", allow_abbrev=False
 )
 parser.add_argument("binary", metavar="BIN")
 parser.add_argument("k", nargs="?", type=int, default=3, metavar="K")
 arguments = parser.parse_args()
-BIN, K = arguments.binary, arguments.k
+BIN, K = os.path.abspath(arguments.binary), arguments.k
 data = json.load(open(S + "data.json"))
 cards = {c["id"]: c for c in json.load(open(S + "web_cards.json"))["cards"]}
 ends = {k for k, v in json.load(open(S + "card_events.json"))["cards"].items() if "end" in v}
@@ -41,12 +42,12 @@ base.update(owned=[uid[n] for n in UMAS], owned_cards=OWN)
 env = dict(os.environ, RULE_OFF="1")
 
 
+job_dir = tempfile.TemporaryDirectory(prefix="permcheck_")
+
+
 def run(job, e=None):
-    p = SC + f"_pc_{os.getpid()}_{abs(hash(json.dumps(job, sort_keys=True)))}.json"
-    json.dump(job, open(p, "w"))
-    out = subprocess.run([BIN, "data.json", p], cwd=S, capture_output=True, text=True, env=e).stdout
-    os.remove(p)
-    return json.loads(out[out.index("{") :])
+    name = f"job_{abs(hash(json.dumps(job, sort_keys=True)))}"
+    return solver.solve(BIN, "global", job, os.path.join(job_dir.name, name), env=e)
 
 
 def blocks(c, u):

@@ -1,5 +1,5 @@
 // The page's data, for the chosen era: the Global era's comes with the page's scripts ('#page-data', built in by
-// vite/pagedata.mjs; package.json's imports give node tests test/unit/pagedata.mjs instead), the GM era's is fetched.
+// vite/pagedata.mjs; a node test mocks it with test/unit/fakepage.mjs), the GM era's is fetched.
 import * as page from '#page-data';
 import { ERA } from './saved.ts';
 import { assert, must } from './must.ts';

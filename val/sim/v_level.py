@@ -24,7 +24,7 @@ What this does not test: Cont (on p16_borrow the one building side builds 1.8 of
 Alternative side), and the pick between near options (a policy's whole cost, not a first step's ranking). It places V's
 level on the pools it runs, and nothing else.
 
-usage: uv run val/sim/v_level.py BIN OUT_DIR [--runs 1000] [--index 0] [-j 2] [POOL ...]
+usage: uv run --group research val/sim/v_level.py BIN OUT_DIR [--runs 1000] [--index 0] [-j 2] [POOL ...]
   POOL a val/plan job's name or a career job's path (era global, e.g. val/sim/pools/boot_build.json, the building pool
   for Cont: val/sim/README.md); pools default p16_borrow; writes OUT_DIR/POOL_plan.{json,out}, OUT_DIR/POOL_greedy_FIRST.{json,out} and
   OUT_DIR/POOL_index_R.{json,out}. Cost: about 0.04 s per greedy run on p16_borrow (1,000 runs: 37 s of CPU, 2026-10-26)."""
@@ -37,7 +37,10 @@ import statistics
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-from rollouts import PLAN_DIR, era_of, solve, t975
+from scipy.stats import t as student_t
+
+from rollouts import era_of
+from solver import PLAN_DIR, solve
 
 DEFAULT_POOLS = ["p16_borrow"]
 SEED = 1
@@ -83,15 +86,9 @@ def measure(binary, out_dir, pool, settings, executor):
     return name, v, by_run(outputs[: len(greedy_jobs)]), by_run(outputs[len(greedy_jobs) :])
 
 
-# Student t's 97.5% quantile at 1 .. 30 degrees of freedom (scipy.stats.t.ppf, 4 decimals); past 30 the series of
-# rollouts.t975 is within 2e-6 of it
-T975_SMALL = (12.7062, 4.3027, 3.1824, 2.7764, 2.5706, 2.4469, 2.3646, 2.3060, 2.2622, 2.2281, 2.2010, 2.1788, 2.1604,
-              2.1448, 2.1314, 2.1199, 2.1098, 2.1009, 2.0930, 2.0860, 2.0796, 2.0739, 2.0687, 2.0639, 2.0595, 2.0555,
-              2.0518, 2.0484, 2.0452, 2.0423)  # fmt: skip
-
-
 def t_quantile(degrees):
-    return T975_SMALL[degrees - 1] if degrees <= len(T975_SMALL) else t975(degrees)
+    """Student t's 97.5% quantile"""
+    return float(student_t.ppf(0.975, degrees))
 
 
 def mean_interval(values):

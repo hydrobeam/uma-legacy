@@ -7,10 +7,14 @@ use crate::career::pool::Pool;
 use crate::career::sim::audit::{AuditKind, RankedCareer};
 use crate::career::sim::draw::{Keys, Outcomes, VeteranDraw};
 use crate::career::sim::policies::{INDEX_RUN_COUNTS, IndexRunCounts, Rotation};
-use crate::career::sim::{Goal, IndexAction, Sim, SimJob, SimulationOptions, SimulationRoster, family, leg_json};
+use crate::career::sim::report::{
+    IndexRecord, LoopAudit, PickChange, RunStats, SimReply, SimReport, SimRun, SurrogateAudit, SurrogateCheck,
+};
+use crate::career::sim::{Goal, IndexAction, Sim, SimJob, SimulationOptions, SimulationRoster, family, legacy_record};
 use crate::career::state::{KeptState, kept_swap};
 use crate::career::{Env, JobInputs, Legacy, Lineage};
-use serde_json::{Value, json};
+use crate::refusal::Refusal;
+use serde_json::Value;
 use std::rc::Rc;
 
 /// A veteran's stars per job target, her distinct G1 wins and her pink sparks, sorted: what dominance pruning
@@ -57,10 +61,10 @@ fn tq975(degrees_of_freedom: f64) -> f64 {
         + (5.0 * z5 + 16.0 * z3 + 3.0 * z) / (96.0 * degrees_of_freedom * degrees_of_freedom)
         + (3.0 * z7 + 19.0 * z5 + 17.0 * z3 - 15.0 * z) / (384.0 * degrees_of_freedom.powi(3))
 }
-fn stats(values: &[f64]) -> Value {
+fn stats(values: &[f64]) -> Option<RunStats> {
     let count = values.len() as f64;
     if values.is_empty() {
-        return Value::Null;
+        return None;
     }
     let mean = values.iter().sum::<f64>() / count;
     let standard_deviation = if values.len() > 1 {
@@ -69,7 +73,14 @@ fn stats(values: &[f64]) -> Value {
         0.0
     };
     let half_width = if values.len() > 1 { tq975(count - 1.0) * standard_deviation / count.sqrt() } else { 0.0 };
-    json!({"n": values.len(), "mean": mean, "sd": standard_deviation, "ci95": [mean - half_width, mean + half_width], "min": values.iter().copied().fold(f64::INFINITY, f64::min), "max": values.iter().copied().fold(f64::NEG_INFINITY, f64::max)})
+    Some(RunStats {
+        n: values.len(),
+        mean,
+        sd: standard_deviation,
+        ci95: [mean - half_width, mean + half_width],
+        min: values.iter().copied().fold(f64::INFINITY, f64::min),
+        max: values.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+    })
 }
 
 impl VeteranResult {
@@ -224,7 +235,7 @@ impl Sim<'_, '_> {
         // pair) order, then best first)
         let mut candidates =
             self.env.setup.gen_cands(&mut self.env.state, &state.pool, &[], &trainees, |_, _| true, RankedCareer::new);
-        candidates.sort_by(|first, second| second.ceiling.partial_cmp(&first.ceiling).unwrap());
+        candidates.sort_by(|first, second| second.ceiling.total_cmp(&first.ceiling));
         for candidate in candidates {
             let floor = state.candidate_floor(self.settings.goal);
             if candidate.ceiling * (1.0 + 1e-9) < floor {
@@ -300,16 +311,27 @@ impl Sim<'_, '_> {
             };
             let pick_key = self.key(&career);
             if pick_key != last_key {
-                trace.pick_changes.push(json!({"t": career_index, "pick": pick_key, "trainee": self.data.umas[career.lineage.trainee].name, "p": career.p_all, "pool": state.legacies.len(), "s": survival}));
+                trace.pick_changes.push(PickChange {
+                    t: career_index,
+                    pick: pick_key.clone(),
+                    trainee: self.data.umas[career.lineage.trainee].name.clone(),
+                    p: career.p_all,
+                    pool: state.legacies.len(),
+                    s: survival,
+                });
                 last_key = pick_key;
                 if self.settings.audit && base == Base::Greedy && !exact {
                     let audit = self.audit_greedy(state, keys, career_index);
-                    self.audits.push(audit);
+                    self.audits.push(SurrogateAudit::Greedy(audit));
                 }
             }
             if self.settings.audit && base == Base::Loop && career_index.is_multiple_of(self.settings.audit_every) {
                 let audit_row = self.audit_row(&state.pool, career.lineage, AuditKind::Loop);
-                self.audits.push(json!({"t": career_index, "pool": state.legacies.len(), "rows": [audit_row]}));
+                self.audits.push(SurrogateAudit::Loop(LoopAudit {
+                    t: career_index,
+                    pool: state.legacies.len(),
+                    rows: [audit_row],
+                }));
             }
             if self.settings.progress > 0 && career_index.is_multiple_of(self.settings.progress) && career_index > 0 {
                 eprintln!(
@@ -392,9 +414,9 @@ struct PlayOptions {
 #[derive(Default)]
 struct PathTrace {
     /// Each change of the career picked: career index, pick, trainee, P(all), pool size, survival.
-    pick_changes: Vec<Value>,
+    pick_changes: Vec<PickChange>,
     /// The surrogate's checks against exact searches (`Sim::check`).
-    checks: Vec<Value>,
+    checks: Vec<SurrogateCheck>,
 }
 
 /// One run's result (`Sim::play`).
@@ -431,33 +453,38 @@ pub(in crate::career) fn simulate<'data>(
     legacies: &[Legacy],
     trainees: &[crate::uma::UmaIndex],
     configuration: &Value,
-) -> Value {
+) -> SimReply {
+    let refused = |why: String| SimReply::Refusal(Refusal::new(why));
     let config: SimJob = match serde_json::from_value(configuration.clone()) {
         Ok(config) => config,
-        Err(error) => return json!({"error": format!("simulate: {error}")}),
+        Err(error) => return refused(format!("simulate: {error}")),
     };
     let target_count = env.setup.target_count;
     if target_count > 12 || env.setup.uncertain_count > 10 {
-        return json!({"error": "simulate takes at most 12 targets, 10 of them not guaranteed"});
+        return refused("simulate takes at most 12 targets, 10 of them not guaranteed".to_owned());
     }
     let base = match config.policy.as_str() {
         "greedy" | "greedy_exact" => Base::Greedy,
         "loop" => Base::Loop,
         "trace" => Base::Trace,
         "index" => Base::Index,
-        policy => return json!({"error": format!("simulate: unknown policy {policy}")}),
+        policy => return refused(format!("simulate: unknown policy {policy}")),
     };
     if config.force.is_some() && matches!(base, Base::Loop | Base::Trace) {
-        return json!({"error": "simulate: force is for greedy, greedy_exact and index (a loop or trace runs its own careers)"});
+        return refused(
+            "simulate: force is for greedy, greedy_exact and index (a loop or trace runs its own careers)".to_owned(),
+        );
     }
     if config.act_on != IndexAction::Choice && base != Base::Index {
-        return json!({"error": "simulate: act_on is for index (the page's plan)"});
+        return refused("simulate: act_on is for index (the page's plan)".to_owned());
     }
     if config.goal == Goal::Looped && base == Base::Trace {
-        return json!({"error": "simulate: trace has no goal (goal looped is for the path policies)"});
+        return refused("simulate: trace has no goal (goal looped is for the path policies)".to_owned());
     }
     if config.goal == Goal::Looped && (config.audit || config.check > 0) && base == Base::Greedy {
-        return json!({"error": "simulate: audit and check measure greedy's unrestricted pick: run them with goal first"});
+        return refused(
+            "simulate: audit and check measure greedy's unrestricted pick: run them with goal first".to_owned(),
+        );
     }
     let members: Vec<crate::uma::UmaIndex> =
         config.loop_members.iter().filter_map(|&id| env.setup.uma_index(id)).collect();
@@ -466,7 +493,7 @@ pub(in crate::career) fn simulate<'data>(
             || members.len() != config.loop_members.len()
             || members.iter().any(|member| !env.setup.owned.contains(member)))
     {
-        return json!({"error": "loop: loop_members must be at least three owned umas"});
+        return refused("loop: loop_members must be at least three owned umas".to_owned());
     }
     let uma_count = input.data.umas.len();
     let mut member_by_trainee = crate::uma::UmaTable(vec![None; if base == Base::Trace { uma_count } else { 0 }]);
@@ -486,7 +513,7 @@ pub(in crate::career) fn simulate<'data>(
     let initialization_started = std::time::Instant::now();
     let initial_state = simulator.initial(legacies, base);
     if base == Base::Trace {
-        return simulator.trace(&initial_state);
+        return SimReply::Trace(simulator.trace(&initial_state));
     }
     let initialization_seconds = initialization_started.elapsed().as_secs_f64();
     let mut runs = vec![];
@@ -513,7 +540,7 @@ pub(in crate::career) fn simulate<'data>(
         let counts_after = simulator.evaluator.counters;
         run_expectations.push(expected_careers);
         let PathTrace { pick_changes, checks } = trace;
-        let final_pick = pick_changes.last().map_or(Value::Null, |change| change["pick"].clone());
+        let final_pick = pick_changes.last().map(|change| change.pick.clone());
         let wall = started.elapsed().as_secs_f64();
         eprintln!(
             "{} run {}: E {:.1}, {} careers, tail {:.2}, final p {:.3e}, pool {}, {:.1} s",
@@ -526,46 +553,70 @@ pub(in crate::career) fn simulate<'data>(
             state.legacies.len(),
             wall
         );
-        runs.push(json!({"run": run, "E": expected_careers, "careers": careers, "tail": tail, "final_p": final_p_all, "final": final_pick, "pool": state.legacies.len(), "pruned": pruned,
-            "wall_s": wall, "candidates": counts_after.candidates - counts_before.candidates, "ceiling_pass": counts_after.ceiling_passes - counts_before.ceiling_passes, "tables": counts_after.tables - counts_before.tables,
-            "refreshes": counts_after.searches - counts_before.searches, "partial_searches": counts_after.partial_searches - counts_before.partial_searches, "segs": pick_changes, "checks": checks, "audits": std::mem::take(&mut simulator.audits)}));
-        if base == Base::Index {
-            let index_counts = INDEX_RUN_COUNTS.with(|index_counts| std::mem::take(&mut *index_counts.borrow_mut()));
-            let mut index_record = json!({"plans": index_counts.plans, "plan_s": index_counts.plan_seconds, "roles": index_counts.roles, "best_odds": index_counts.best_odds_picks});
+        let index = (base == Base::Index).then(|| {
+            let counts = INDEX_RUN_COUNTS.with(|index_counts| std::mem::take(&mut *index_counts.borrow_mut()));
             // (the default's record unchanged: the actions only where `act_on` asks for the recommendation)
-            if config.act_on == IndexAction::PairSearch {
-                index_record["acted_on"] = json!(index_counts.acted_on);
-                index_record["careers"] = json!(index_counts.careers);
-                index_record["check_s"] = json!(index_counts.check_seconds);
-                index_record["career_job_s"] = json!(index_counts.career_job_seconds);
-                index_record["executed"] = json!(index_counts.executed);
+            let acting = config.act_on == IndexAction::PairSearch;
+            IndexRecord {
+                plans: counts.plans,
+                plan_s: counts.plan_seconds,
+                roles: counts.roles,
+                best_odds: counts.best_odds_picks,
+                acted_on: acting.then_some(counts.acted_on),
+                careers: acting.then_some(counts.careers),
+                check_s: acting.then_some(counts.check_seconds),
+                career_job_s: acting.then_some(counts.career_job_seconds),
+                executed: acting.then_some(counts.executed),
             }
-            runs.last_mut().unwrap()["index"] = index_record;
-        }
-        if config.goal == Goal::Looped {
+        });
+        let looped_goal = config.goal == Goal::Looped;
+        if looped_goal {
             censored_runs += usize::from(looped.censored);
-            let run_record = runs.last_mut().unwrap();
-            run_record["finishing"] = json!(looped.finishing_careers);
-            run_record["full_veterans"] = json!(state.full_count());
-            run_record["censored"] = json!(looped.censored);
         }
-        if config.keep_pool {
-            let run_record = runs.last_mut().unwrap();
-            run_record["survival"] = json!(survival);
-            run_record["final_legacies"] = json!(state.legacies.iter().map(leg_json).collect::<Vec<_>>());
-        }
+        runs.push(SimRun {
+            run,
+            expected: expected_careers,
+            careers,
+            tail,
+            final_p: final_p_all,
+            final_pick,
+            pool: state.legacies.len(),
+            pruned,
+            wall_s: wall,
+            candidates: counts_after.candidates - counts_before.candidates,
+            ceiling_pass: counts_after.ceiling_passes - counts_before.ceiling_passes,
+            tables: counts_after.tables - counts_before.tables,
+            refreshes: counts_after.searches - counts_before.searches,
+            partial_searches: counts_after.partial_searches - counts_before.partial_searches,
+            segs: pick_changes,
+            checks,
+            audits: std::mem::take(&mut simulator.audits),
+            index,
+            finishing: looped_goal.then_some(looped.finishing_careers),
+            full_veterans: looped_goal.then(|| state.full_count()),
+            censored: looped_goal.then_some(looped.censored),
+            survival: config.keep_pool.then_some(survival),
+            final_legacies: config.keep_pool.then(|| state.legacies.iter().map(legacy_record).collect()),
+        });
     }
     if let Some(kept) = kept_before_simulation {
         kept_swap(simulator.kept, kept);
     }
-    let mut output = json!({"simulate": configuration, "policy": config.policy, "runs": runs, "E": stats(&run_expectations), "init_s": initialization_seconds, "decks": simulator.evaluator.cache.deck_count(), "deck_tables": simulator.evaluator.cache.tables,
-           "refreshes": simulator.evaluator.counters.searches, "schedules": simulator.evaluator.win_chances.schedules()});
-    if config.goal == Goal::Looped {
+    let looped_goal = config.goal == Goal::Looped;
+    SimReply::Report(Box::new(SimReport {
+        simulate: configuration.clone(),
+        expected: stats(&run_expectations),
+        policy: config.policy,
+        runs,
+        init_s: initialization_seconds,
+        decks: simulator.evaluator.cache.deck_count(),
+        deck_tables: simulator.evaluator.cache.tables,
+        refreshes: simulator.evaluator.counters.searches,
+        schedules: simulator.evaluator.win_chances.schedules(),
         // (E over the censored runs is a lower bound: their tails are 0)
-        output["goal"] = json!("looped");
-        output["censored"] = json!(censored_runs);
-    }
-    output
+        goal: looped_goal.then_some("looped"),
+        censored: looped_goal.then_some(censored_runs),
+    }))
 }
 
 #[cfg(test)]

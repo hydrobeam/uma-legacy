@@ -3,15 +3,16 @@
 // one in flight unanswered, as engine.ts does), a fake clock and timers, and fakes of the page's parts. Staleness: late
 // replies of older runs are dropped, a check's own writes keep it running while a new plan stops it, the timers end
 // with the run, the comparison goes stale with every new run, and the last visit's answer is drawn after a reload.
-// node --test 'test/unit/*.test.*' (in webapp)
-import './fakepage.mjs'; // (run.ts reads the solver's fingerprints from the page data: engine.ts stateKey)
+// npx vitest run (in webapp)
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test, vi } from 'vitest';
 import { PAUSE_MS, createRun } from '../../src/career/run.ts';
 import { jobKey, planKey } from '../../src/career/keys.ts';
 import { stateKey } from '../../src/engine.ts';
 import * as store from '../../src/career/state.ts';
 import { fakeClock, flush } from './fakes.mjs';
+
+vi.mock('#page-data', () => import('./fakepage.mjs')); // run.ts reads the solver's fingerprints from it (engine.ts stateKey)
 
 const { answer, answerCareer, runView } = store;
 
@@ -50,10 +51,12 @@ function fakeEngine() {
   return engine;
 }
 
-// the reports: a search's best careers, a plan, a check step
+// the reports: a search's best careers, a plan (a plan job's search: no career reports, its plan in `next`), a check
+// step (a kept plan's follow-up: its `next` alone)
 const career = (name) => ({ trainee: { id: 1001, name }, parents: [0, 1], career: name, p_all: 0.01 });
 const searched = (...names) => ({ results: names.map(career), candidates: 120 });
 const planned = (pick) => ({
+  results: [],
   next: { choice: career(pick), options: [career(pick)], v0: 9, outcomes: { career: pick } },
 });
 const check = (pending, pairs = null, plan = 'pick') => ({ next: { robust: { plan, pending, stable: true, pairs } } });
@@ -240,7 +243,7 @@ test('a failed plan: not kept, not saved, and the same job runs again', async ()
   await edited(p);
   p.engine.answer(0, searched('best'));
   await flush();
-  p.engine.answer(1, { next: { error: 'no option' } });
+  p.engine.answer(1, { results: [], next: { error: 'no option' } });
   await flush();
   assert.equal(answer.peek().planState.state, 'error');
   assert.equal(p.seen.saved.length, 0, 'not saved');
@@ -273,7 +276,7 @@ test('an undo onto a kept answer shows it at once, with her analysis; one whose 
   await edited(q);
   q.engine.answer(0, searched('best'));
   await flush();
-  q.engine.answer(1, { next: { error: 'no option' } });
+  q.engine.answer(1, { results: [], next: { error: 'no option' } });
   await flush();
   q.job.targets.push({ group: 992 });
   await edited(q);

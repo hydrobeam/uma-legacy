@@ -2,9 +2,9 @@
 // records it leaves alone stay the same objects, the old ones are never changed), saves before it assigns (a throwing
 // effect keeps the write, on the deferred path, the hidden path and the saves made at once), an editor addressing a
 // node by where it is lands each of its edits on the record the last one made, and each part's effects wake only for
-// that part. node --test 'test/unit/*.test.*' (in webapp)
+// that part. npx vitest run (in webapp)
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { batch } from '@preact/signals';
 import { ERA } from '../../src/saved.ts';
 import { on } from '../../src/store.ts';

@@ -203,9 +203,9 @@ def outfit_aptitudes(outfits: set[int]) -> dict[int, list[int]]:
     """outfit -> its six aptitude codes (short, mile, middle, long, turf, dirt) from master.mdb's card_rarity_data
     (lowest rarity row), for the outfits it has; empty without master.mdb. data.json keys aptitudes by character (one
     outfit's), so a character's other outfits can differ"""
-    db = common.mdb()
-    if db is None:
+    if not common.have_mdb():
         return {}
+    db = common.mdb()
     q = (
         "select proper_distance_short, proper_distance_mile, proper_distance_middle, proper_distance_long, "
         "proper_ground_turf, proper_ground_dirt from card_rarity_data where card_id = ? order by rarity limit 1"
@@ -260,7 +260,7 @@ def attempts(R: list[Run]) -> AttemptSet:
             cat, gr = d["race_cat"][ri], d["race_ground"][ri]
             gd, gs = PINK_DIST[cat], PINK_SURF[gr]
             grades = (cat, 4 if gr == 1 else 5)  # the race's distance and surface, as aptitude indices
-            base_apt = own_apt.get(r["outfit"], u["apt"])
+            base_apt: list[int] = own_apt[r["outfit"]] if r["outfit"] in own_apt else u["apt"]
             source[
                 "data.json" if r["outfit"] not in own_apt else "same" if base_apt[:6] == u["apt"][:6] else "own"
             ] += 1
@@ -379,7 +379,7 @@ def saturated(A: list[Attempt], key: Callable[[Attempt], Hashable]) -> tuple[flo
 
 def thr(k: int) -> float:
     """the likelihood-ratio threshold for k extra parameters: chi2(k) 95% / 2"""
-    return chi2.ppf(0.95, k) / 2
+    return float(chi2.ppf(0.95, k)) / 2
 
 
 class ModelFits(NamedTuple):
@@ -524,7 +524,7 @@ def held_out_low_cost(A: list[Attempt]) -> LowCost:
     held = common.compare_held_out(per_run_held_out(A, predict), per_run_held_out(A, table_prediction(A, "pa")))
     assert len(fold_costs) == common.K_FOLDS
     cost = max(LOW_COST_GRID, key=lambda c: recal(tables[c], y)[0])
-    low = [a | {"pa": float(q)} for a, q in zip(A, tables[cost]) if is_low_basis(a)]
+    low: list[Attempt] = [{**a, "pa": float(q)} for a, q in zip(A, tables[cost]) if is_low_basis(a)]
     return LowCost(held, fold_costs, cost, calib(low, "pa"))
 
 
@@ -1103,7 +1103,7 @@ def streak_result_claims(A: list[Attempt]) -> list[Value | Finding]:
 # ---------------------------------------------------------------- detail
 def detail() -> None:
     """the numbers behind the findings that the section does not state"""
-    R = common.runs()
+    R = common.records()
     A, skip, unk, source = attempts(R)
     print(f"aliases applied: {ALIAS}")
     print(f"skipped attempts: {dict(skip) or 'none'}; G1 names unmatched after aliases: {dict(unk) or 'none'}")
@@ -1130,9 +1130,9 @@ def detail() -> None:
 
 def detail_outfits(A: list[Attempt]) -> None:
     """attempts by outfits whose master.mdb aptitudes differ from data.json's"""
-    db = common.mdb()
-    if db is None:
+    if not common.have_mdb():
         return
+    db = common.mdb()
     U = {u["id"]: u["apt"][:6] for u in common.gjson("data.json")["umas"]}
     q = (
         "select proper_distance_short, proper_distance_mile, proper_distance_middle, proper_distance_long, "

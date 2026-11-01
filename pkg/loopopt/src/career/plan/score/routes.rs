@@ -730,7 +730,7 @@ fn keep_routes<S>(
     }
     let dropped = kept.iter().filter(|&&keep| !keep).count();
     if dropped > 0 {
-        crate::career::clock::prof("sc_routes_dropped", dropped as f64);
+        crate::career::clock::prof(super::counter::ROUTES_DROPPED, dropped as f64);
     }
     // (a kept route's finisher slot, a left-out route's place among the left out, each by its draft)
     let (mut finisher_of_draft, mut left_of_draft): (Vec<Option<usize>>, Vec<Option<usize>>) =
@@ -1147,14 +1147,14 @@ mod lifted_tests {
             &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p10.json")).unwrap(),
         )
         .unwrap();
-        let events: serde_json::Value = serde_json::from_str(&read("card_events.json")).unwrap();
+        let events: crate::deck::sources::CardEventCache = serde_json::from_str(&read("card_events.json")).unwrap();
         crate::deck::sources::apply_events_db(&mut job, &skills, &events);
         job["no_reports"] = serde_json::json!(true);
         let legacy_count = job["legacies"].as_array().unwrap().len();
         let agnes = data.umas.iter().position(|uma| uma.name == "Agnes Digital").map(crate::uma::UmaIndex).unwrap();
         LIFTED.with(|lifted| *lifted.borrow_mut() = Some(vec![]));
         let mut kept = crate::career::state::KeptState::default();
-        let out = crate::career::run_career_in(&data, &skills, &cards, &job, &mut kept);
+        let out = serde_json::to_value(crate::career::run_career_in(&data, &skills, &cards, &job, &mut kept)).unwrap();
         let records = LIFTED.with(|lifted| lifted.borrow_mut().take().unwrap());
         assert!(out["next"]["v0"].is_number(), "the plan ran: {}", out["next"]["error"]);
         let side: Vec<&LiftedRecord> = records

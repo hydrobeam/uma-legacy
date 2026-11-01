@@ -10,10 +10,11 @@ use crate::data::Data;
 use crate::deck::sources::deck_entries;
 use crate::deck::space::{DeckSpace, deck_space};
 use crate::deck::{Card, DeckJob};
+use crate::refusal::Refusal;
 use crate::skills::{Model, SkillJob};
 use crate::uma::{UmaIndex, UmaTable};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::HashMap;
 /// The three readings of one career job's JSON.
 pub(super) struct CareerJobs {
@@ -27,10 +28,10 @@ pub(super) struct CareerJobs {
 
 impl CareerJobs {
     /// The job read three ways, in this order; the first error is the answer.
-    pub(super) fn parse(job: &Value) -> Result<Self, Value> {
-        let skills = SkillJob::deserialize(job).map_err(|e| json!({"error": e.to_string()}))?;
-        let deck = DeckJob::deserialize(job).map_err(|e| json!({"error": e.to_string()}))?;
-        let career = CareerJob::deserialize(job).map_err(|e| json!({"error": e.to_string()}))?;
+    pub(super) fn parse(job: &Value) -> Result<Self, Refusal> {
+        let skills = SkillJob::deserialize(job).map_err(|e| Refusal::new(e.to_string()))?;
+        let deck = DeckJob::deserialize(job).map_err(|e| Refusal::new(e.to_string()))?;
+        let career = CareerJob::deserialize(job).map_err(|e| Refusal::new(e.to_string()))?;
         Ok(Self { skills, deck, career })
     }
 }
@@ -52,7 +53,7 @@ pub(super) fn career_setup<'data>(
     jobs: &'data CareerJobs,
     model: &'data Model<'data>,
     worker: &mut KeptState,
-) -> Result<CareerBuild<'data>, Value> {
+) -> Result<CareerBuild<'data>, Refusal> {
     let (data, skills, cards, job_json) = (input.data, input.skills, input.cards, input.job);
     let (skill_job, deck_job, career_job) = (&jobs.skills, &jobs.deck, &jobs.career);
     let folded_events = UmaTable(
@@ -86,10 +87,10 @@ pub(super) fn career_setup<'data>(
         .filter(|&i| career_job.trainees.is_empty() || career_job.trainees.contains(&data.umas[i].id))
         .collect();
     if trainees.is_empty() {
-        return Err(json!({"error": "No trainee to search: pick at least one owned uma."}));
+        return Err(Refusal::new("No trainee to search: pick at least one owned uma."));
     }
     if career_job.legacies.len() < 2 {
-        return Err(json!({"error": "Add at least two veterans to choose parents from."}));
+        return Err(Refusal::new("Add at least two veterans to choose parents from."));
     }
     let pool_ids: Vec<u32> = trainees.iter().map(|&i| data.umas[i].id).collect();
     let entries = deck_entries(cards, deck_job, &uncertain_groups, &pool_ids)?;
@@ -232,7 +233,7 @@ fn deck_odds_ceilings(
                 .collect();
             let lowest = |miss_of: &dyn Fn(usize) -> f64| {
                 let mut misses: Vec<f64> = legal.iter().map(|&j| miss_of(j)).collect();
-                misses.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                misses.sort_by(f64::total_cmp);
                 misses.iter().take(deck_size).product::<f64>()
             };
             let (mut white_hint_chances, mut gold_hint_chances) =

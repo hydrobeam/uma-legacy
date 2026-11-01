@@ -27,24 +27,30 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 |---|---|
 | `src/lib.rs` | Crate wiring, deterministic hashing (`Fx`), the native/wasm clock and the CLI entry point (`cli_main`) |
 | `src/main.rs` | The `loopopt` binary: calls `cli_main` |
-| `src/cli.rs` | CLI job loading, event enrichment, kept-state files, dispatch and bound diagnostics |
+| `src/cli.rs` | The native command line (clap): job loading, event enrichment, kept-state files, dispatch, bound diagnostics, `pbtable` and `constants` |
+| `src/constants.rs` | `SolverConstants`: the model constants `loopopt constants` prints, read from the solver's own |
 | `src/web.rs` | The wasm entry points and their `cmd` requests |
+| `src/refusal.rs` | `Refusal`: every command's answer when it does not do the job (`{"error": ...}`) |
+| `src/request.rs` | What the page sends the worker (`Request`: a job by its `cmd`, read as `Command`) and `init`'s answer |
 | `src/checks.rs` | The environment switches, read once into `Checks` (`checks::get`), and their thread-local counters |
 | `src/data.rs` | Race data, schedule choices, relation and ceiling tables, win probabilities and feasibility |
+| `src/hex.rs` | Floats and 64-bit keys as hex text, bit for bit (the kept state's, data.json's `pb` table) |
 | `src/uma.rs` | Roster indices and per-uma tables (`UmaIndex`, `UmaTable`) |
 | `src/schedule.rs` | Exact single-uma best responses (`Uma::dp_exact`, `Data::best_response`), scratch buffers and scoped memo |
 | `src/chart.rs` | Race/member labels and structured schedule charts (`chart_rows`) |
 | `src/skills.rs` | The skill-target model (`Model`), outfit choices and lineage inheritance probabilities (`lins`) |
 | `src/tests.rs` | Affinity-core tests against independent fixtures and model invariants |
+| `src/ts_gen.rs` | The page's TypeScript types of every reply and job, generated from the structs below (`./build.sh types`; docs/BUILD.md, *Generated types*) |
 | `src/loop_planner/mod.rs` | The loop planner: a deck job's path through its children |
 | `src/loop_planner/dominance.rs` | Dominance signatures, `DominanceIndex`, `k_filter`, candidate decks (`DeckEval`) and odds clusters |
 | `src/loop_planner/job.rs` | Deck-job setup and the nondominated deck frontier (`run_deck`) |
+| `src/loop_planner/output.rs` | A deck job's answer (`DeckReply`: the loop report `LoopReport`, the `deck_only` skyline, or a refusal) |
 | `src/loop_planner/schedules.rs` | Loop affinity scoring, coordinated schedules (`LoopProblem`, `optimize`) and pairwise ceilings |
 | `src/loop_planner/search/mod.rs` | Read-only `Multi`, mutable `LoopSearchState`, inputs and keys, setup and `run_multi`; fixed schedules (`prebuilt`) |
 | `src/loop_planner/search/tables.rs` | Per-uma exact values, `Grid`, pair ceilings, skyline classes and product ceilings |
 | `src/loop_planner/search/shared.rs` | `SharedScan`, shared-deck scoring and cached scans |
 | `src/loop_planner/search/bands.rs` | Loop bands, schedule solving and the budgeted certification passes |
-| `src/loop_planner/search/report.rs` | Reported picks, JSON and diagnostic summaries |
+| `src/loop_planner/search/report.rs` | Reported picks, the loop report and diagnostic summaries |
 | `src/deck/mod.rs` | The deck-search engine: the job records (`Card`, `CardsRaw`, `DeckJob`) and the deck model |
 | `src/deck/space.rs` | The space of legal decks (`DeckSpace`): entries by chain-kind key, legality tables and caps |
 | `src/deck/enumerate/mod.rs` | The enumeration's entry (`DeckSpace::search`) and the records a search takes and returns (`BandBound`) |
@@ -69,6 +75,7 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 | `src/career/mod.rs` | The career planner: the job's records, `Env` and its four parts, `run_career` / `run_career_in` |
 | `src/career/setup.rs` | The job read three ways (`CareerJobs`) and its `Env` built (`career_setup`), earlier jobs' proofs restored |
 | `src/career/run.rs` | The answer once `Env` is built: the main search's output, the plan, rolls, the job's certificates |
+| `src/career/reply.rs` | A career job's answer (`CareerReply`: its search with the career reports and certificates, a kept plan's roll or check, the simulator's report, the kept state, a refusal) |
 | `src/career/search.rs` | Career candidates (`gen_cands`), ceilings and the best careers (`Env::solve`) |
 | `src/career/decks.rs` | Exact career deck searches (`Env::best_deck`, `best_deck_run`, `best_deck_cf`) and their kept memos |
 | `src/career/inherit.rs` | Legacy slots, affinity, inheritance chances, their folding (`set_ews`) and `rise`; a lineage's slots taken in one order wherever the veterans stand (`Pool::product_order`, `Pool::grandparent_order`: the lower character id first, indices kept), in `walk_slots` and `gen_cands` alike, so a pair's f64s do not depend on the pool's order (tests/plan_order.rs). Ties: the main career search's candidate order, the planner's ranked pairs (`ranked_pairs`, and the careers kept from them in arrival order) and a scoring's partners break equal ceilings and values by a veteran's content rank (`Pool::content_ranks`: her character, stars, star mix, wins, pinks, borrowed, then her recorded parents', compared in full, no hash) before the indices, so the legacy index only orders veterans equal in all of it, which are interchangeable (tests/career_order.rs: val career_U2 reversed gives the same careers, its fifth result's exact tie between legacies 9 and 10 included) |
@@ -77,7 +84,7 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 | `src/career/schedule.rs` | Aptitude sparks and career race schedules |
 | `src/career/cache.rs` | The deck cache (`Cache`) the simulator and the plan value careers through |
 | `src/career/evaluator.rs` | The surrogate's valuation the simulator and the plan share (`Evaluator`, `deck_for`, `Cur`) |
-| `src/career/state.rs` | The worker's kept work (`KeptState`) and its saved form (`state_out`, `state_in`) |
+| `src/career/state.rs` | The worker's kept work (`KeptState`) and its saved form (`StoredState`: `state_out`, `state_in`) |
 | `src/career/clock.rs` | Host clocks, progress and phase counters |
 | `src/career/tests.rs` | Career-job tests: kept-state round trips, inheritance copies |
 | `src/career/plan/mod.rs` | The page's next career (`index_rule`): its records and phases |
@@ -94,11 +101,13 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 | `src/career/plan/kept.rs` | Kept plans (`Bests`) and cached career searches |
 | `src/career/plan/roll.rs` | The roll of the plan's pick and its kept state (`RollKeep`) |
 | `src/career/plan/output.rs` | The assembled plan response |
+| `src/career/plan/report.rs` | The plan's answer (`PlanReply`: `Plan`, its roll `RollReply`, its check `CheckReply` with the pair search) |
 | `src/career/sim/mod.rs` | The policy simulator's shared records, construction, and the bar and best pick of a path |
 | `src/career/sim/play.rs` | `simulate` and `play`: path state, veteran admission and pruning, survival, summaries |
 | `src/career/sim/policies.rs` | Greedy, loop, trace, exact and index career selection |
 | `src/career/sim/draw.rs` | Keyed uniforms (`u01`) and failed-career veteran draws |
 | `src/career/sim/audit.rs` | Surrogate checks against exact searches, audit rows |
+| `src/career/sim/report.rs` | The simulator's answer (`SimReply`) and a veteran as a job records her (`LegacyRecord`) |
 
 ---
 
@@ -183,8 +192,12 @@ uv run export/add_pb.py target/release/loopopt data/global/data.json
 (cd data/global && ../../target/release/loopopt data.json ../../../../val/jobs/pal_U.json) > /tmp/result.json
 ```
 
-The CLI runs `"mode":"deck"` and `"mode":"career"` job files (below), and `loopopt pbtable data.json`, which prints
-the pairwise-ceiling table `export/add_pb.py` merges in. The wasm interface (`src/web.rs`) loads an era's data
+The CLI (`src/cli.rs`, clap; `loopopt --help`) runs `"mode":"deck"` and `"mode":"career"` job files (below); `loopopt
+pbtable data.json` prints the pairwise-ceiling table `export/add_pb.py` merges in, and `loopopt constants` the model
+constants a script reads, as one JSON object read from the solver's own constants (`src/constants.rs`): `chain_n`,
+`chain_a`, `chain_b`, `chain_stop_share` ([k, n]), `exact_builders_targets`, `ceil_share`, `lam_decay` and
+`default_star_mix` (a job's default `star_dist`). A file it cannot read or parse, or a job file without a known
+`mode`, is an error naming the file (exit 2). The wasm interface (`src/web.rs`) loads an era's data
 through its `init` export and runs `cmd` requests through `call`: `deck`, `career`, `state_out`, `state_in`.
 
 ### Schedule chart
@@ -537,7 +550,7 @@ the career named at a tie from depending on what the worker ran before on anothe
 | `no_reports` | leaves out `results` (the main search's career reports and the first one's schedule search): the page's plan-only jobs read `next` alone; out of the setup fingerprint and the kept main search's key, so it changes nothing else | `false` |
 | `roll` | `{job, stars}`: a roll of a plan, answered beside this job's own answer as `roll` (the plan job `job` run after this one with `next.roll` = `stars`, its `next.roll`; below). (The page's Reroll now sends the plan job with `next.roll` alone first, so the saving shows at once, then its search) | none |
 | `career` | a career id (`career` in a report: `kept::career_id`, the uma, her parents in order (legacy indices) and her deck by card identity: each named entry's card id, choice variant and early-end link, the plain pals' card ids, the filler count, so an id names the same deck in every job on the same cards and veterans) to report as it is, with no deck search (`career/given.rs`): needs one trainee and both parents fixed, the id's; its hint chances are worked out from its cards (`DeckSpace::hint_chances_at`), so its odds can differ from the report that named it in the last bits; the deck must be one of this job's for her (every entry in this job's deck space, none of her own card, one per character, every locked card held, at most the borrowed cards allowed, the plain pals the first she may take, the deck size); the answer has one result, `given: true`, and neither `complete` nor `proven_top` (no search compared it with another career). The page's Use this sends it for a builder's other career (`builder_careers`), which a search on its parents would replace with her best deck | none |
-| `cmd: "state_out"` / `cmd: "state_in"` | the worker's kept work across page loads: `state_out` returns `{ok, state}`, the kept plans (each uma's best career per pool, as above), the kept proofs (fully checked decks per setup and deck class), the kept main searches (`KeptState::searches` with their product proofs, so a reload's first run searches nothing again) and the plans' roll states (`KeptState::rolls`, *Next career*: a reload's first roll plans nothing again), every float as its bit pattern in hex; `state_in` with that `state` puts them back (all or nothing: a state that does not parse, or of another version, is refused with `error`; so is one with a stored count above 1024 (`STATE_MAX_N`; a count is at most the umas in the data), an index past its list, a NaN, a chance outside [0, 1], a deck of more than six cards or a roll state whose vectors do not fit together or exceed the plan's 12 targets, 10 uncertain. Stored decks and careers are checked again where they meet a setup (`CareerSetup::seen_fits`, `solved_fits`): one naming a deck entry, trainee or veteran the setup does not have is not used there). The career page stores it in IndexedDB keyed by the solver's and data's fingerprints, after each plan, and restores it before a new worker's first job. Natively: `LOOPOPT_STATE_IN` / `LOOPOPT_STATE_OUT` (files) around a career run | none |
+| `cmd: "state_out"` / `cmd: "state_in"` | the worker's kept work across page loads: `state_out` returns `{ok, state}`, the kept plans (each uma's best career per pool, as above), the kept proofs (fully checked decks per setup and deck class), the kept main searches (`KeptState::searches` with their product proofs, so a reload's first run searches nothing again) and the plans' roll states (`KeptState::rolls`, *Next career*: a reload's first roll plans nothing again) and step caps, as plain serde records (`StoredState`, its TypeScript in `webapp/src/gen/solver.ts`) with every float as its bit pattern in hex and every 64-bit key in hex (the state passes through the page's JavaScript, whose JSON writes an infinite float as null and whose numbers cannot hold a 64-bit key: `src/hex.rs`); `state_in` with that `state` puts them back (all or nothing: a state that does not parse, or of another version, is refused with `error`; so is one with a stored count above 1024 (`STATE_MAX_N`; a count is at most the umas in the data), an index past its list, a NaN, a chance outside [0, 1], a deck of more than six cards or a roll state whose vectors do not fit together or exceed the plan's 12 targets, 10 uncertain. Stored decks and careers are checked again where they meet a setup (`CareerSetup::seen_fits`, `solved_fits`): one naming a deck entry, trainee or veteran the setup does not have is not used there). The career page stores it in IndexedDB keyed by the solver's and data's fingerprints, after each plan, and restores it before a new worker's first job. Natively: `LOOPOPT_STATE_IN` / `LOOPOPT_STATE_OUT` (files) around a career run | none |
 
 #### Model per career
 
@@ -794,7 +807,7 @@ decay, what `Cont::with_decay` takes; her cap's curve instead where that bound a
 along a chain of added veterans) and her odds now, with its pool (the veterans by their records' text, a multiset) and
 scope (the setup, deck space and borrowing rule, `kept::plan_scope`; the fixed parents named by their veterans' records,
 not their positions, since the pool's order is not part of the key; and the trainee filter): the last 8 plans, in
-`state_out` (`STATE_VERSION` 10). A later plan in the same scope whose veterans include a kept plan's holds, per
+`state_out` (`STATE_VERSION` 11). A later plan in the same scope whose veterans include a kept plan's holds, per
 candidate, every such curve (`StepCaps`); her step at any odds p is then the least of her continuation's cost and every
 held curve's at p (`ScoreBase::step_plan`, the trios' steps): one envelope per
 candidate, read at whatever odds a side of hers is priced (her best career's, an Alternative's own, a lifted one's), so
@@ -1135,7 +1148,7 @@ of the other 12 val/plan pools sequencing lowers V by 8.7-11.9% (boot_mob 40.9%,
   `ROLL_KEEP`, keyed by the plan job without `next.roll`, top-level `roll`, `no_reports` and `compare`; in `state_out`): the pick's last
   scoring as its fold and outcome loop read it (`Scored`: the kept tables, her miss factors and spark scales per
   setup (partner and finisher slots), the collapsed targets, her landed sets' chances, the routes), with the base it was
-  scored against (steps, V, odds now, the anchored Conts and their step caps' curves; `STATE_VERSION` 10). `y`, the
+  scored against (steps, V, odds now, the anchored Conts and their step caps' curves; `STATE_VERSION` 11). `y`, the
   pick's careers saved, V - V with her veteran (to 0.01): the plan's own fold and
   outcome loop (`Scored::evaluate`, generic over the leaves it produces: `All` in the plan, `OneLeaf` in a roll, which folds
   only the prefixes of the outcome's representative and runs the outcome loop at it and the outcome), so the f64 the

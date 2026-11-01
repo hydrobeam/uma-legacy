@@ -1,9 +1,9 @@
 """Summaries of policy-simulator outputs (`simulate` career jobs; docs/SOLVER.md "Policy simulator").
 
-    uv run val/sim/report.py runs A.out [B.out ...]      per policy: E mean, sd, 95% CI, careers, final p, wall time;
+    uv run --group research val/sim/report.py runs A.out [B.out ...]      per policy: E mean, sd, 95% CI, careers, final p, wall time;
                                                           paired differences between policies over common run indices
-    uv run val/sim/report.py e1 A.out [B.out ...]        surrogate fidelity from the `check` records
-    uv run val/sim/report.py audit A.out [B.out ...]     surrogate fidelity from the `audit` records
+    uv run --group research val/sim/report.py e1 A.out [B.out ...]        surrogate fidelity from the `check` records
+    uv run --group research val/sim/report.py audit A.out [B.out ...]     surrogate fidelity from the `audit` records
 
 An output file is the solver's stdout for one job (one JSON line); several files of one policy (split runs) pool.
 """
@@ -14,9 +14,11 @@ import math
 from collections import defaultdict
 from typing import NamedTuple
 
+from scipy.stats import t as student_t
+
 
 class SampleSummary(NamedTuple):
-    count: int
+    size: int
     mean: float
     standard_deviation: float
     interval_half_width: float  # Two-sided 95% confidence interval for the mean.
@@ -56,22 +58,12 @@ class RotationAudit(NamedTuple):
     same_decision: bool
 
 
-def student_t_975(df):
-    z = 1.959964
-    return (
-        z
-        + (z**3 + z) / (4 * df)
-        + (5 * z**5 + 16 * z**3 + 3 * z) / (96 * df**2)
-        + (3 * z**7 + 19 * z**5 + 17 * z**3 - 15 * z) / (384 * df**3)
-    )
-
-
 def summarize(values):
     count = len(values)
     mean = sum(values) / count
     standard_deviation = math.sqrt(sum((x - mean) ** 2 for x in values) / (count - 1)) if count > 1 else 0.0
-    half_width = student_t_975(count - 1) * standard_deviation / math.sqrt(count) if count > 1 else 0.0
-    return SampleSummary(count=count, mean=mean, standard_deviation=standard_deviation, interval_half_width=half_width)
+    half_width = float(student_t.ppf(0.975, count - 1)) * standard_deviation / math.sqrt(count) if count > 1 else 0.0
+    return SampleSummary(size=count, mean=mean, standard_deviation=standard_deviation, interval_half_width=half_width)
 
 
 def load(paths):
@@ -142,7 +134,7 @@ def e1(paths):
         for a in diff[:5]:
             print(f"    differs: pool {a['pool']} sur {a['sur']} {a['sur_p']:.6e} ex {a['ex']} {a['ex_p']:.6e}")
         lineage_checks = [
-            LineageCheck(*x, cc["argmax"]["sur_val"] or 0)
+            LineageCheck._make([*x, cc["argmax"]["sur_val"] or 0])
             for r in policy_runs.values()
             for cc in r["checks"]
             for x in cc["lineages"]

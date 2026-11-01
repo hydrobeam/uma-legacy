@@ -6,7 +6,7 @@
 #   the page's JS: Biome (lint and formatting) on the staged files, then tsc over the page and the worker (seconds)
 #   the page's JS, CSS, pages, tests or build: knip (dead exports, files, dependencies), dependency-cruiser (the module
 #     layers), test/deadcss.mjs (PurgeCSS) and no `@ts-expect-error` in src/ (a grep: no linter sees a comment); about 4 s
-#   the page's sources or tests: the node tests, webapp/test/unit/ (well under a second)
+#   the page's sources or tests: the node tests, webapp/test/unit/ (Vitest; about 2 s)
 # A commit staging none of these (docs, data) checks nothing. ./build.sh lint runs every check on the whole repo.
 root=$(git rev-parse --show-toplevel) || exit 1
 staged() { git diff --cached --name-only --diff-filter=ACMR -- "$@"; }
@@ -37,6 +37,7 @@ if [ -n "$(staged 'webapp/src/*' 'webapp/test/*' 'webapp/*.html' 'webapp/partial
 fi
 
 if [ -n "$(staged 'webapp/src/*' 'webapp/test/*')" ]; then
-  (cd "$root/webapp" && NODE_OPTIONS=--max-old-space-size=1024 node --test --test-timeout=60000 --test-reporter=dot 'test/unit/*.test.*' >&2) || fail 'node tests (above)'
+  (cd "$root/webapp" && NODE_OPTIONS=--max-old-space-size=1024 timeout 300 npx --no-install vitest run --reporter=dot >&2) \
+    || fail 'node tests (above)'
 fi
 exit 0

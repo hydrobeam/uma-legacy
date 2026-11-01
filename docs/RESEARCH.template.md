@@ -787,6 +787,13 @@ level 5 and leaves the pool after $c = \lceil 5 / \iota \rceil$ hints. The runs 
 $\iota$ of 2 or more, where a level could fail the check, {{7.increment_multiples_of_iota_iota_2|,.0f}} of
 {{7.increment_single_source_levels_iota_2|,.0f}} levels that one card gave alone are multiples of $\iota$, or 5.
 
+A card's effects at its level are master.mdb's, linear between the levels its table gives, rounded down. The increment
+shows the rounding: where a card's hint-level bonus at its level falls between integers,
+{{7.hint_level_rounding_multiples_rounded_down|,.0f}} of {{7.hint_level_rounding_single_source_levels|,.0f}} levels
+below 5 that the card gave alone are multiples of $\iota$ with the bonus rounded down, against
+{{7.hint_level_rounding_multiples_rounded_to_nearest|,.0f}} with it rounded to nearest and
+{{7.hint_level_rounding_multiples_rounded_up|,.0f}} with it rounded up.
+
 The chance that none of $k$ targets in a pool of $n$ skills is hinted is computed jointly, not target by target:
 
 $$M(k, n, h) = (1 - f)\, m(k, n, \lfloor h \rfloor) + f\, m(k, n, \lfloor h \rfloor + 1), \qquad

@@ -17,7 +17,8 @@ use crate::career::plan::{Oracle, PlanContext, found_career};
 use crate::career::search::SearchRequest;
 use crate::career::sim::Sim;
 use crate::career::{Career, Legacy, Lineage};
-use serde_json::{Value, json};
+use serde::Serialize;
+use ts_rs::TS;
 
 /// The trios sequenced, today's cheapest first.
 const SEQUENCED_TRIOS: usize = 8;
@@ -26,10 +27,13 @@ const SEQUENCED_TRIOS: usize = 8;
 const RESCORED_ROWS: usize = 3;
 
 /// One order of a trio's sides: the first as today, the second after her, C on the two.
-struct Ordered {
+#[derive(Serialize, TS)]
+pub(crate) struct Ordered {
     /// The second side's careers, and whether her best career with the first's veteran was cheaper than her side today.
+    #[serde(rename = "second")]
     second_careers: f64,
     second_moved: bool,
+    #[serde(rename = "c")]
     finisher_cost: f64,
     total: f64,
 }
@@ -47,7 +51,7 @@ pub(crate) fn sequenced_oracle(
     runs: &[PlanRow],
     scores: &PlanScores,
     buf: &mut Vec<f64>,
-) -> Value {
+) -> Option<SequencedOracle> {
     let started_ms = now_ms();
     let input = context.input;
     let fit = &scores.fit;
@@ -56,7 +60,7 @@ pub(crate) fn sequenced_oracle(
         || !scores.any_scored
         || !fit.current_value.is_finite()
     {
-        return Value::Null;
+        return None;
     }
     let data = context.data();
     let base = fit.score_base(context.candidates);
@@ -65,7 +69,7 @@ pub(crate) fn sequenced_oracle(
     order.truncate(SEQUENCED_TRIOS);
     let mut sequenced_values: Vec<(usize, f64)> = vec![];
     // (the cached decks only, `aside`: the oracle adds nothing the plan's output or its check reads)
-    let trios: Vec<Value> = aside(simulator, |simulator| {
+    let trios: Vec<SequencedTrio> = aside(simulator, |simulator| {
         order
             .iter()
             .map(|&index| {
@@ -78,34 +82,73 @@ pub(crate) fn sequenced_oracle(
                 ];
                 let value = orders.iter().flatten().map(|ordered| ordered.total).fold(today, f64::min);
                 sequenced_values.push((index, value));
-                let name = |uma: crate::uma::UmaIndex| json!(data.umas[uma].name);
-                let names = [
-                    name(context.candidates[first.candidate]),
-                    name(context.candidates[second.candidate]),
-                    name(trio.finisher),
-                ];
-                let order_json = |ordered: &Option<Ordered>| {
-                    ordered.as_ref().map(|ordered| {
-                        json!({"second": ordered.second_careers, "second_moved": ordered.second_moved,
-                        "c": ordered.finisher_cost, "total": ordered.total})
-                    })
-                };
-                json!({"trio": names, "sides": [base.side_cost(first), base.side_cost(second)], "c": trio.finisher_cost,
-                "v": today, "first_a": order_json(&orders[0]), "first_b": order_json(&orders[1]), "v_sequenced": value})
+                let name = |uma: crate::uma::UmaIndex| data.umas[uma].name.clone();
+                let [first_a, first_b] = orders;
+                SequencedTrio {
+                    trio: [
+                        name(context.candidates[first.candidate]),
+                        name(context.candidates[second.candidate]),
+                        name(trio.finisher),
+                    ],
+                    sides: [base.side_cost(first), base.side_cost(second)],
+                    c: trio.finisher_cost,
+                    v: today,
+                    first_a,
+                    first_b,
+                    v_sequenced: value,
+                }
             })
             .collect()
     });
     let best_today = order.first().copied();
     let best_sequenced = sequenced_values.iter().min_by(|first, second| first.1.total_cmp(&second.1)).copied();
     let rescored = rescore_top_rows(simulator, context, runs, scores, &sequenced_values, buf);
-    json!({
-        "v0": fit.current_value,
-        "v0_sequenced": best_sequenced.map(|(_, value)| value),
-        "best_trio_changes": best_sequenced.map(|(index, _)| index) != best_today,
-        "trios": trios,
-        "rows": rescored,
-        "oracle_ms": now_ms() - started_ms,
+    Some(SequencedOracle {
+        v0: fit.current_value,
+        v0_sequenced: best_sequenced.map(|(_, value)| value),
+        best_trio_changes: best_sequenced.map(|(index, _)| index) != best_today,
+        trios,
+        rows: rescored,
+        oracle_ms: now_ms() - started_ms,
     })
+}
+
+/// The sequenced oracle (`next.oracle` "sequenced"): the cheapest trios with their sides made in turn, beside V.
+#[derive(Serialize, TS)]
+pub(crate) struct SequencedOracle {
+    pub(crate) v0: f64,
+    /// the cheapest sequenced value (null: no trio)
+    pub(crate) v0_sequenced: Option<f64>,
+    pub(crate) best_trio_changes: bool,
+    pub(crate) trios: Vec<SequencedTrio>,
+    pub(crate) rows: SequencedRows,
+    pub(crate) oracle_ms: f64,
+}
+
+/// A trio (A, B, C by name), its sides' and C's careers, today's value, each order's (A first, B first; null where
+/// the order changes nothing or no C is legal) and the best of them.
+#[derive(Serialize, TS)]
+pub(crate) struct SequencedTrio {
+    pub(crate) trio: [String; 3],
+    pub(crate) sides: [f64; 2],
+    pub(crate) c: f64,
+    pub(crate) v: f64,
+    pub(crate) first_a: Option<Ordered>,
+    pub(crate) first_b: Option<Ordered>,
+    pub(crate) v_sequenced: f64,
+}
+
+/// The top rows rescored against the trios at their sequenced values, beside their scores today, and the gaps between
+/// consecutive ones.
+#[derive(Serialize, TS)]
+pub(crate) struct SequencedRows {
+    pub(crate) v0: f64,
+    pub(crate) trainees: Vec<String>,
+    pub(crate) score: Vec<f64>,
+    pub(crate) score_sequenced: Vec<f64>,
+    pub(crate) gaps: Vec<f64>,
+    pub(crate) gaps_sequenced: Vec<f64>,
+    pub(crate) scoring_complete: bool,
 }
 
 /// One order of a trio's sides (`Ordered`): None where the first side is a real full veteran already in the pool (the
@@ -210,7 +253,7 @@ fn rescore_top_rows(
     scores: &PlanScores,
     sequenced_values: &[(usize, f64)],
     buf: &mut Vec<f64>,
-) -> Value {
+) -> SequencedRows {
     let fit = &scores.fit;
     let mut trios: Vec<Trio> = fit.trios.clone();
     for &(index, value) in sequenced_values {
@@ -234,7 +277,13 @@ fn rescore_top_rows(
     });
     let today: Vec<f64> = top.iter().map(|&i| runs[i].total()).collect();
     let gaps = |values: &[f64]| values.windows(2).map(|pair| pair[0] - pair[1]).collect::<Vec<f64>>();
-    json!({"v0": current_value, "trainees": top.iter().map(|&i| context.data().umas[runs[i].trainee].name.clone()).collect::<Vec<_>>(),
-        "score": today, "score_sequenced": rescored, "gaps": gaps(&today), "gaps_sequenced": gaps(&rescored),
-        "scoring_complete": scoring_complete})
+    SequencedRows {
+        v0: current_value,
+        trainees: top.iter().map(|&i| context.data().umas[runs[i].trainee].name.clone()).collect(),
+        gaps: gaps(&today),
+        gaps_sequenced: gaps(&rescored),
+        score: today,
+        score_sequenced: rescored,
+        scoring_complete,
+    }
 }

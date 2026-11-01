@@ -7,7 +7,11 @@ use crate::career::pool::Pool;
 use crate::career::search::{Assumes, CareerSearchResult, Found, Ref, Unproven};
 use crate::career::{CareerSetup, ClassFlags};
 use crate::deck::space::{MAX_DECK, SelectedDeck};
-use serde_json::{Value, json};
+use crate::hex::{Bits, Key, bits};
+use crate::refusal::Refusal;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use ts_rs::TS;
 
 /// Work retained between jobs. The worker owns it; career and planner operations borrow it explicitly.
 #[derive(Default)]
@@ -156,18 +160,17 @@ pub(crate) const SOLVE_KEEP: usize = 3;
 pub(crate) const SEEN_KEEP: usize = 256;
 
 // ---------- the worker's kept work across page loads ----------
-// What a worker keeps between jobs (the kept plans, `KeptState::bests`; the proofs, `KeptState::seen`) leaves as `state_out` and comes
-// back as `state_in`, so the first plan after a page reload reuses the work of the last session. Every float travels as
-// its bit pattern in hex (decimal JSON does not round-trip here), so what comes back is what left, bit for bit; the page
-// keys what it stores by the solver and data fingerprints, so a release starts afresh (the keys inside, `setup_fp` and
-// `bests_key`, hash with std's DefaultHasher, fixed within a build). A store that does not parse is refused whole.
-// (5: a roll state's Conts carry their anchor odds, its scoring the lifted costs, its base no trios; 6: a kept search
-// holds its `unproven` reasons, `assumes` (names), its class flags and its trainees' classes; the class flags by class
-// content, and each kept plan's own; 7: a roll state's routes carry their C while a lifted side builds, and its Conts
-// price odds above p0 off their lattice; 8: the plans' step caps, and a roll state's base its candidates' caps; 9: a
-// step cap is its kept fit's curve, lam, phi, pinf, p0 and decay, and her odds then; 10: a roll state keeps no bound's
-// inputs, the roll's y_hi gone: no found-career anchors, no flags of which candidates' odds are proven)
-pub(crate) const STATE_VERSION: u64 = 10;
+// What a worker keeps between jobs (the kept plans, `KeptState::bests`; the proofs, `KeptState::seen`; its main
+// searches, roll states and step caps) leaves as `state_out` and comes back as `state_in`, so the first plan after a page
+// reload reuses the work of the last session. It is plain serde (`StoredState`), each float as its bits and each key in
+// hex (`crate::hex`): the state passes through the page's JavaScript, whose JSON writes an infinite float (a search's
+// `next_bound` or `cert`) as null and whose numbers cannot hold a 64-bit key, and what comes back is what left, bit for
+// bit, as the kept bounds and proofs prune later searches by it. The page keys what it stores by the solver and data
+// fingerprints, so a release starts afresh (the keys inside, `setup_fp` and `bests_key`, hash with std's DefaultHasher,
+// fixed within a build). A store of another version, or one that does not parse, is refused whole (the page then
+// drops it and plans cold).
+// (11: plain serde records with named fields; every earlier store is refused)
+pub(crate) const STATE_VERSION: u64 = 11;
 
 /// What a stored state may hold, checked as it is decoded (`state_in`, before anything is installed): a stored count (the
 /// umas or deck classes a list covers) at most STATE_MAX_N, so nothing is allocated
@@ -178,318 +181,378 @@ pub(crate) const STATE_VERSION: u64 = 10;
 /// entries, chances per target) is checked where it meets that setup (`CareerSetup::seen_fits`, `solve_kept`).
 pub(crate) const STATE_MAX_N: usize = 1 << 10;
 
-pub(crate) fn hx(value: f64) -> Value {
-    Value::String(format!("{:016x}", value.to_bits()))
+/// The worker's kept work as the page stores it (`state_out`; back with `state_in`).
+#[derive(Serialize, Deserialize, TS)]
+pub(crate) struct StoredState {
+    /// `STATE_VERSION`: a store of another is refused
+    pub(crate) v: u64,
+    pub(crate) bests: Vec<crate::career::plan::kept::StoredBests>,
+    pub(crate) seen: Vec<StoredSeen>,
+    pub(crate) solve: Vec<StoredSolve>,
+    /// class flags by class content key (`ClassFlags::bits`), keys ascending
+    pub(crate) flags: Vec<(Key, u8)>,
+    pub(crate) rolls: Vec<crate::career::plan::roll::StoredRoll>,
+    pub(crate) caps: Vec<crate::career::plan::caps::StoredCaps>,
 }
 
-pub(crate) fn ux(value: u64) -> Value {
-    Value::String(format!("{value:016x}"))
+/// A stored float, any but NaN (the bounds compare them).
+pub(crate) const fn number(value: Bits) -> Option<f64> {
+    if value.0.is_nan() { None } else { Some(value.0) }
 }
 
-pub(crate) fn fx(value: &Value) -> Option<f64> {
-    Some(f64::from_bits(u64::from_str_radix(value.as_str()?, 16).ok()?)).filter(|float| !float.is_nan())
+/// Stored floats (`number`).
+pub(crate) fn numbers(values: &[Bits]) -> Option<Vec<f64>> {
+    values.iter().map(|&value| number(value)).collect()
 }
 
-/// a stored chance: in [0, 1]
-fn px(value: &Value) -> Option<f64> {
-    fx(value).filter(|chance| (0.0..=1.0).contains(chance))
+/// A stored chance: in [0, 1].
+pub(crate) fn chance(value: Bits) -> Option<f64> {
+    Some(value.0).filter(|chance| (0.0..=1.0).contains(chance))
 }
 
-pub(crate) fn uxr(value: &Value) -> Option<u64> {
-    u64::from_str_radix(value.as_str()?, 16).ok()
+/// Stored chances (`chance`).
+pub(crate) fn chances(values: &[Bits]) -> Option<Vec<f64>> {
+    values.iter().map(|&value| chance(value)).collect()
 }
 
-pub(crate) fn fvec(value: &[f64]) -> Value {
-    Value::Array(value.iter().map(|&float| hx(float)).collect())
+/// A stored count: at most `STATE_MAX_N`.
+pub(crate) const fn count(stored: usize) -> Option<usize> {
+    if stored <= STATE_MAX_N { Some(stored) } else { None }
 }
 
-pub(crate) fn fvec_r(value: &Value) -> Option<Vec<f64>> {
-    value.as_array()?.iter().map(fx).collect()
+/// A deck as stored: its entries, plain pals and filler cards, and its hint chances per uncertain target.
+#[derive(Serialize, Deserialize, TS)]
+pub(crate) struct StoredDeck {
+    pub(crate) entries: Vec<usize>,
+    pub(crate) plain: usize,
+    pub(crate) filler: usize,
+    pub(crate) white: Vec<Bits>,
+    pub(crate) gold: Vec<Bits>,
 }
 
-/// a stored vector of chances (`px`)
-pub(crate) fn pvec_r(value: &Value) -> Option<Vec<f64>> {
-    value.as_array()?.iter().map(px).collect()
+pub(crate) fn sel_out(deck: &SelectedDeck) -> StoredDeck {
+    StoredDeck {
+        entries: deck.entries.clone(),
+        plain: deck.plain_pals,
+        filler: deck.filler_cards,
+        white: bits(&deck.white_hint_chances),
+        gold: bits(&deck.gold_hint_chances),
+    }
 }
 
-pub(crate) fn usz(value: &Value) -> Option<usize> {
-    usize::try_from(value.as_u64()?).ok()
-}
-
-/// a stored count (`STATE_MAX_N`)
-pub(crate) fn len_in(value: &Value) -> Option<usize> {
-    usz(value).filter(|&n| n <= STATE_MAX_N)
-}
-
-pub(crate) fn sel_out(deck: &SelectedDeck) -> Value {
-    json!([
-        deck.entries,
-        deck.plain_pals,
-        deck.filler_cards,
-        fvec(&deck.white_hint_chances),
-        fvec(&deck.gold_hint_chances)
-    ])
-}
-
-pub(crate) fn sel_in(value: &Value) -> Option<SelectedDeck> {
-    let fields = value.as_array()?;
-    let entries: Vec<usize> = fields.first()?.as_array()?.iter().map(usz).collect::<Option<_>>()?;
-    let (plain, filler) = (usz(fields.get(1)?)?, usz(fields.get(2)?)?);
-    let (white_hint_chances, gold_hint_chances) = (pvec_r(fields.get(3)?)?, pvec_r(fields.get(4)?)?);
+pub(crate) fn sel_in(stored: &StoredDeck) -> Option<SelectedDeck> {
+    let (white_hint_chances, gold_hint_chances) = (chances(&stored.white)?, chances(&stored.gold)?);
     // (a deck: at most MAX_DECK cards, a white and a gold chance per target)
-    let cards = entries.len().checked_add(plain)?.checked_add(filler)?;
-    (cards <= MAX_DECK && white_hint_chances.len() == gold_hint_chances.len()).then_some(SelectedDeck {
-        entries,
-        plain_pals: plain,
-        filler_cards: filler,
+    let cards = stored.entries.len().checked_add(stored.plain)?.checked_add(stored.filler)?;
+    (cards <= MAX_DECK && white_hint_chances.len() == gold_hint_chances.len()).then(|| SelectedDeck {
+        entries: stored.entries.clone(),
+        plain_pals: stored.plain,
+        filler_cards: stored.filler,
         white_hint_chances,
         gold_hint_chances,
     })
 }
 
-fn ref_out(reference: &Ref) -> Value {
-    json!([fvec(&reference.inheritance_chances), hx(reference.value), sel_out(&reference.deck)])
+/// A fully checked deck as stored: the inheritance chances it was checked at, its value and the deck.
+#[derive(Serialize, Deserialize, TS)]
+pub(crate) struct StoredRef {
+    pub(crate) q: Vec<Bits>,
+    pub(crate) value: Bits,
+    pub(crate) deck: StoredDeck,
 }
 
-fn ref_in(value: &Value) -> Option<Ref> {
-    let fields = value.as_array()?;
+fn ref_out(reference: &Ref) -> StoredRef {
+    StoredRef { q: bits(&reference.inheritance_chances), value: Bits(reference.value), deck: sel_out(&reference.deck) }
+}
+
+fn ref_in(stored: &StoredRef) -> Option<Ref> {
     Some(Ref {
-        inheritance_chances: pvec_r(fields.first()?)?,
+        inheritance_chances: chances(&stored.q)?,
         // (a P(all) before the spark scale: a chance)
-        value: px(fields.get(1)?)?,
-        deck: sel_in(fields.get(2)?)?,
+        value: chance(stored.value)?,
+        deck: sel_in(&stored.deck)?,
     })
 }
 
-pub(crate) fn found_out(found: &Found) -> Value {
-    json!([
-        found.trainee,
-        found.first_parent,
-        found.second_parent,
-        hx(found.value),
-        hx(found.ceiling),
-        sel_out(&found.deck)
-    ])
+/// A career as stored: the trainee (uma index), her parents (legacy indices), its value, ceiling and deck.
+#[derive(Serialize, Deserialize, TS)]
+pub(crate) struct StoredFound {
+    pub(crate) trainee: usize,
+    pub(crate) parents: [usize; 2],
+    pub(crate) value: Bits,
+    pub(crate) ceiling: Bits,
+    pub(crate) deck: StoredDeck,
 }
 
-pub(crate) fn found_in(value: &Value) -> Option<Found> {
-    let fields = value.as_array()?;
+pub(crate) fn found_out(found: &Found) -> StoredFound {
+    StoredFound {
+        trainee: found.trainee.0,
+        parents: [found.first_parent, found.second_parent],
+        value: Bits(found.value),
+        ceiling: Bits(found.ceiling),
+        deck: sel_out(&found.deck),
+    }
+}
+
+pub(crate) fn found_in(stored: &StoredFound) -> Option<Found> {
     Some(Found {
-        trainee: crate::uma::UmaIndex(usz(fields.first()?)?),
-        first_parent: usz(fields.get(1)?)?,
-        second_parent: usz(fields.get(2)?)?,
-        value: fx(fields.get(3)?)?,
-        ceiling: fx(fields.get(4)?)?,
-        deck: sel_in(fields.get(5)?)?,
+        trainee: crate::uma::UmaIndex(stored.trainee),
+        first_parent: stored.parents[0],
+        second_parent: stored.parents[1],
+        value: number(stored.value)?,
+        ceiling: number(stored.ceiling)?,
+        deck: sel_in(&stored.deck)?,
     })
 }
 
-/// Kept proofs as [fingerprint, classes, [[class, [refs]], ...]] per key (only the classes holding proofs)
-fn seen_out(kept: &KeptState) -> Value {
-    Value::Array(
-        kept.seen
-            .iter()
-            .map(|KeptSeen { key, refs: classes }| {
-                json!([
-                    ux(*key),
-                    classes.len(),
-                    classes
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, refs)| !refs.is_empty())
-                        .map(|(i, refs)| json!([i, refs.iter().map(ref_out).collect::<Vec<_>>()]))
-                        .collect::<Vec<_>>()
-                ])
-            })
-            .collect(),
-    )
+/// Per-uma (or per-class) lists as stored: their count, and each non-empty one by its index.
+#[derive(Serialize, Deserialize, TS)]
+pub(crate) struct StoredLists<Item> {
+    pub(crate) count: usize,
+    pub(crate) lists: Vec<(usize, Vec<Item>)>,
 }
 
-/// Class flags as [class count, [breached classes], [classes assuming two_feeder_cap], [classes assuming
-/// multi_feeder_cap]]
-fn flags_out(flags: &crate::uma::UmaTable<ClassFlags>) -> Value {
+fn lists_out<Item, Stored>(
+    lists: &crate::uma::UmaTable<Vec<Item>>,
+    write_item: impl Fn(&Item) -> Stored,
+) -> StoredLists<Stored> {
+    StoredLists {
+        count: lists.len(),
+        lists: lists
+            .iter()
+            .enumerate()
+            .filter(|(_, items)| !items.is_empty())
+            .map(|(i, items)| (i, items.iter().map(&write_item).collect()))
+            .collect(),
+    }
+}
+
+/// The lists, each index within the count (`STATE_MAX_N` at most), each item read (`read_item`).
+fn lists_in<Item: Clone, Stored>(
+    stored: &StoredLists<Stored>,
+    read_item: impl Fn(&Stored) -> Option<Item>,
+) -> Option<crate::uma::UmaTable<Vec<Item>>> {
+    let list_count = count(stored.count)?;
+    let mut lists = crate::uma::UmaTable(vec![vec![]; list_count]);
+    for (i, items) in &stored.lists {
+        if *i >= list_count {
+            return None;
+        }
+        lists[crate::uma::UmaIndex(*i)] = items.iter().map(&read_item).collect::<Option<_>>()?;
+    }
+    Some(lists)
+}
+
+/// One key's kept fully checked decks as stored (`KeptSeen`).
+#[derive(Serialize, Deserialize, TS)]
+pub(crate) struct StoredSeen {
+    pub(crate) key: Key,
+    /// per deck class, its fully checked decks
+    pub(crate) refs: StoredLists<StoredRef>,
+}
+
+fn seen_out(kept: &KeptState) -> Vec<StoredSeen> {
+    kept.seen.iter().map(|seen| StoredSeen { key: Key(seen.key), refs: lists_out(&seen.refs, ref_out) }).collect()
+}
+
+fn seen_in(stored: &[StoredSeen]) -> Option<Vec<KeptSeen>> {
+    stored.iter().map(|seen| Some(KeptSeen { key: seen.key.0, refs: lists_in(&seen.refs, ref_in)? })).collect()
+}
+
+/// Class flags as stored: the class count, and the breached classes and those assuming each named assumption.
+#[derive(Serialize, Deserialize, TS)]
+pub(crate) struct StoredClassFlags {
+    pub(crate) count: usize,
+    pub(crate) breached: Vec<usize>,
+    pub(crate) two_feeder: Vec<usize>,
+    pub(crate) multi_feeder: Vec<usize>,
+}
+
+fn flags_out(flags: &crate::uma::UmaTable<ClassFlags>) -> StoredClassFlags {
     let with = |set: fn(ClassFlags) -> bool| {
         flags.indices().filter(|&class| set(flags[class])).map(|class| class.0).collect::<Vec<_>>()
     };
-    json!([flags.len(), with(|f| f.breached), with(|f| f.assumes.two_feeder), with(|f| f.assumes.multi_feeder)])
+    StoredClassFlags {
+        count: flags.len(),
+        breached: with(|f| f.breached),
+        two_feeder: with(|f| f.assumes.two_feeder),
+        multi_feeder: with(|f| f.assumes.multi_feeder),
+    }
 }
 
-/// Class flags from [class count, [breached], [two_feeder_cap], [multi_feeder_cap]] (`flags_out`): every class within
-/// the count
-fn flags_in(value: &Value) -> Option<crate::uma::UmaTable<ClassFlags>> {
-    let fields = value.as_array()?;
-    let class_count = len_in(fields.first()?)?;
-    let mut flags = crate::uma::UmaTable(vec![ClassFlags::default(); class_count]);
-    let setters: [fn(&mut ClassFlags); 3] =
-        [|f| f.breached = true, |f| f.assumes.two_feeder = true, |f| f.assumes.multi_feeder = true];
-    for (field, set) in fields.get(1..4)?.iter().zip(setters) {
-        for class in field.as_array()? {
-            set(flags.0.get_mut(usz(class)?)?);
-        }
+/// Class flags from their stored form (`flags_out`): every class within the count
+fn flags_in(stored: &StoredClassFlags) -> Option<crate::uma::UmaTable<ClassFlags>> {
+    let mut flags = crate::uma::UmaTable(vec![ClassFlags::default(); count(stored.count)?]);
+    for &class in &stored.breached {
+        flags.0.get_mut(class)?.breached = true;
+    }
+    for &class in &stored.two_feeder {
+        flags.0.get_mut(class)?.assumes.two_feeder = true;
+    }
+    for &class in &stored.multi_feeder {
+        flags.0.get_mut(class)?.assumes.multi_feeder = true;
     }
     Some(flags)
 }
 
-/// Class flags by content key as [[key, bits], ...] (`ClassFlags::bits`), keys ascending
-pub(crate) fn keyed_flags_out<'flags>(flags: impl Iterator<Item = (&'flags u64, &'flags ClassFlags)>) -> Value {
-    Value::Array(flags.map(|(&key, flags)| json!([ux(key), flags.bits()])).collect())
+/// Class flags by content key as stored ([key, bits], `ClassFlags::bits`), keys ascending
+pub(crate) fn keyed_flags_out<'flags>(
+    flags: impl Iterator<Item = (&'flags u64, &'flags ClassFlags)>,
+) -> Vec<(Key, u8)> {
+    flags.map(|(&key, flags)| (Key(key), flags.bits())).collect()
 }
 
 /// Class flags by content key from `keyed_flags_out`'s form (a repeated key unioned); None for an unknown bit
-pub(crate) fn keyed_flags_in(value: &Value) -> Option<std::collections::BTreeMap<u64, ClassFlags>> {
+pub(crate) fn keyed_flags_in(stored: &[(Key, u8)]) -> Option<std::collections::BTreeMap<u64, ClassFlags>> {
     let mut flags = std::collections::BTreeMap::new();
-    for entry in value.as_array()? {
-        let fields = entry.as_array()?;
-        let kept = ClassFlags::from_bits(u8::try_from(fields.get(1)?.as_u64()?).ok()?)?;
-        let slot: &mut ClassFlags = flags.entry(uxr(fields.first()?)?).or_default();
+    for &(key, bits) in stored {
+        let kept = ClassFlags::from_bits(bits)?;
+        let slot: &mut ClassFlags = flags.entry(key.0).or_default();
         *slot = slot.union(kept);
     }
     Some(flags)
 }
 
-fn seen_in(value: &Value) -> Option<Vec<KeptSeen>> {
-    value
-        .as_array()?
+/// A kept main search as stored (`KeptSolve`): every field of `CareerSearchResult`, its product proofs, class flags and
+/// trainees' classes.
+#[derive(Serialize, Deserialize, TS)]
+pub(crate) struct StoredSolve {
+    pub(crate) key: Key,
+    pub(crate) found: Vec<StoredFound>,
+    pub(crate) refs: StoredLists<StoredRef>,
+    pub(crate) work: usize,
+    pub(crate) candidates: usize,
+    pub(crate) solved: usize,
+    pub(crate) bounded: usize,
+    pub(crate) scored: usize,
+    pub(crate) skipped: usize,
+    pub(crate) next_bound: Bits,
+    pub(crate) complete: bool,
+    pub(crate) unproven: Unproven,
+    pub(crate) assumes: Assumes,
+    pub(crate) proven: bool,
+    pub(crate) cert: Bits,
+    /// per deck class, its product proofs: [the chances searched at, the bound]
+    pub(crate) ruled: StoredLists<(Vec<Bits>, Bits)>,
+    pub(crate) class_flags: StoredClassFlags,
+    pub(crate) classes: Vec<usize>,
+}
+
+fn solve_out(kept: &KeptState) -> Vec<StoredSolve> {
+    kept.searches
         .iter()
-        .map(|setup_entry| {
-            let fields = setup_entry.as_array()?;
-            let (fingerprint, class_count) = (uxr(fields.first()?)?, len_in(fields.get(1)?)?);
-            let mut classes = crate::uma::UmaTable(vec![vec![]; class_count]);
-            for class_entry in fields.get(2)?.as_array()? {
-                let class_fields = class_entry.as_array()?;
-                let i = usz(class_fields.first()?)?;
-                if i >= class_count {
-                    return None;
-                }
-                classes[crate::uma::UmaIndex(i)] =
-                    class_fields.get(1)?.as_array()?.iter().map(ref_in).collect::<Option<_>>()?;
-            }
-            Some(KeptSeen { key: fingerprint, refs: classes })
+        .map(|KeptSolve { key, solved, ruled, class_flags, classes }| StoredSolve {
+            key: Key(*key),
+            found: solved.found.iter().map(found_out).collect(),
+            refs: lists_out(&solved.refs, ref_out),
+            work: solved.work,
+            candidates: solved.candidates,
+            solved: solved.solved,
+            bounded: solved.bounded,
+            scored: solved.scored,
+            skipped: solved.skipped,
+            next_bound: Bits(solved.next_bound),
+            complete: solved.complete,
+            unproven: solved.unproven,
+            assumes: solved.assumes,
+            proven: solved.proven,
+            cert: Bits(solved.certified_cap),
+            ruled: lists_out(ruled, |proof| (bits(&proof.inheritance_chances), Bits(proof.product_bound))),
+            class_flags: flags_out(class_flags),
+            classes: classes.iter().map(|class| class.0).collect(),
         })
         .collect()
 }
 
-/// per-uma (or per-class) lists as [length, [[index, [items]], ...]] (only the non-empty ones)
-fn lists_out<T>(lists: &crate::uma::UmaTable<Vec<T>>, write_item: impl Fn(&T) -> Value) -> Value {
-    json!([
-        lists.len(),
-        lists
-            .iter()
-            .enumerate()
-            .filter(|(_, items)| !items.is_empty())
-            .map(|(i, items)| json!([i, items.iter().map(&write_item).collect::<Vec<_>>()]))
-            .collect::<Vec<_>>()
-    ])
-}
-
-fn lists_in<T: Clone>(value: &Value, read_item: impl Fn(&Value) -> Option<T>) -> Option<crate::uma::UmaTable<Vec<T>>> {
-    let fields = value.as_array()?;
-    let list_count = len_in(fields.first()?)?;
-    let mut lists = crate::uma::UmaTable(vec![vec![]; list_count]);
-    for list_entry in fields.get(1)?.as_array()? {
-        let list_fields = list_entry.as_array()?;
-        let i = usz(list_fields.first()?)?;
-        if i >= list_count {
-            return None;
-        }
-        lists[crate::uma::UmaIndex(i)] =
-            list_fields.get(1)?.as_array()?.iter().map(&read_item).collect::<Option<_>>()?;
-    }
-    Some(lists)
-}
-
-/// Kept searches as [key, search, proofs, class flags, classes] per kept search: every field of `CareerSearchResult`
-/// (`unproven` as its reasons' names), floats as bit patterns
-fn solve_out(kept: &KeptState) -> Value {
-    Value::Array(kept.searches.iter().map(|KeptSolve { key, solved, ruled, class_flags, classes }| json!([ux(*key), {
-        "found": solved.found.iter().map(found_out).collect::<Vec<_>>(), "refs": lists_out(&solved.refs, ref_out),
-        "n": [solved.work, solved.candidates, solved.solved, solved.bounded, solved.scored, solved.skipped], "next_bound": hx(solved.next_bound), "complete": solved.complete, "unproven": solved.unproven.names(), "assumes": solved.assumes.names(), "proven": solved.proven, "cert": hx(solved.certified_cap)
-    }, lists_out(ruled, |proof| json!([fvec(&proof.inheritance_chances), hx(proof.product_bound)])),
-    flags_out(class_flags), classes.iter().map(|class| class.0).collect::<Vec<_>>()])).collect())
-}
-
-fn solve_in(value: &Value) -> Option<Vec<KeptSolve>> {
-    value
-        .as_array()?
+fn solve_in(stored: &[StoredSolve]) -> Option<Vec<KeptSolve>> {
+    stored
         .iter()
-        .map(|entry| {
-            let fields = entry.as_array()?;
-            let stored = fields.get(1)?;
-            let counts: Vec<usize> = stored["n"].as_array()?.iter().map(usz).collect::<Option<_>>()?;
-            if counts.len() != 6 {
-                return None;
-            }
+        .map(|stored| {
             let solved = CareerSearchResult {
-                found: stored["found"].as_array()?.iter().map(found_in).collect::<Option<_>>()?,
-                refs: lists_in(&stored["refs"], ref_in)?,
-                work: counts[0],
-                candidates: counts[1],
-                solved: counts[2],
-                bounded: counts[3],
-                scored: counts[4],
-                skipped: counts[5],
-                next_bound: fx(&stored["next_bound"])?,
-                complete: stored["complete"].as_bool()?,
-                unproven: Unproven::from_names(&stored["unproven"])?,
-                assumes: Assumes::from_names(Some(&stored["assumes"]))?,
-                proven: stored["proven"].as_bool()?,
-                certified_cap: fx(&stored["cert"])?,
+                found: stored.found.iter().map(found_in).collect::<Option<_>>()?,
+                refs: lists_in(&stored.refs, ref_in)?,
+                work: stored.work,
+                candidates: stored.candidates,
+                solved: stored.solved,
+                bounded: stored.bounded,
+                scored: stored.scored,
+                skipped: stored.skipped,
+                next_bound: number(stored.next_bound)?,
+                complete: stored.complete,
+                unproven: stored.unproven,
+                assumes: stored.assumes,
+                proven: stored.proven,
+                certified_cap: number(stored.cert)?,
             };
             // (complete exactly when no reason is listed; proven only when complete)
             if solved.complete == solved.unproven.any() || (solved.proven && !solved.complete) {
                 return None;
             }
-            let ruled = lists_in(fields.get(2)?, |proof| {
-                let proof_fields = proof.as_array()?;
+            let ruled = lists_in(&stored.ruled, |(inheritance_chances, bound)| {
                 Some(ProductProof {
-                    inheritance_chances: pvec_r(proof_fields.first()?)?,
+                    inheritance_chances: chances(inheritance_chances)?,
                     // (a product value, or the seed a search found nothing above: finite and not negative)
-                    product_bound: fx(proof_fields.get(1)?).filter(|bound| bound.is_finite() && *bound >= 0.0)?,
+                    product_bound: Some(bound.0).filter(|bound| bound.is_finite() && *bound >= 0.0)?,
                 })
             })?;
-            let class_flags = flags_in(fields.get(3)?)?;
-            let classes: Vec<crate::uma::UmaIndex> = fields
-                .get(4)?
-                .as_array()?
+            let class_flags = flags_in(&stored.class_flags)?;
+            let classes: Vec<crate::uma::UmaIndex> = stored
+                .classes
                 .iter()
-                .map(|class| usz(class).filter(|&class| class < class_flags.len()).map(crate::uma::UmaIndex))
+                .map(|&class| (class < class_flags.len()).then_some(crate::uma::UmaIndex(class)))
                 .collect::<Option<_>>()?;
             // (proven with a class of its trainees breached: inconsistent, `CareerSearchResult::qualify`)
             if solved.proven && classes.iter().any(|&class| !class_flags[class].proves()) {
                 return None;
             }
-            Some(KeptSolve { key: uxr(fields.first()?)?, solved, ruled, class_flags, classes })
+            Some(KeptSolve { key: stored.key.0, solved, ruled, class_flags, classes })
         })
         .collect()
 }
 
-pub(crate) fn state_out(kept: &KeptState) -> Value {
-    json!({"ok": true, "state": {"v": STATE_VERSION, "bests": crate::career::plan::kept::bests_out(&kept.bests), "seen": seen_out(kept), "solve": solve_out(kept), "flags": keyed_flags_out(kept.flags.iter()), "rolls": crate::career::plan::roll::rolls_out(&kept.rolls), "caps": crate::career::plan::caps::caps_out(&kept.step_caps)}})
+pub(crate) fn state_out(kept: &KeptState) -> StateOut {
+    StateOut {
+        ok: true,
+        state: StoredState {
+            v: STATE_VERSION,
+            bests: crate::career::plan::kept::bests_out(&kept.bests),
+            seen: seen_out(kept),
+            solve: solve_out(kept),
+            flags: keyed_flags_out(kept.flags.iter()),
+            rolls: crate::career::plan::roll::rolls_out(&kept.rolls),
+            caps: crate::career::plan::caps::caps_out(&kept.step_caps),
+        },
+    }
 }
 
 /// replaces the kept plans, proofs, main searches, plans' roll states and step caps with the page's stored ones and unions its
-/// class flags into the worker's (all or nothing: a store that does not parse is refused)
-pub(crate) fn state_in(kept: &mut KeptState, value: &Value) -> Value {
+/// class flags into the worker's (all or nothing: a store of another version, or that does not parse, is refused)
+pub(crate) fn state_in(kept: &mut KeptState, value: &Value) -> StateIn {
     if value["v"].as_u64() != Some(STATE_VERSION) {
-        return json!({"error": "state: another version"});
+        return StateIn::Refusal(Refusal::new("state: another version"));
     }
-    // Decode every store before replacing any live state. (The kept plans' per-uma count is checked here, before
-    // `bests_in` allocates from it.)
-    if !value["bests"].as_array().is_none_or(|bests_list| bests_list.iter().all(|best| len_in(&best["n"]).is_some())) {
-        return json!({"error": "state: does not parse"});
-    }
-    let (Some(bests), Some(seen), Some(searches), Some(flags), Some(rolls), Some(step_caps)) = (
-        crate::career::plan::kept::bests_in(&value["bests"]),
-        seen_in(&value["seen"]),
-        solve_in(&value["solve"]),
-        keyed_flags_in(&value["flags"]),
-        crate::career::plan::roll::rolls_in(&value["rolls"]),
-        crate::career::plan::caps::caps_in(&value["caps"]),
-    ) else {
-        return json!({"error": "state: does not parse"});
+    // Decode every store before replacing any live state.
+    let Ok(stored) = StoredState::deserialize(value) else {
+        return StateIn::Refusal(Refusal::new("state: does not parse"));
     };
-    let (best_count, seen_count, search_count, roll_count, cap_count) =
-        (bests.len(), seen.len(), searches.len(), rolls.len(), step_caps.len());
+    let (Some(bests), Some(seen), Some(searches), Some(flags), Some(rolls), Some(step_caps)) = (
+        crate::career::plan::kept::bests_in(&stored.bests),
+        seen_in(&stored.seen),
+        solve_in(&stored.solve),
+        keyed_flags_in(&stored.flags),
+        crate::career::plan::roll::rolls_in(&stored.rolls),
+        crate::career::plan::caps::caps_in(&stored.caps),
+    ) else {
+        return StateIn::Refusal(Refusal::new("state: does not parse"));
+    };
+    let counts = StateCounts {
+        ok: true,
+        bests: bests.len(),
+        seen: seen.len(),
+        solve: searches.len(),
+        rolls: rolls.len(),
+        caps: step_caps.len(),
+    };
     // (the stored flags unioned into the worker's: a store never clears a flag)
     let mut flags = flags;
     for (key, live) in std::mem::take(&mut kept.flags) {
@@ -507,7 +570,7 @@ pub(crate) fn state_in(kept: &mut KeptState, value: &Value) -> Value {
         checks: std::mem::take(&mut kept.checks),
         decks: std::mem::take(&mut kept.decks),
     };
-    json!({"ok": true, "bests": best_count, "seen": seen_count, "solve": search_count, "rolls": roll_count, "caps": cap_count})
+    StateIn::Restored(counts)
 }
 
 impl CareerSetup<'_> {
@@ -548,4 +611,32 @@ impl CareerSetup<'_> {
                     && self.sel_fits(&found_career.deck)
             })
     }
+}
+
+/// `state_out`'s answer: the kept work to store.
+#[derive(Serialize, TS)]
+pub(crate) struct StateOut {
+    /// always true
+    pub(crate) ok: bool,
+    pub(crate) state: StoredState,
+}
+
+/// `state_in`'s answer: what it restored, or why it refused the store (the page then drops it).
+#[derive(Serialize, TS)]
+#[serde(untagged)]
+pub(crate) enum StateIn {
+    Restored(StateCounts),
+    Refusal(Refusal),
+}
+
+/// What a store restored: the kept plans, proofs' keys, main searches, roll states and step caps.
+#[derive(Serialize, TS)]
+pub(crate) struct StateCounts {
+    /// always true
+    pub(crate) ok: bool,
+    pub(crate) bests: usize,
+    pub(crate) seen: usize,
+    pub(crate) solve: usize,
+    pub(crate) rolls: usize,
+    pub(crate) caps: usize,
 }

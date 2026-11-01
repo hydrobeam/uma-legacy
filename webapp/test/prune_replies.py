@@ -8,14 +8,16 @@ cache/solver-replies/ is refused and left as it is.
     uv run webapp/test/prune_replies.py CURRENT_STORE_DIR
 """
 
+import argparse
 import re
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 ROOT = REPO / "cache" / "solver-replies"
-# the wasm's and both engines' fingerprints: Vite's (8 characters, base64url), or build.py's before it (hex)
-STORE_DIR = re.compile(r"[\w-]{8}-[\w-]{8}-[\w-]{8}|[0-9a-f]+-[0-9a-f]+-[0-9a-f]+")
+# the SHA-256 prefixes of the wasm, both engines and the worker script (replaystore.mjs); or, from before, the
+# fingerprints in the asset names of the wasm and both engines: Vite's (8 characters, base64url) or build.py's (hex)
+STORE_DIR = re.compile(r"[0-9a-f]{16}(-[0-9a-f]{16}){3}|[\w-]{8}-[\w-]{8}-[\w-]{8}|[0-9a-f]+-[0-9a-f]+-[0-9a-f]+")
 REPLY_FILE = re.compile(r"[0-9a-f]{64}\.json(\.\d+\.part)?|\.recorded-(quick|full)")
 
 
@@ -43,10 +45,12 @@ def remove(store: Path) -> str:
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print(__doc__, file=sys.stderr)
-        return 2
-    current = Path(sys.argv[1])
+    parser = argparse.ArgumentParser(
+        description="Delete the recorded solver replies of every solver and data but the current ones.",
+        allow_abbrev=False,
+    )
+    parser.add_argument("current", type=Path, metavar="CURRENT_STORE_DIR", help="the store directory to keep")
+    current = parser.parse_args().current
     if current.resolve().parent != ROOT.resolve() or not STORE_DIR.fullmatch(current.name):
         print(f"prune-replies: refused, {current} is not a recording directory of {ROOT}", file=sys.stderr)
         return 1

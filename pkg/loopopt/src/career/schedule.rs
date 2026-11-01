@@ -1,12 +1,12 @@
 //! Aptitude sparks and career race schedules.
 use crate::career::inherit::aff_factor;
 use crate::career::pool::{Pool, RaceWin};
+use crate::career::reply::CareerScheduleRow;
 use crate::career::{CareerSetup, Lineage};
-use crate::chart::{chart_race_name, when};
+use crate::chart::{ScheduleCell, ScheduleRow, chart_race_name, when};
 use crate::data::{Choice, Data, NT, OptRaw, RepeatedRace, Sched, Uma, scored_position};
 use crate::loop_planner::schedules::FILL_EPS;
 use crate::uma::UmaIndex;
-use serde_json::{Value, json};
 use std::rc::Rc;
 // The career planner's low-basis cost (`LOW_BASIS_MAX`, `LOW_BASIS_COST`): research/results.json's section 4 fit,
 // written by build.rs.
@@ -805,10 +805,15 @@ impl CareerSetup<'_> {
     /// expected weighted wins), and nothing on base tables with certain parent wins, whose values lie on a 1e-4 lattice
     /// (with pinks or parents' chances below 1 a smaller loss can be traded). With no G1 among her parents' wins she runs
     /// the G1s that win the most.
-    pub(crate) fn schedule_rows(&self, pool: &Pool, lineage: Lineage, planned: &PlannedSchedule) -> Value {
+    pub(crate) fn schedule_rows(
+        &self,
+        pool: &Pool,
+        lineage: Lineage,
+        planned: &PlannedSchedule,
+    ) -> Vec<CareerScheduleRow> {
         let Lineage { trainee, first_parent, second_parent } = lineage;
         let data = self.data;
-        let Some(schedule) = &planned.schedule else { return json!([]) };
+        let Some(schedule) = &planned.schedule else { return vec![] };
         let uma = planned.table.as_ref().map_or(&data.umas[trainee], |career| &career.uma);
         let won = |parent: usize, race: usize| {
             pool.veterans[parent].wins.iter().find(|win| win.race == race).map_or(0.0, |win| win.chance)
@@ -833,9 +838,9 @@ impl CareerSetup<'_> {
                 let race = option.race as usize;
                 let run = chosen == Some(option_index);
                 let instead = match chosen {
-                    _ if run => Value::Null,
-                    None => json!("rest"),
-                    Some(other_option) => json!(uma.race_options[turn][other_option].name),
+                    _ if run => None,
+                    None => Some("rest".to_owned()),
+                    Some(other_option) => Some(uma.race_options[turn][other_option].name.clone()),
                 };
                 // the loop planner's chart row (one member: `cells`, `shared` = a parent won it, so it builds affinity),
                 // plus `run`, `p`, `instead`, and `name` (the race's full name)
@@ -854,17 +859,36 @@ impl CareerSetup<'_> {
                 );
                 let aptitude_cost = (110.0 - bases.table).round() as i64;
                 let low_basis_cost = (110.0 - bases.career).round() as i64 - aptitude_cost;
-                let cell = if run {
-                    json!({"p": (option_chances[k] * 100.0).round(), "goal": goal, "apt": aptitude_cost, "low": low_basis_cost, "row": k, "pen": data.streak_penalty(goal, k)})
-                } else {
-                    Value::Null
-                };
-                rows.push(json!({"turn": turn, "when": when(turn), "year": turn / 24, "race": chart_race_name(&data.race_names[race]), "name": data.race_names[race],
-                                 "run": run, "skipped": !run, "instead": instead, "p": if run { json!(option_chances[k]) } else { Value::Null }, "goal": goal,
-                                 "parents": parent_wins, "shared": parent_wins[0] || parent_wins[1], "cells": [cell], "runners": u8::from(run), "alts": []}));
+                let cell = run.then(|| ScheduleCell {
+                    p: (option_chances[k] * 100.0).round(),
+                    goal,
+                    apt: aptitude_cost,
+                    low: Some(low_basis_cost),
+                    row: k,
+                    pen: data.streak_penalty(goal, k),
+                });
+                rows.push(CareerScheduleRow {
+                    chart: ScheduleRow {
+                        year: turn / 24,
+                        when: when(turn),
+                        race: chart_race_name(&data.race_names[race]),
+                        shared: parent_wins[0] || parent_wins[1],
+                        cells: vec![cell],
+                        runners: usize::from(run),
+                        alts: vec![],
+                    },
+                    turn,
+                    name: data.race_names[race].clone(),
+                    run,
+                    skipped: !run,
+                    instead,
+                    p: run.then_some(option_chances[k]),
+                    goal,
+                    parents: parent_wins,
+                });
             }
         }
-        Value::Array(rows)
+        rows
     }
 }
 

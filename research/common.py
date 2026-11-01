@@ -4,9 +4,10 @@ Each section script defines `claims()`, returning its Values and Findings, and p
 Without the run records (research/data/runs.jsonl, not included), sections skip record-dependent calculations or
 return findings as "needs data". Game-backed checks still require their game inputs."""
 
-import collections, contextlib, hashlib, json, math, os, random, re, sqlite3, subprocess, sys, time
+import collections, contextlib, functools, hashlib, json, math, os, random, re, sqlite3, subprocess, sys, time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from fractions import Fraction
 from itertools import pairwise
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, NamedTuple, TypedDict
@@ -81,40 +82,40 @@ class Run(TypedDict):
     batch: int
 
 
-_cache: dict[
-    str, Any
-] = {}  # loaded data by name, shared by every script in one process (the section scripts add theirs)
-
-
 def have_runs() -> bool:
     return os.path.exists(RUNS)
 
 
+@functools.cache
 def runs() -> list[Run] | None:
     """the run records, one dict per run, in record order (seq); None without them"""
     if not have_runs():
         return None
-    if "runs" not in _cache:
-        _cache["runs"] = sorted((json.loads(line) for line in open(RUNS, encoding="utf-8")), key=lambda r: r["seq"])
-    return _cache["runs"]
+    return sorted((json.loads(line) for line in open(RUNS, encoding="utf-8")), key=lambda r: r["seq"])
 
 
+def records() -> list[Run]:
+    """the run records, for code that runs only with them (its section asks have_runs() first)"""
+    records = runs()
+    if records is None:
+        raise FileNotFoundError(f"{RUNS} is missing")
+    return records
+
+
+@functools.cache
 def run_list() -> list[dict[str, Any]] | None:
     """the run list's rows (every completed run, with uma-it's rank-score estimates; more runs than the records),
     one dict per run; None without it"""
     path = os.path.join(DATA, "summary.jsonl")
     if not os.path.exists(path):
         return None
-    if "list" not in _cache:
-        _cache["list"] = [json.loads(line) for line in open(path, encoding="utf-8")]
-    return _cache["list"]
+    return [json.loads(line) for line in open(path, encoding="utf-8")]
 
 
+@functools.cache
 def gjson(name: str) -> Any:
     """a tracked Global data file (pkg/loopopt/data/global/NAME)"""
-    if name not in _cache:
-        _cache[name] = json.load(open(os.path.join(GD, name), encoding="utf-8"))
-    return _cache[name]
+    return json.load(open(os.path.join(GD, name), encoding="utf-8"))
 
 
 def cards() -> dict[int, dict[str, Any]]:
@@ -137,13 +138,32 @@ def factor_groups() -> dict[int, int]:
     return {int(k): v for k, v in gjson("career.json")["factors"].items()}
 
 
-def mdb() -> sqlite3.Connection | None:
-    """master.mdb (game/global/master.mdb), or None"""
-    if not os.path.exists(MDB):
-        return None
-    if "mdb" not in _cache:
-        _cache["mdb"] = sqlite3.connect(f"file:{MDB}?mode=ro", uri=True)
-    return _cache["mdb"]
+def must[T](value: T | None, what: str) -> T:
+    """the value, where None would be a bug: raises, naming what is missing"""
+    if value is None:
+        raise ValueError(f"{what} is missing")
+    return value
+
+
+@functools.cache
+def solver_constants() -> dict[str, Any]:
+    """the model constants the solver itself uses, as `loopopt constants` prints them (chain_n, chain_a, chain_b,
+    chain_stop_share, exact_builders_targets, ceil_share, lam_decay, default_star_mix); the release build is needed"""
+    if not os.path.exists(SOLVER):
+        raise FileNotFoundError(f"{SOLVER} is missing: ./build.sh native builds it")
+    return json.loads(subprocess.run([SOLVER, "constants"], capture_output=True, text=True, check=True).stdout)
+
+
+def have_mdb() -> bool:
+    return os.path.exists(MDB)
+
+
+@functools.cache
+def mdb() -> sqlite3.Connection:
+    """master.mdb (game/global/master.mdb), read-only; code that can run without it asks have_mdb() first"""
+    if not have_mdb():
+        raise FileNotFoundError(f"{MDB} is missing")
+    return sqlite3.connect(f"file:{MDB}?mode=ro", uri=True)
 
 
 def gametora() -> ModuleType:
@@ -591,9 +611,6 @@ class GameData:
     card_events: dict[str, Any]  # card_events.json 'cards', by card id as a string
 
 
-_game: list[GameData] = []  # game()'s cache
-
-
 def skill_set(hs: Iterable[tuple[str, Any, Any]], skill_names: dict[int, str]) -> set[str]:
     """the skill names of GameTora hints ('hint': one skill id, else a list of them)"""
     out: set[str] = set()
@@ -671,11 +688,10 @@ def link_markers(evs: dict[int, list[CardEvent]]) -> dict[int, dict[int, set[str
     return markers
 
 
+@functools.cache
 def game() -> GameData:
     """support cards, skill names, per-card skill pools, observable links with their markers, and exported card events
     (chain links from master.mdb single_mode_story_data)"""
-    if _game:
-        return _game[0]
     gt = gametora()
     db = mdb()
     card_table = cards()
@@ -683,16 +699,13 @@ def game() -> GameData:
     link_of = dict(db.execute("select story_id,show_progress_1 from single_mode_story_data where show_progress_1>0"))
     evs = card_events(gt, sk, link_of)
     cev = gjson("card_events.json")["cards"]
-    _game.append(
-        GameData(
-            cards=card_table,
-            skill_names=sk,
-            pool=skill_pools(gt, evs, card_table, sk, cev),
-            markers=link_markers(evs),
-            card_events=cev,
-        )
+    return GameData(
+        cards=card_table,
+        skill_names=sk,
+        pool=skill_pools(gt, evs, card_table, sk, cev),
+        markers=link_markers(evs),
+        card_events=cev,
     )
-    return _game[0]
 
 
 def reward_names(rewards: Iterable[Any]) -> set[str]:
@@ -757,39 +770,34 @@ def maxed_elsewhere(hs: dict[str, Any], skills: set[str], source: str) -> bool:
     )
 
 
+@functools.cache
 def choice_events() -> dict[int, list[tuple[str, list[list[set[str]]]]]]:
     """card -> (event label, [choice -> [outcome -> skills]]) for every SR/SSR, pal and group event (per-card variants
     of pal and group events as the card sees them)"""
-    if not _choice_events:
-        g = game()
-        gt = gametora()
-        out: collections.defaultdict[int, list[tuple[str, list[list[set[str]]]]]] = collections.defaultdict(list)
-        for f in ("training_events_sr", "training_events_ssr"):
-            for cid, es in gt.load(f):
-                for e in es:
-                    chs = [[skill_set(h, g.skill_names) for h, _ in gt.outcomes(ch[1])] for ch in gt.choices(e[1])]
-                    out[cid].append((f"{g.cards.get(cid, {}).get('name', cid)} event {e[2]}", chs))
-        for kindf in ("friend", "group"):
-            for row in gt.load(f"training_events_{kindf}"):
-                holders = [
-                    cid
-                    for cid, c in g.cards.items()
-                    if c["pal"]
-                    and ((kindf == "friend" and c["chara"] == row[0]) or (kindf == "group" and cid == row[0]))
-                ]
-                variants: dict[str, dict[Any, Any]] = collections.defaultdict(dict)
-                for ev in gt.events(row, kindf):
-                    variants[str(ev.event[2])][ev.card_id] = ev.choices
-                for sid, by_card in variants.items():
-                    for cid in holders:
-                        raw = by_card.get(cid, by_card.get(None))
-                        chs = [[skill_set(h, g.skill_names) for h, _ in gt.outcomes(ch[1])] for ch in gt.choices(raw)]
-                        out[cid].append((f"{g.cards[cid]['name']} event {sid}", chs))
-        _choice_events.append(dict(out))
-    return _choice_events[0]
-
-
-_choice_events: list[dict[int, list[tuple[str, list[list[set[str]]]]]]] = []
+    g = game()
+    gt = gametora()
+    out: collections.defaultdict[int, list[tuple[str, list[list[set[str]]]]]] = collections.defaultdict(list)
+    for f in ("training_events_sr", "training_events_ssr"):
+        for cid, es in gt.load(f):
+            for e in es:
+                chs = [[skill_set(h, g.skill_names) for h, _ in gt.outcomes(ch[1])] for ch in gt.choices(e[1])]
+                out[cid].append((f"{g.cards.get(cid, {}).get('name', cid)} event {e[2]}", chs))
+    for kindf in ("friend", "group"):
+        for row in gt.load(f"training_events_{kindf}"):
+            holders = [
+                cid
+                for cid, c in g.cards.items()
+                if c["pal"] and ((kindf == "friend" and c["chara"] == row[0]) or (kindf == "group" and cid == row[0]))
+            ]
+            variants: dict[str, dict[Any, Any]] = collections.defaultdict(dict)
+            for ev in gt.events(row, kindf):
+                variants[str(ev.event[2])][ev.card_id] = ev.choices
+            for sid, by_card in variants.items():
+                for cid in holders:
+                    raw = by_card.get(cid, by_card.get(None))
+                    chs = [[skill_set(h, g.skill_names) for h, _ in gt.outcomes(ch[1])] for ch in gt.choices(raw)]
+                    out[cid].append((f"{g.cards[cid]['name']} event {sid}", chs))
+    return dict(out)
 
 
 def readable_choice(chs: list[list[set[str]]], j: int, unique: set[str]) -> set[str] | None:
@@ -853,7 +861,6 @@ def steer_readings(R: list[Run] | None = None) -> list[SteerReading]:
     return out + finale_steer_readings(R if R is not None else runs() or [])
 
 
-_steer: dict[str, tuple[int, int]] = {}
 _nuisance_pool: list[list[Run]] = []  # nuisance_runs(): the runs the steering shares, end shares and backgrounds use
 
 
@@ -868,23 +875,27 @@ def nuisance_runs(R: list[Run]) -> Iterator[None]:
     """measure the nuisances on R only while inside (held-out scoring fits them on the training runs); their caches are
     cleared on entry and exit"""
     _nuisance_pool.append(R)
-    for cache in (_steer, _end_share, _bg):
-        cache.clear()
+    clear_nuisances()
     try:
         yield
     finally:
         _nuisance_pool.pop()
-        for cache in (_steer, _end_share, _bg):
-            cache.clear()
+        clear_nuisances()
 
 
+def clear_nuisances() -> None:
+    """forget the nuisances measured on the previous pool"""
+    for fitted in (steer_shares, chosen_end_share, background_counts):
+        fitted.cache_clear()
+
+
+@functools.cache
 def steer_shares() -> dict[str, tuple[int, int]]:
     """per case, (runs taking the steered choice, runs), pooled over steer_readings on the nuisance pool"""
-    if not _steer:
-        xs = steer_readings(nuisance_pool())
-        for case in STEER_CASES:
-            _steer[case] = (sum(x.taken for x in xs if x.case == case), sum(1 for x in xs if x.case == case))
-    return _steer
+    xs = steer_readings(nuisance_pool())
+    return {
+        case: (sum(x.taken for x in xs if x.case == case), sum(1 for x in xs if x.case == case)) for case in STEER_CASES
+    }
 
 
 def steer_chance(case: str | None) -> float:
@@ -908,19 +919,15 @@ def end_chance(cid: int, r: Run) -> float:
     return steer_chance(steer_case(r["priority"], ending, continuing, maxed))
 
 
-_end_share: dict[int, float] = {}
-
-
+@functools.cache
 def chosen_end_share(cid: int) -> float:
     """the mean end_chance over the nuisance pool's runs with the card that show a priority list"""
-    if cid not in _end_share:
-        xs = [
-            end_chance(cid, r)
-            for r in nuisance_pool()
-            if r["priority"] is not None and any(c == cid for c, _, _ in r["deck"])
-        ]
-        _end_share[cid] = round(sum(xs) / len(xs), 6) if xs else 0.0
-    return _end_share[cid]
+    xs = [
+        end_chance(cid, r)
+        for r in nuisance_pool()
+        if r["priority"] is not None and any(c == cid for c, _, _ in r["deck"])
+    ]
+    return round(sum(xs) / len(xs), 6) if xs else 0.0
 
 
 BG_SHRINK: int = 20  # runs: a trainee's own background rate is pulled toward the scenario's with this weight
@@ -931,29 +938,25 @@ BG_CLEAN: float = (
 )
 
 
-_bg: list[tuple[dict[tuple[str, int], list[int]], dict[tuple[str, int, int], list[int]]]] = []
-
-
+@functools.cache
 def background_counts() -> tuple[dict[tuple[str, int], list[int]], dict[tuple[str, int, int], list[int]]]:
     """per (marker skill, scenario) and (marker skill, scenario, trainee): [runs crediting the skill to plain "Events",
     runs whose deck holds no card whose events can give it]"""
-    if not _bg:
-        g = game()
-        skills = {sk for m in g.markers.values() for mk in m.values() for sk in mk}
-        by_scen: collections.defaultdict[tuple[str, int], list[int]] = collections.defaultdict(lambda: [0, 0])
-        by_tr: collections.defaultdict[tuple[str, int, int], list[int]] = collections.defaultdict(lambda: [0, 0])
-        for r in nuisance_pool():
-            deck = [c for c, _, _ in r["deck"]]
-            if any(c not in g.cards for c in deck):
-                continue
-            givable = set().union(*(g.pool.get(c, set()) for c in deck))
-            events = {h["name"] for h in r["hints"] if "Events" in h["src"]}
-            for sk in skills - givable:
-                for key, table in (((sk, r["scenario"]), by_scen), ((sk, r["scenario"], r["chara"]), by_tr)):
-                    table[key][1] += 1
-                    table[key][0] += sk in events
-        _bg.append((dict(by_scen), dict(by_tr)))
-    return _bg[0]
+    g = game()
+    skills = {sk for m in g.markers.values() for mk in m.values() for sk in mk}
+    by_scen: collections.defaultdict[tuple[str, int], list[int]] = collections.defaultdict(lambda: [0, 0])
+    by_tr: collections.defaultdict[tuple[str, int, int], list[int]] = collections.defaultdict(lambda: [0, 0])
+    for r in nuisance_pool():
+        deck = [c for c, _, _ in r["deck"]]
+        if any(c not in g.cards for c in deck):
+            continue
+        givable = set().union(*(g.pool.get(c, set()) for c in deck))
+        events = {h["name"] for h in r["hints"] if "Events" in h["src"]}
+        for sk in skills - givable:
+            for counts in (by_scen[(sk, r["scenario"])], by_tr[(sk, r["scenario"], r["chara"])]):
+                counts[1] += 1
+                counts[0] += sk in events
+    return dict(by_scen), dict(by_tr)
 
 
 def marker_background(mk: set[str], r: Run) -> float:
@@ -1091,11 +1094,10 @@ def classify(o: AnshinRun) -> str:
     (the date-start's +1 alone: the finale's choice 1 gave nothing); 'c2_lose?' (doubtful) at Lv 1 with no list shown,
     or when the credit is shared ("A or B event") or another source adds to her level, which then cannot be read;
     'none_rb5' (nothing, Risky Business at Lv 5 from other sources), 'none'"""
-    her: Callable[[tuple[int, list[str]] | None], Any] = lambda x: x and any("Anshinzawa" in s for s in x[1])
     nv, rb = o.NV, o.RB
     if nv:
         return "c1_win" if nv[0] >= C1_LV else "c2_win"
-    if her(rb):
+    if rb and any("Anshinzawa" in s for s in rb[1]):  # credited to her
         if rb[1] != [HER_A]:
             return "c2_lose?"
         if rb[0] == 2:
@@ -1155,8 +1157,71 @@ PINK: set[int] = {11, 12, 21, 22, 23, 24, 31, 32, 33, 34}  # pink spark factor i
 WIDE_JOB_TARGETS: int = 12
 SOLVER_BATCH: int = 100  # jobs per solver call (default targets)
 # master.mdb support effect types
+EFFECT_FRIENDSHIP_BONUS, EFFECT_INITIAL_BOND = 1, 14
 EFFECT_HINT_LEVELS, EFFECT_HINT_FREQUENCY, EFFECT_SPECIALTY = 17, 18, 19
 MILESTONES: list[int] = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]  # the levels of support_card_effect_table's columns
+
+
+class CardEffectTables(NamedTuple):
+    """the master.mdb tables a support card's effects are read from"""
+
+    level_cap: dict[int, tuple[int, ...]]  # rarity -> the level cap at limit breaks 0-4
+    card_info: dict[int, tuple[int, int]]  # card -> (rarity, effect table)
+    effects: dict[int, dict[int, tuple[int, ...]]]  # effect table -> type -> values at MILESTONES (-1: none there)
+    unique: dict[int, list[tuple[int, int, int]]]  # card -> its unique effects (level, type, value)
+
+
+@functools.cache
+def card_effect_tables() -> CardEffectTables:
+    db = mdb()
+    level_cap = {
+        r[0]: r[1:]
+        for r in db.execute("select rarity, limit_0, limit_1, limit_2, limit_3, limit_4 from support_card_limit")
+    }
+    card_info = {i: (rar, et) for i, rar, et in db.execute("select id, rarity, effect_table_id from support_card_data")}
+    effects: collections.defaultdict[int, dict[int, tuple[int, ...]]] = collections.defaultdict(dict)
+    for row in db.execute(
+        "select id, type, init,"
+        + ",".join(f"limit_lv{lv}" for lv in MILESTONES[1:])
+        + " from support_card_effect_table"
+    ):
+        effects[row[0]][row[1]] = row[2:]
+    unique: collections.defaultdict[int, list[tuple[int, int, int]]] = collections.defaultdict(list)
+    for cid, lv, t0, v0, t1, v1 in db.execute(
+        "select id, lv, type_0, value_0, type_1, value_1 from support_card_unique_effect"
+    ):
+        unique[cid] += [(lv, t0, v0), (lv, t1, v1)]
+    return CardEffectTables(level_cap, card_info, dict(effects), dict(unique))
+
+
+def card_level(cid: int, lb: int) -> int:
+    """a support card's level cap at a limit break (0-4)"""
+    tables = card_effect_tables()
+    return tables.level_cap[tables.card_info[cid][0]][lb]
+
+
+def effect_interpolated(cid: int, typ: int, level: int) -> Fraction:
+    """a support card's table effect of one type at a level, exactly: linear between the milestone levels its table
+    gives a value at (0 below the first; the last past it); unique effects not included"""
+    tables = card_effect_tables()
+    values = tables.effects.get(tables.card_info[cid][1], {}).get(typ)
+    points = [(m, v) for m, v in zip(MILESTONES, values or ()) if v != -1]
+    if not points or level < points[0][0]:
+        return Fraction(0)
+    for (x0, y0), (x1, y1) in pairwise(points):
+        if level <= x1:
+            return y0 + Fraction((y1 - y0) * (level - x0), x1 - x0)
+    return Fraction(points[-1][1])
+
+
+def card_effect(cid: int, typ: int, level: int) -> int:
+    """a support card's effect of one type at a level: the table's, interpolated and rounded down, plus each unique
+    effect whose level is reached. The game rounds down (section 7, `hint_level_rounding`)"""
+    tables = card_effect_tables()
+    unique = sum(v for lv, t, v in tables.unique.get(cid, []) if t == typ and level >= lv)
+    return math.floor(effect_interpolated(cid, typ, level)) + unique
+
+
 # the generic spark chance of a learned white / gold at six carriers (docs/MODEL.md, spark generation: 20% / 40%,
 # x1.1 per carrier); a row rescales it by 1.1 ** (carriers - 6)
 SPARK_WHITE_6, SPARK_GOLD_6 = 0.2 * 1.1**6, 0.4 * 1.1**6
@@ -1235,54 +1300,13 @@ class HintEffects(NamedTuple):
 def card_variants() -> list[int]:
     """write cards_lb.json and events_lb.json (every card also at limit breaks 0-3) under OUTD; returns the cards whose
     limit-break-4 effects read from master.mdb differ from web_cards.json"""
-    db = mdb()
-
-    def query(sql: str, *args: Any) -> list[Any]:
-        return db.execute(sql, args).fetchall()
-
-    level_cap: dict[int, list[int]] = {
-        r: lv for r, *lv in query("select rarity, limit_0, limit_1, limit_2, limit_3, limit_4 from support_card_limit")
-    }
-
-    def effect(effect_table: int, typ: int, level: int) -> float:
-        """the effect's value at level, linear between milestone levels (-1: no value at that milestone)"""
-        row = query(
-            "select init,limit_lv5,limit_lv10,limit_lv15,limit_lv20,limit_lv25,limit_lv30,limit_lv35,limit_lv40,"
-            "limit_lv45,limit_lv50 from support_card_effect_table where id=? and type=?",
-            effect_table,
-            typ,
-        )
-        if not row:
-            return 0.0
-        pts = [(lv, v) for lv, v in zip(MILESTONES, row[0]) if v != -1]
-        if not pts or level < pts[0][0]:
-            return 0.0
-        for (l0, v0), (l1, v1) in pairwise(pts):
-            if l0 <= level <= l1:
-                return v0 + (v1 - v0) * (level - l0) / (l1 - l0)
-        return float(pts[-1][1])
-
-    def unique(sid: int, typ: int, level: int) -> int:
-        return sum(
-            v
-            for lv, t0, v0, t1, v1 in query(
-                "select lv, type_0, value_0, type_1, value_1 from support_card_unique_effect where id=?", sid
-            )
-            for t, v in ((t0, v0), (t1, v1))
-            if t == typ and level >= lv
-        )
 
     def at_lb(sid: int, lb: int) -> HintEffects:
-        effect_table, rarity = query("select effect_table_id, rarity from support_card_data where id=?", sid)[0]
-        lv = level_cap[rarity][lb]
+        lv = card_level(sid, lb)
         return HintEffects(
-            frequency=max(0, math.floor(effect(effect_table, EFFECT_HINT_FREQUENCY, lv)))
-            + unique(sid, EFFECT_HINT_FREQUENCY, lv),
-            levels=1
-            + max(0, math.floor(effect(effect_table, EFFECT_HINT_LEVELS, lv)))
-            + unique(sid, EFFECT_HINT_LEVELS, lv),
-            specialty=max(0, math.floor(effect(effect_table, EFFECT_SPECIALTY, lv)))
-            + unique(sid, EFFECT_SPECIALTY, lv),
+            frequency=card_effect(sid, EFFECT_HINT_FREQUENCY, lv),
+            levels=1 + card_effect(sid, EFFECT_HINT_LEVELS, lv),
+            specialty=card_effect(sid, EFFECT_SPECIALTY, lv),
         )
 
     web_cards = gjson("web_cards.json")
@@ -1672,6 +1696,8 @@ def run_solver(
     machine); returns {file id: output}; cached in resf using fingerprint(). share: the seeded fraction of the
     manifest's runs whose jobs run (sampled from sorted run ids)"""
     if share is not None:
+        if man is None:
+            raise ValueError("a share of the runs needs their manifest (man)")
         keep = set(random.Random(1).sample(sorted(m.run_id for m in man), round(share * len(man))))
         files = [x for x in files if int(x.split("_")[0]) in keep]
     fp = fingerprint(jobdir, files)
@@ -1796,12 +1822,14 @@ def run_rows(
         hs = hints.get(g, [])
         deck_sources = set().union(*[credited_cards(h.sources, card_of) for h in hs]) if hs else set()
         prio = None if r["priority"] is None else g in rank
+        outfit, o_any, o_gold = buy.get("outfit", 0), bool(hs) or g in owned, any(h.tier == 2 for h in hs)
+        carriers = 1.1 ** (nc - 6)
         row = CalRow(
             run=r["id"],
             scen=r["scenario"],
             g=g,
             scen_gold=scen_g,
-            outfit=buy.get("outfit", 0),
+            outfit=outfit,
             zero=t is None,
             dg=buy.get("deck_gold", 0.0),
             dw=buy.get("deck_white", 0.0),
@@ -1811,8 +1839,8 @@ def run_rows(
             acq=1.0 if scen_g else buy["gold"] + buy["white"],
             gold=1.0 if scen_g else buy["gold"],
             plegs=plegs,
-            o_any=bool(hs) or g in owned,
-            o_gold=any(h.tier == 2 for h in hs),
+            o_any=o_any,
+            o_gold=o_gold,
             o_deck=bool(deck_sources),
             o_deck_gold=any(h.tier == 2 and credited_cards(h.sources, card_of) for h in hs),
             o_insp=insp[g].years > 0,
@@ -1832,15 +1860,12 @@ def run_rows(
             ),
             cards_pool=[c for c, _, _ in r["deck"] if g in M.cards[c]["whites"]],
             cards_ev=[c for c, _, _ in r["deck"] if g in M.ev_groups(c)],
-        )
-        carriers = 1.1 ** (nc - 6)
-        row["p_pred"] = SPARK_GOLD_6 * carriers if scen_g else p
-        row["l_obs"] = (
-            SPARK_GOLD_6 * carriers
-            if (row["o_gold"] or row["outfit"] == 2)
+            p_pred=SPARK_GOLD_6 * carriers if scen_g else p,
+            l_obs=SPARK_GOLD_6 * carriers
+            if (o_gold or outfit == 2)
             else SPARK_WHITE_6 * carriers
-            if (row["o_any"] or row["outfit"] == 1)
-            else 0.0
+            if (o_any or outfit == 1)
+            else 0.0,
         )
         run["rows"].append(row)
     return run
@@ -1889,28 +1914,26 @@ def bernoulli_ll(y: np.ndarray, p: np.ndarray) -> float:
 
 
 # ---------------------------------------------------------------- effect on real careers: section 13's rows, random events credited or left out (sections 10, 11)
+@functools.cache
 def calib() -> tuple[list[CalRow], list[RunRows]]:
     """section 13's calibration rows and per-run rows (default targets, each run on its own deck), exactly as
     s13_calibration.claims builds them; solver-result reuse follows fingerprint"""
-    if "calib" not in _cache:
-        R = runs()
-        M = Model()
-        card_variants()
-        jobdir = os.path.join(OUTD, "jobs8")
-        man, files, _ = build_jobs(R, M, False, jobdir)
-        res = run_solver(jobdir, files, os.path.join(OUTD, "res8.jsonl"))
-        rows, runrows, _ = rows_of(R, M, res, man)
-        _cache["calib"] = (rows, runrows)
-    return _cache["calib"]
+    R = records()
+    M = Model()
+    card_variants()
+    jobdir = os.path.join(OUTD, "jobs8")
+    man, files, _ = build_jobs(R, M, False, jobdir)
+    res = run_solver(jobdir, files, os.path.join(OUTD, "res8.jsonl"))
+    rows, runrows, _ = rows_of(R, M, res, man)
+    return rows, runrows
 
 
+@functools.cache
 def event_groups() -> dict[str, Any]:
     """skill groups each kind of event can hint (GameTora, through gametora.py): a trainee's story and date events
     (training_events_char), each outfit's own events (training_events_char_card), a character's shared events
     (training_events_shared), a trainee's current conditional events with their conditions, each scenario's events
     (training_events_scenario; its ids are the game's scenario ids)"""
-    if "evgroups" in _cache:
-        return _cache["evgroups"]
     gt = gametora()
     grp = dict(mdb().execute("select id, group_id from skill_data"))
 
@@ -1939,14 +1962,13 @@ def event_groups() -> dict[str, Any]:
     scen = {
         row[0]: set().union(set(), *[of_list(part) for part in row[1:]]) for row in gt.load("training_events_scenario")
     }
-    _cache["evgroups"] = out = {
+    return {
         "ordinary": ordinary,
         "cond": cond,
         "outfit": outfit,
         "shared": shared,
         "scen": scen,
     }
-    return out
 
 
 def hint_srcs(r: Run) -> collections.defaultdict[int, list[Hint]]:

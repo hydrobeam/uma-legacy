@@ -6,8 +6,12 @@
 //!           {"cmd":"state_out"}, {"cmd":"state_in","state":...}  the career planner's kept work out and back in
 //!           (page reloads)
 #![allow(unsafe_code, reason = "the wasm exports take the host's pointers: `alloc`/`dealloc`, `init` and `call`")]
+use crate::career::reply::{CareerAnswer, CareerReply};
 use crate::data::{Data, DataRaw, load_raw};
+use crate::refusal::Refusal;
+use crate::request::{Command, InitReply, Loaded};
 use crate::skills::SkillsRaw;
+use serde::Deserialize;
 use std::cell::RefCell;
 
 thread_local! {
@@ -70,23 +74,24 @@ pub unsafe extern "C" fn call(request_bytes: *const u8, len: usize) -> *const u8
     // SAFETY: the caller guarantees `request_bytes` is valid for reading `len` initialized bytes of UTF-8 that stay
     // unchanged during the call (`# Safety` above); `request_text` does not outlive it.
     let request_text = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(request_bytes, len)) };
-    respond(&handle(request_text))
+    handle(request_text);
+    OUT.with(|output| output.borrow().as_ptr())
 }
 
-/// `out` written into the output buffer, which `result_len` measures; its start.
-fn respond(out: &serde_json::Value) -> *const u8 {
-    // (written into the last call's buffer: `Value`'s `Display` is this compact serializer, the same bytes)
+/// `reply` written into the output buffer, which `result_len` measures; its start.
+fn respond(reply: &impl serde::Serialize) -> *const u8 {
     OUT.with(|output| {
         let mut buffer = output.borrow_mut();
         buffer.clear();
-        serde_json::to_writer(&mut *buffer, out).unwrap();
+        serde_json::to_writer(&mut *buffer, reply).unwrap();
         buffer.as_ptr()
     })
 }
 
 /// The init request, parsed straight into the solver's input types (no intermediate `Value` tree for the large data
-/// table: d97c26d measured init 42 -> 13 ms on Global). `cards` stays a `Value`: a card table that does not parse
-/// leaves `DECK` unchanged, so an initial request can still load the schedule data without card data.
+/// table: d97c26d measured init 42 -> 13 ms on Global). `cards` and `events` stay `Value`s: card data that does not parse
+/// (a card table, or an event cache, `CardEventCache`) leaves `DECK` unchanged, so an initial request can still load the
+/// schedule data without card data.
 #[derive(serde::Deserialize)]
 struct InitReq {
     data: DataRaw,
@@ -97,70 +102,89 @@ struct InitReq {
     events: serde_json::Value,
 }
 
-/// `init`'s work: the era's data kept for the jobs; answers `{"ok":true,"umas":n}` or an error.
-fn load(request_text: &str) -> serde_json::Value {
+/// `init`'s work: the era's data kept for the jobs.
+fn load(request_text: &str) -> InitReply {
     let request = match serde_json::from_str::<InitReq>(request_text) {
         Ok(request) => request,
-        Err(e) => return serde_json::json!({"error": format!("bad init request: {e}")}),
+        Err(e) => return InitReply::Refusal(Refusal::new(format!("bad init request: {e}"))),
     };
     let data = load_raw(request.data);
     let uma_count = data.umas.len();
-    if let Ok(cards) = <crate::deck::CardsRaw as serde::Deserialize>::deserialize(&request.cards) {
-        let events = crate::deck::sources::event_lists(&request.skills, &request.events);
+    // (no event cache: no event lists)
+    let event_cache = Option::<crate::deck::sources::CardEventCache>::deserialize(&request.events);
+    if let (Ok(cards), Ok(event_cache)) = (crate::deck::CardsRaw::deserialize(&request.cards), event_cache) {
+        let events = crate::deck::sources::event_lists(&request.skills, &event_cache.unwrap_or_default());
         DECK.with(|deck| *deck.borrow_mut() = Some((cards, events)));
     }
     STATE.with(|state| *state.borrow_mut() = Some((data, request.skills)));
     crate::career::forget_kept_decks();
-    serde_json::json!({"ok": true, "umas": uma_count})
+    InitReply::Loaded(Loaded { ok: true, umas: uma_count })
 }
 
-/// `call`'s work: one job run on the data `init` kept.
-fn handle(request_text: &str) -> serde_json::Value {
+/// `call`'s work: one job run on the data `init` kept, its reply written into the output buffer (`respond`; a reply
+/// may borrow the data, so it is written where the data is borrowed).
+fn handle(request_text: &str) {
     let mut job = match serde_json::from_str::<serde_json::Value>(request_text) {
         Ok(job) => job,
-        Err(e) => return serde_json::json!({"error": format!("bad request: {e}")}),
+        Err(e) => {
+            respond(&Refusal::new(format!("bad request: {e}")));
+            return;
+        }
     };
-    let cmd = job["cmd"].as_str().unwrap_or("").to_owned();
-    match cmd.as_str() {
-        "deck" => STATE.with(|stored_state| {
+    // (the command alone: each command reads its own parts from the job, after the event lists it keeps are added)
+    let command = match Command::deserialize(&job) {
+        Ok(command) => command,
+        Err(e) => {
+            respond(&Refusal::new(format!("bad request: {e}")));
+            return;
+        }
+    };
+    match command {
+        Command::Deck => STATE.with(|stored_state| {
             DECK.with(|stored_deck| {
                 let stored_data = stored_state.borrow();
                 let Some((data, skills)) = stored_data.as_ref() else {
-                    return serde_json::json!({"error": "not initialised"});
+                    return respond(&Refusal::new("not initialised"));
                 };
                 let stored_cards = stored_deck.borrow();
                 let Some((cards, events)) = stored_cards.as_ref() else {
-                    return serde_json::json!({"error": "no card data"});
+                    return respond(&Refusal::new("no card data"));
                 };
                 crate::deck::sources::apply_event_lists(&mut job, events);
-                crate::loop_planner::job::run_deck(data, skills, cards, &job)
+                respond(&crate::loop_planner::job::run_deck(data, skills, cards, &job))
             })
         }),
         // state_out / state_in read no events
-        "career" | "state_out" | "state_in" => STATE.with(|stored_state| {
+        Command::Career | Command::StateOut | Command::StateIn => STATE.with(|stored_state| {
             DECK.with(|stored_deck| {
                 let stored_data = stored_state.borrow();
                 let Some((data, skills)) = stored_data.as_ref() else {
-                    return serde_json::json!({"error": "not initialised"});
+                    return respond(&Refusal::new("not initialised"));
                 };
                 let stored_cards = stored_deck.borrow();
                 let Some((cards, events)) = stored_cards.as_ref() else {
-                    return serde_json::json!({"error": "no card data"});
+                    return respond(&Refusal::new("no card data"));
                 };
                 // (a carried roll's plan job too: its kept roll state is found by the plan job as it ran, events applied)
-                if cmd == "career" {
+                if matches!(command, Command::Career) {
                     crate::deck::sources::apply_event_lists(&mut job, events);
                     if job["roll"]["job"].is_object() {
                         crate::deck::sources::apply_event_lists(&mut job["roll"]["job"], events);
                     }
                 }
-                crate::career::state::KEPT.with(|kept| match cmd.as_str() {
-                    "state_out" => crate::career::state::state_out(&kept.borrow()),
-                    "state_in" => crate::career::state::state_in(&mut kept.borrow_mut(), &job["state"]),
-                    _ => crate::career::run_career_in(data, skills, cards, &job, &mut kept.borrow_mut()),
-                })
+                respond(&crate::career::state::KEPT.with(|kept| match command {
+                    Command::StateOut => {
+                        CareerReply::Answer(CareerAnswer::StateOut(crate::career::state::state_out(&kept.borrow())))
+                    }
+                    Command::StateIn => {
+                        let state_in = crate::career::state::state_in(&mut kept.borrow_mut(), &job["state"]);
+                        CareerReply::Answer(CareerAnswer::StateIn(state_in))
+                    }
+                    Command::Career | Command::Deck => {
+                        crate::career::run_career_in(data, skills, cards, &job, &mut kept.borrow_mut())
+                    }
+                }))
             })
         }),
-        other => serde_json::json!({"error": format!("unknown command {other}")}),
-    }
+    };
 }

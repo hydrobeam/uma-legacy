@@ -1,3 +1,3 @@
-fn main() {
-    loopopt::cli_main();
+fn main() -> std::process::ExitCode {
+    loopopt::cli_main()
 }

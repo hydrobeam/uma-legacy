@@ -27,14 +27,13 @@
 !/pkg/loopopt/rustfmt.toml
 !/webapp/
 /webapp/*
-# the pages (Vite's entries), their partials, the build's config and plugins, the page budgets
+# the pages (Vite's entries), their partials, the build's config and plugins
 !/webapp/index.html
 !/webapp/loop.html
 !/webapp/about.html
 !/webapp/partials/
 !/webapp/vite.config.mjs
 !/webapp/vite/
-!/webapp/.size-limit.mjs
 # the lint tools' configs: knip, dependency-cruiser, Biome's GritQL plugins
 !/webapp/knip.jsonc
 !/webapp/.dependency-cruiser.mjs
@@ -52,6 +51,10 @@
 !/webapp/public/
 # the runner strips' pipeline (its tools and outputs stay out: cache/chibi, webapp/img/run)
 !/webapp/chibi/
+/webapp/chibi/node_modules/
+# deploy's own packages (wrangler), installed by ./build.sh deploy only
+!/webapp/deploy/
+/webapp/deploy/node_modules/
 !/webapp/package.json
 !/webapp/package-lock.json
 !/webapp/biome.json
@@ -60,6 +63,7 @@
 !/val/
 /val/*
 !/val/runval.py
+!/val/solver.py
 !/val/test_validation.py
 !/val/same.py
 !/val/simval.py
@@ -81,7 +85,6 @@
 !/val/career_job.py
 !/val/make_pool.py
 !/val/umadump/
-!/val/spark_gen_fit.py
 !/val/cmp_ratio.py
 !/val/event_audit.py
 !/val/refpu_times.txt

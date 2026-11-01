@@ -8,6 +8,8 @@ planner keeps `apt`)."""
 
 import argparse, json
 
+import era as eras
+
 
 def outfit_choice(text):
     """CHARA:CARD -> (character id, outfit card id)"""
@@ -15,32 +17,9 @@ def outfit_choice(text):
     return int(character), int(card)
 
 
-parser = argparse.ArgumentParser(description="The era's roster and aptitudes -> base.json.", allow_abbrev=False)
-parser.add_argument("era", choices=("global", "jp"), help="global, or jp: the Grand Masters era")
-parser.add_argument(
-    "outfits",
-    nargs="*",
-    type=outfit_choice,
-    metavar="CHARA:CARD",
-    help="take an uma's aptitudes from this outfit, e.g. 1008:100802 for [Fiery Aqua Vitae] Vodka",
-)
-arguments = parser.parse_args()  # parsed before era's import, which opens the era's database
-
-from era import q, names, CUT, BASE, outfit_released
-
-character_names = names(6)
-outfits = lambda character_id: [
-    x
-    for (x,) in q("select id from card_data where chara_id=? and id<900000 order by id", character_id)
-    if outfit_released(x)
-]
-roster = [r[0] for r in q("select id from chara_data where start_date<?", CUT) if outfits(r[0])]
-outfit_overrides = dict(arguments.outfits)
-
-
-def outfit_aptitudes(card_id):
+def outfit_aptitudes(era, card_id):
     """an outfit's ten aptitude codes (its lowest rarity's row; no outfit's aptitudes vary by rarity, asserted)"""
-    rows = q(
+    rows = era.q(
         "select distinct proper_distance_short,proper_distance_mile,proper_distance_middle,proper_distance_long,proper_ground_turf,proper_ground_dirt,proper_running_style_nige,proper_running_style_senko,proper_running_style_sashi,proper_running_style_oikomi from card_rarity_data where card_id=?",
         card_id,
     )
@@ -48,32 +27,56 @@ def outfit_aptitudes(card_id):
     return list(rows[0])
 
 
-aptitudes = {}
-own_aptitudes = {}
-for character_id in roster:
-    card_id = outfit_overrides.get(character_id) or outfits(character_id)[0]
-    assert q("select chara_id from card_data where id=?", card_id)[0][0] == character_id, (
-        f"card {card_id} is not chara {character_id}"
+def main():
+    parser = argparse.ArgumentParser(description="The era's roster and aptitudes -> base.json.", allow_abbrev=False)
+    eras.add_argument(parser)
+    parser.add_argument(
+        "outfits",
+        nargs="*",
+        type=outfit_choice,
+        metavar="CHARA:CARD",
+        help="take an uma's aptitudes from this outfit, e.g. 1008:100802 for [Fiery Aqua Vitae] Vodka",
     )
-    aptitudes[character_id] = outfit_aptitudes(card_id)
-    differing = [[card, outfit_aptitudes(card)] for card in outfits(character_id)]
-    differing = [entry for entry in differing if entry[1] != aptitudes[character_id]]
-    if differing:
-        own_aptitudes[character_id] = differing
-json.dump(
-    {
-        "roster": roster,
-        "apt": aptitudes,
-        "outfit_apt": own_aptitudes,
-        "name": {k: character_names[k] for k in roster},
-    },
-    open(BASE, "w"),
-)
-print(
-    len(roster),
-    "umas",
-    "outfit overrides:",
-    outfit_overrides or "none",
-    "outfits with their own aptitudes:",
-    sorted(card for entries in own_aptitudes.values() for card, _ in entries),
-)
+    arguments = parser.parse_args()
+    era = eras.Era(arguments.era)
+    character_names = era.names(6)
+    outfits = lambda character_id: [
+        x
+        for (x,) in era.q("select id from card_data where chara_id=? and id<900000 order by id", character_id)
+        if era.outfit_released(x)
+    ]
+    roster = [r[0] for r in era.q("select id from chara_data where start_date<?", era.cut) if outfits(r[0])]
+    outfit_overrides = dict(arguments.outfits)
+    aptitudes = {}
+    own_aptitudes = {}
+    for character_id in roster:
+        card_id = outfit_overrides.get(character_id) or outfits(character_id)[0]
+        assert era.q("select chara_id from card_data where id=?", card_id)[0][0] == character_id, (
+            f"card {card_id} is not chara {character_id}"
+        )
+        aptitudes[character_id] = outfit_aptitudes(era, card_id)
+        differing = [[card, outfit_aptitudes(era, card)] for card in outfits(character_id)]
+        differing = [entry for entry in differing if entry[1] != aptitudes[character_id]]
+        if differing:
+            own_aptitudes[character_id] = differing
+    json.dump(
+        {
+            "roster": roster,
+            "apt": aptitudes,
+            "outfit_apt": own_aptitudes,
+            "name": {k: character_names[k] for k in roster},
+        },
+        open(era.base, "w"),
+    )
+    print(
+        len(roster),
+        "umas",
+        "outfit overrides:",
+        outfit_overrides or "none",
+        "outfits with their own aptitudes:",
+        sorted(card for entries in own_aptitudes.values() for card, _ in entries),
+    )
+
+
+if __name__ == "__main__":
+    main()

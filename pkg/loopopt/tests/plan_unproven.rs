@@ -3,31 +3,18 @@
 //! notes under its table. The val/plan p16 regression checks that a cap of 1 unit leaves unproven rows and searches,
 //! while the default cap leaves none. (An alternative row from her cached decks, never searched on its pair, is
 //! `proven: false` with `searched: false`: no search behind it ran out, so it is not counted here.)
+mod common;
+use common::{run_job, val_job};
 use serde_json::{Value, json};
-use std::{fs, process::Command};
 
+/// The plan of `job` (its `next`).
 fn plan(job: &Value) -> Value {
-    let p = std::env::temp_dir().join(format!("uma-plan-unproven-{}.json", std::process::id()));
-    fs::write(&p, job.to_string()).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_loopopt"))
-        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global"))
-        .arg("data.json")
-        .arg(&p)
-        .env_remove("LOOPOPT_STATE_IN")
-        .env_remove("LOOPOPT_STATE_OUT")
-        .output()
-        .unwrap();
-    fs::remove_file(&p).unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    serde_json::from_slice::<Value>(&out.stdout).unwrap()["next"].clone()
+    run_job("plan-unproven", job)["next"].clone()
 }
 
 #[test]
 fn capped_searches_are_reported_unproven() {
-    let job: Value = serde_json::from_str(
-        &fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16.json")).unwrap(),
-    )
-    .unwrap();
+    let job = val_job("plan/p16.json");
     let unproven = |n: &Value| {
         n["options"]
             .as_array()

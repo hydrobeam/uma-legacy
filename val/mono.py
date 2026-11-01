@@ -39,15 +39,16 @@ import json
 import math
 import os
 import random
-import subprocess
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
+
+import solver
+from solver import PLAN_DIR
 from dataclasses import dataclass
 
 # pink.ts: grades are aptitude codes 1..8 = G..S; each legacy pink fires at each of the two April inspirations
 GRADE_A, GRADE_S, INSPIRATIONS = 7, 8, 2
-DEFAULT_STAR_DIST = [0.5, 0.45, 0.05]  # the solver's default rank mix (src/skills.rs)
 RISE = 1e-9
 
 
@@ -107,17 +108,9 @@ def quick_saves(era, job, name, veterans):
     for i, roll_job in enumerate(jobs):
         paths.append(os.path.join(temporary_dir, f"{name}_quick{i}.json"))
         json.dump(roll_job, open(paths[-1], "w"))
-    result = subprocess.run(
-        [binary, "data.json", *paths],
-        cwd=os.path.join(REPO, "pkg", "loopopt", "data", era),
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode:
-        raise RuntimeError(f"{name} (quick rolls): solver exited {result.returncode}\n{result.stderr}")
-    open(os.path.join(temporary_dir, f"{name}_quick.out"), "w").write(result.stdout)
-    outputs = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
-    return [((output.get("next") or {}).get("roll") or {}).get("y") for output in outputs[1:]]
+    stdout = solver.run(binary, era, *paths, name=f"{name} (quick rolls)")
+    open(os.path.join(temporary_dir, f"{name}_quick.out"), "w").write(stdout)
+    return [((output.get("next") or {}).get("roll") or {}).get("y") for output in solver.outputs(stdout)[1:]]
 
 
 def route_steps(plan):
@@ -126,11 +119,6 @@ def route_steps(plan):
     return " / ".join(
         f"{plan['v0_plan'][role]} {careers:,.1f}" for role, careers in zip("abc", plan["v0_plan"]["careers"])
     )
-
-
-VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(VALIDATION_DIR)
-PLAN_DIR = os.path.join(VALIDATION_DIR, "plan")
 
 
 parser = argparse.ArgumentParser(description="Monotonicity tripwire for the career planner.", allow_abbrev=False)
@@ -166,19 +154,8 @@ temporary_dir = tempfile.mkdtemp(prefix="mono_")
 
 
 def solve(era, job, name):
-    path = os.path.join(temporary_dir, name + ".json")
-    json.dump(job, open(path, "w"))
-    result = subprocess.run(
-        [binary, "data.json", path],
-        cwd=os.path.join(REPO, "pkg", "loopopt", "data", era),
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode:
-        raise RuntimeError(f"{name}: solver exited {result.returncode}\n{result.stderr}")
-    # (kept beside the job: val/sim/lam_regress.py reads the plans' fits)
-    open(os.path.join(temporary_dir, name + ".out"), "w").write(result.stdout)
-    return json.loads([line for line in result.stdout.splitlines() if line.strip()][-1])
+    # (the output is kept beside the job: val/sim/lam_regress.py reads the plans' fits)
+    return solver.solve(binary, era, job, os.path.join(temporary_dir, name))
 
 
 def plan(era, job, name):
@@ -239,7 +216,7 @@ def drawn_pink(aptitudes, rng):
 
 def drawn_veteran(report, job, race_names, rng):
     """(landed count, the veteran's job entry): draftOf's rolled outcome, then draftJob's shape"""
-    star_dist = job.get("star_dist", DEFAULT_STAR_DIST)
+    star_dist = job.get("star_dist", solver.constants(binary)["default_star_mix"])  # the solver's default mix
     star = lambda: rng.choices([1, 2, 3], star_dist)[0]
     targets = job["targets"]
     if isinstance(report.get("outcome_sets"), list):
@@ -295,7 +272,7 @@ def rolled_veterans_of(job_entry):
     report = solve(era, search, name + "_pick")["results"][0]
     if sorted(report["parents"]) != sorted(pick["parents"]):
         return base, [], f"the pick's search gave parents {report['parents']}, not {pick['parents']}"
-    race_names = json.load(open(os.path.join(REPO, "pkg", "loopopt", "data", era, "data.json")))["race_names"]
+    race_names = json.load(open(os.path.join(solver.era_dir(era), "data.json")))["race_names"]
     rng = random.Random(f"mono-{name}")
     draws = [drawn_veteran(report, job, race_names, rng) for _ in range(roll_count)]
     quick = quick_saves(era, job, name, [her for _landed, her in draws])
@@ -389,6 +366,7 @@ for comparison in last_comparisons:
         print(f"{name}: no plan without her {comparison.error or ''}")
         continue
     without, with_veteran = comparison.without, comparison.with_veteran
+    assert without is not None and with_veteran is not None, name  # last_veteran sets both or marks it unavailable
     value_without, value_with = without["v0"], with_veteran.get("v0")
     rise = rises(value_with, value_without)
     fixed_rises += rise

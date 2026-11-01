@@ -38,6 +38,7 @@ import sys
 from typing import NamedTuple
 
 import joint_check
+from solver import read_output
 
 VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(VALIDATION_DIR)
@@ -316,7 +317,7 @@ def careers_of(output):
 def check_output(name, job_path, output_path, era):
     data_dir = os.path.join(REPO, "pkg", "loopopt", "data", era)
     job = json.load(open(job_path))
-    output = json.loads([line for line in open(output_path).read().splitlines() if line.strip()][-1])
+    output = read_output(output_path)
     relations = Relations(json.load(open(os.path.join(data_dir, "data.json"))))
     model = memoised(joint_check.deck_model(job, data_dir))
     findings = Findings()

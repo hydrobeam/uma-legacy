@@ -3,23 +3,12 @@
 // the page builds and reads them (loop/job.ts `DeckJob` and loop/types.ts `LoopReport` for `deck`; career/job.ts `CareerJob` and
 // `CareerSearch` for `career`); here, what the worker and the engine read. The solver's side is
 // pkg/loopopt/src/web.rs (`handle`: the commands).
+import type { Refusal, Request, ScheduleCell as SolverCell, ScheduleRow as SolverRow, StateOut } from './gen/solver.ts';
+import type { DeepReadonly } from './store.ts';
 
-/**
- * A job: its command and that command's fields. Named here, the fields the worker and the engine read.
- */
-export interface SolverJob {
-  /** `deck`, `career`, `state_in` or `state_out` (web.rs `handle`) */
-  cmd: string;
-  /** uma, outfit and card ids the search leaves out; the engine adds what has not started yet (`gate`) */
-  exclude?: number[];
-  exclude_outfits?: number[];
-  exclude_cards?: number[];
-  /** a deck search: false ranks by the product of per-target odds only (the worker's fast first pass); else the
-   * worker runs that pass, then the exact one */
-  exact?: boolean;
-  [field: string]: unknown;
-}
-
+/** A job: its command and that command's fields (the solver's `Request`, src/request.rs in pkg/loopopt: generated),
+ *  read-only (the engine posts a copy; a career job shares the veterans store's arrays) */
+export type SolverJob = DeepReadonly<Request>;
 /** A reply as the worker reads it: a report, or a refusal (`error`). */
 export interface SolverReply {
   error?: string;
@@ -31,15 +20,10 @@ export type SolverReport = object;
 
 /** A refusal: why the job was not done (web.rs `handle` and each command's checks), or, from the engine, that the
  * worker stopped with an error. Only a refusal carries `error`. */
-export interface SolverRefusal {
-  error: string;
-}
+export type SolverRefusal = Refusal;
 
-/** `state_out`'s report: what the worker keeps of the career planner's work (career/state.rs `state_out`). */
-export interface StateOutReply {
-  ok?: true;
-  state?: unknown;
-}
+/** `state_out`'s report: what the worker keeps of the career planner's work (career/state.rs `state_out`) */
+export type StateOutReply = StateOut;
 
 /** The answer to a job: the solver's report R or a refusal (`'error' in r` tells them apart), and its time in ms. */
 export interface SolverAnswer<R extends SolverReport = SolverReport> {
@@ -75,44 +59,20 @@ export type FromWorker =
   | { type: 'error'; id: number | undefined; message: string };
 
 // ---------- the schedule report both commands carry (each G1 a member could run; agenda.ts reads it) ----------
-/** One member's attempt at a scheduled race (the solver's schedule report). */
-export interface ScheduleCell {
-  /** her win chance, in percent */
-  p: number;
-  /** the aptitude cost (distance and surface grades), in percentage points */
-  apt?: number;
-  /** the career planner's low-aptitude cost (a race at the lowest aptitudes wins less than the table says), in
-   *  percentage points; absent from the loop planner's cells */
-  low?: number;
-  /** the penalty for racing several turns in a row, in percentage points (a goal race pays the previous position's) */
-  pen?: number;
-  /** which race in a row this is (1 = the first) */
-  row?: number;
-  /** a goal race of her scenario */
-  goal: boolean;
-  /** the career page: her win chance on the community table, on her own grades (`shownP` shows it in place of `p`, the
-   *  planner's, which counts her pink sparks) */
+/** One member's attempt at a scheduled race: the solver's cell, and on the career page the community table's figures
+ * the page adds (career/view/parts.ts) */
+export type ScheduleCell = SolverCell & {
+  /** her win chance on the community table, on her own grades (`shownP` shows it in place of `p`, the planner's,
+   *  which counts her pink sparks) */
   tbl?: number;
   /** the table's aptitude cost on her own grades, in percentage points */
   tapt?: number;
   /** those grades, as "Mile C, Turf A" */
   grades?: string;
-}
-/** One scheduled G1, one cell per member (null: she doesn't run it). */
-export interface ScheduleRow {
-  /** 0 Junior, 1 Classic, 2 Senior */
-  year: number;
-  /** the turn, as "Cl E-Apr" (year, Early or Late, month) */
-  when: string;
-  /** its name; "A/B" when either of two races runs at the same odds */
-  race: string;
-  /** two or more members run it (it builds affinity); one member: a parent won it */
-  shared: boolean;
+};
+/** One scheduled G1 as the page draws it: the solver's row, its cells as the page shows them; a career's row also
+ * says which of her parents won it */
+export type ScheduleRow = Omit<SolverRow, 'cells'> & {
   cells: (ScheduleCell | null)[];
-  /** one member: which of her parents won it */
   parents?: boolean[];
-  /** how many members run it */
-  runners: number;
-  /** the other race of an "A/B" pair */
-  alts?: string[];
-}
+};

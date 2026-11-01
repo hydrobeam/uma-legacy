@@ -30,13 +30,11 @@ interface Look {
 }
 /** a button's classes (also a file input's label's) */
 const buttonClass = ({ variant, size, class: place }: Look = {}) => look({ variant, size }, place);
-/** the green button's text is white on the game's green, exempt from the contrast audit like the game's other art */
-const art = (variant: ButtonVariant | undefined) => (variant === 'primary' ? '' : undefined);
 
 type ButtonProps = Look & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'class' | 'className' | 'size'>;
 /** a game button (type="button" unless given) */
 export function Button({ variant, size, class: place, type = 'button', ...rest }: ButtonProps) {
-  return <button type={type} data-art={art(variant)} class={buttonClass({ variant, size, class: place })} {...rest} />;
+  return <button type={type} class={buttonClass({ variant, size, class: place })} {...rest} />;
 }
 
 type FileInput = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'role' | 'class' | 'className' | 'title'>;

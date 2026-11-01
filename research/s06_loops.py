@@ -31,7 +31,7 @@ uniformly or at the lowest basis only; every win chance 1% lower), the winners' 
 listed runner-up then passes its winner, and the 1% change against the smallest runner-up gap."""
 
 import collections, itertools, json, math, os, statistics, struct, sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from collections.abc import Callable, Hashable, Iterable
 from typing import Any, NamedTuple
 import common
@@ -262,7 +262,9 @@ class ScheduleRow:
     floor: float = math.nan  # P_floor: every o = 0
     ceil: float = math.nan  # P_ceiling: every pair at o_max
     pb: float = math.nan  # P_PB: every pair at PB
-    scaled: dict[str, float] | None = None  # CHART_VARIANTS -> the odds with the chart's win chances so changed
+    scaled: dict[str, float] = field(
+        default_factory=dict
+    )  # CHART_VARIANTS -> the odds with the chart's win chances so changed (check_result_file)
 
 
 @dataclass
@@ -349,7 +351,7 @@ def check_result_file(
     for t in keep:
         row, q_vectors[id(t)] = check_loop(t, data, name, t is tops[0], err)
         rows.append(row)
-    _, alt = joint_check.check(dict(out, top=keep), job, data_dir, alt_q=lambda t: q_vectors[id(t)])
+    _, alt = joint_check.check_loops(dict(out, top=keep), job, data_dir, alt_q=lambda t: q_vectors[id(t)])
     for r, (pf, p0, pc, pb, *scaled) in zip(rows, alt):
         r.found, r.floor, r.ceil, r.pb = pf, p0, pc, pb
         r.scaled = dict(zip(CHART_VARIANTS, scaled))

@@ -19,8 +19,9 @@ try {
 }
 const { chromium } = playwright;
 const [work, ...jobs] = process.argv.slice(2);
-// what the page loads: chibi.html, three.js from node_modules, and the work directory's models and textures
-const ROOTS = { '/three/': path.join(HERE, '..', 'node_modules', 'three'), '/work/': path.resolve(work) };
+// what the page loads: chibi.html, three.js from this folder's own install (package.json here; ./build.sh runners
+// installs it), and the work directory's models and textures
+const ROOTS = { '/three/': path.join(HERE, 'node_modules', 'three'), '/work/': path.resolve(work) };
 const TYPES = {
   '.html': 'text/html',
   '.js': 'text/javascript',

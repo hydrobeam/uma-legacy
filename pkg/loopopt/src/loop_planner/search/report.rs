@@ -1,16 +1,18 @@
-//! Picks, JSON results and diagnostic summaries from completed loop-search passes.
+//! Picks, the loop report (`LoopReport`) and diagnostic summaries from completed loop-search passes.
 //! Search and certification belong to `bands`.
 use super::Tally;
 use super::bands::{DeckBest, Pass, SolvedLoop};
 use super::{DeckSources, Multi, RatioExample, SharedDeckKey, lin_of};
-use crate::chart::{chart_rows, member_json};
+use crate::chart::{chart_rows, loop_members};
 use crate::checks::UCHK;
 use crate::data::dot;
 use crate::deck::joint::{JointChances, JointExt, JointQuery, joint_b, joint_fast};
 use crate::deck::pdeck::PDeck;
+use crate::loop_planner::output::{
+    DeckStats, ExactSummary, LoopReport, LoopResult, MemberOutfits, OutfitLabel, RatioDeck, ResultLoop, TargetCover,
+};
 use crate::loop_planner::schedules::members;
 use crate::skills::{GEN_GOLD, MemberLineage, OutfitOption};
-use serde_json::{Value, json};
 use std::cell::Cell;
 
 /// A reported loop: its solved index, each member's deck, per lineage (exact P(all), P(all but one), outfit), value
@@ -36,7 +38,7 @@ impl Multi<'_> {
     // ---- the answer ----
 
     /// The output: the reported loops, the search's counts and what the answer rests on, over the deck search's stats
-    pub(super) fn report(&self, tally: &Tally, pass: Pass, certified_cap: f64, stats: Value) -> Value {
+    pub(super) fn report(&self, tally: &Tally, pass: Pass, certified_cap: f64, stats: DeckStats) -> LoopReport {
         let empty_deck = PDeck {
             names: vec![],
             ids: vec![],
@@ -52,30 +54,24 @@ impl Multi<'_> {
         };
         // what is reported: per-uma, the best loops; shared, the best distinct decks, each with its best loop
         let picks = if self.shared { self.shared_picks(&pass) } else { self.per_uma_picks(&pass, &empty_deck) };
-        let top: Vec<Value> = picks.iter().map(|pick| self.loop_json(&pass, pick)).collect();
+        let top = picks.iter().map(|pick| self.loop_result(&pass, pick)).collect();
         let budget_out = self.inputs.deck_job.exact && certified_cap < self.maximum_exact_ratio;
         // complete: nothing left to solve (an exhausted queue leaves no ceiling, even with fewer than k values found),
         // or nothing left could beat the k-th best
         let complete = pass.next_bound <= 0.0 || pass.next_bound <= pass.kth_best * (1.0 + 4e-12);
-        let exact = self.exact_json(tally, &pass, certified_cap, complete, budget_out);
-        let band_searches = tally.band_decks;
-        let mut out = stats;
-        for (key, value) in [
-            ("top", json!(top)),
-            ("best", json!([])),
-            ("per_uma", json!(!self.shared)),
-            ("foursomes", json!(self.total_foursomes())),
-            ("foursomes_ranked", json!(pass.generated)),
-            ("foursomes_scanned", json!(pass.scanned)),
-            ("foursomes_solved", json!(pass.solved.len())),
-            ("next_bound", json!(pass.next_bound)),
-            ("proven", json!(complete)),
-            ("searches", json!(1 + band_searches)),
-            ("exact", exact),
-        ] {
-            out[key] = value;
+        LoopReport {
+            stats,
+            top,
+            per_uma: !self.shared,
+            foursomes: self.total_foursomes(),
+            foursomes_ranked: pass.generated,
+            foursomes_scanned: pass.scanned,
+            foursomes_solved: pass.solved.len(),
+            next_bound: pass.next_bound,
+            proven: complete,
+            searches: 1 + tally.band_decks,
+            exact: self.exact_summary(tally, &pass, certified_cap, complete, budget_out),
         }
-        out
     }
 
     /// The structures the job's sizes and required umas allow
@@ -90,7 +86,7 @@ impl Multi<'_> {
     /// shared: the best `top_decks` distinct decks (ties by identity), each with the loop it scored best in
     fn shared_picks<'pass>(&self, pass: &'pass Pass) -> Vec<LoopPick<'pass>> {
         let mut ranked: Vec<(&SharedDeckKey, &DeckBest)> = pass.deck_best.iter().collect();
-        ranked.sort_by(|a, b| b.1.value.partial_cmp(&a.1.value).unwrap().then(a.0.cmp(b.0)));
+        ranked.sort_by(|a, b| b.1.value.total_cmp(&a.1.value).then(a.0.cmp(b.0)));
         ranked
             .iter()
             .take(self.loop_limit)
@@ -136,7 +132,7 @@ impl Multi<'_> {
         let solved = &pass.solved;
         let mut order: Vec<usize> = (0..solved.len()).collect();
         // stable: ties keep solve order
-        order.sort_by(|&a, &b| solved[b].value.partial_cmp(&solved[a].value).unwrap());
+        order.sort_by(|&a, &b| solved[b].value.total_cmp(&solved[a].value));
         order
             .iter()
             .take(self.loop_limit)
@@ -159,7 +155,7 @@ impl Multi<'_> {
     }
 
     /// A reported loop: its members, odds, outfits, schedule and detail, with its deck (shared) or decks (per-uma)
-    fn loop_json(&self, pass: &Pass, pick: &LoopPick) -> Value {
+    fn loop_result(&self, pass: &Pass, pick: &LoopPick) -> LoopResult {
         let (data, model, uncertain_groups, requested_target_count) =
             (self.inputs.data, self.inputs.model, &self.target_groups, self.requested_target_count);
         let (decks, per_lineage, loop_value) = (&pick.decks, &pick.lineage_chances, pick.value);
@@ -244,24 +240,24 @@ impl Multi<'_> {
                 })
                 .sum::<f64>()
             / lineage_count as f64;
-        let outfits: Vec<Value> = (0..member_count)
+        let outfits = (0..member_count)
             .map(|i| {
                 let outfit_index =
                     *picks[i].iter().max_by_key(|pick| picks[i].iter().filter(|other| other == pick).count()).unwrap();
                 let OutfitOption { coverage, outfits: outfit_list } =
                     &model.outfit_options[member_slice[i]][outfit_index];
-                let covers: Vec<Value> = coverage
+                let covers: Vec<TargetCover> = coverage
                     .iter()
                     .enumerate()
                     .filter(|(_, level)| **level > 0)
-                    .map(|(j, level)| json!({"group": uncertain_groups[j], "level": level}))
+                    .map(|(j, &level)| TargetCover { group: uncertain_groups[j], level })
                     .collect();
                 let outfits = if covers.is_empty() {
                     vec![]
                 } else {
-                    outfit_list.iter().map(|outfit| json!({"id": outfit.0, "label": outfit.1})).collect::<Vec<_>>()
+                    outfit_list.iter().map(|(id, label)| OutfitLabel { id: *id, label: label.clone() }).collect()
                 };
-                json!({"outfits": outfits, "covers": covers})
+                MemberOutfits { outfits, covers }
             })
             .collect();
         let win_chances: Vec<Vec<f64>> =
@@ -269,55 +265,73 @@ impl Multi<'_> {
         let deck_odds: Vec<(&[f64], &[f64])> = (0..member_count)
             .map(|member| (&*decks[member].white_hint_chances, &*decks[member].gold_hint_chances))
             .collect();
-        let mut detail = model.detail(
+        let exact_p_all: Vec<f64> = per_lineage.iter().map(|chances| chances.all).collect();
+        let detail = model.detail(
             member_slice,
             &|a, b| if self.no_race { 0.0 } else { dot(&win_chances[a], &win_chances[b]) },
             Some(&deck_odds),
+            &exact_p_all,
         );
-        if let Some(rows) = detail["lineages"].as_array_mut() {
-            for (l, row) in rows.iter_mut().enumerate() {
-                row["rank_value"] = row["p_all"].clone();
-                row["p_all"] = json!(per_lineage[l].all);
-            }
-        }
-        let loop_summary = json!({"members": member_json(data, member_slice), "p_all": loop_value, "p_minus1": minus1,
-               "landed": with_landed.then_some(landed), "rank_value": rank_value, "outfits": outfits,
-               "per_trainee": per_trainee.iter().map(|(sum, count)| sum / *count as f64).collect::<Vec<_>>(),
-               "mean_proc": inheritance_chances.iter().sum::<f64>() / inheritance_chances.len() as f64,
-               "schedule": chart_rows(data, member_slice, &schedule.schedules[..member_count]),
-               "detail": detail});
+        let result_loop = ResultLoop {
+            members: loop_members(data, member_slice),
+            p_all: loop_value,
+            p_minus1: minus1,
+            landed: with_landed.then_some(landed),
+            rank_value,
+            outfits,
+            per_trainee: per_trainee.iter().map(|(sum, count)| sum / *count as f64).collect(),
+            mean_proc: inheritance_chances.iter().sum::<f64>() / inheritance_chances.len() as f64,
+            schedule: chart_rows(data, member_slice, &schedule.schedules[..member_count]),
+            detail,
+        };
         if self.shared {
-            return json!({"loop": loop_summary, "deck": decks[0].out(uncertain_groups)});
+            return LoopResult { r#loop: result_loop, deck: decks[0].out(uncertain_groups), decks: None };
         }
         // the deck most members share, for displays that show one deck
         let base = (0..member_count)
             .max_by_key(|&i| (decks.iter().filter(|deck| deck.names == decks[i].names).count(), member_count - i))
             .unwrap();
-        json!({"loop": loop_summary, "deck": decks[base].out(uncertain_groups),
-               "decks": decks.iter().map(|deck| deck.out(uncertain_groups)).collect::<Vec<_>>()})
+        LoopResult {
+            r#loop: result_loop,
+            deck: decks[base].out(uncertain_groups),
+            decks: Some(decks.iter().map(|deck| deck.out(uncertain_groups)).collect()),
+        }
     }
 
     /// What the answer rests on: `rho` the highest cap certified (`rho_target` the one sought), `class_caps` the
     /// assumed cap per structure class (each certified at most at rho), `class_max_ratio` the largest exact / product
     /// odds seen per class on any deck scored here (`max_ratio` of them all); `complete` = the search ended by its stop
     /// rule (no unexamined loop or deck can win under the certified caps)
-    fn exact_json(&self, tally: &Tally, pass: &Pass, certified_cap: f64, complete: bool, budget_out: bool) -> Value {
+    fn exact_summary(
+        &self,
+        tally: &Tally,
+        pass: &Pass,
+        certified_cap: f64,
+        complete: bool,
+        budget_out: bool,
+    ) -> ExactSummary {
         let class_max_ratios = tally.max_ratio;
-        let max_deck: Vec<Option<Value>> = tally
-            .max_deck
-            .iter()
-            .map(|example| {
-                example
-                    .as_ref()
-                    .map(|RatioExample { trainee_id, cards }| json!({"trainee": trainee_id, "cards": cards}))
-            })
-            .collect();
-        json!({"rho": certified_cap, "rho_target": self.maximum_exact_ratio, "class_caps": self.exact_caps,
-               "max_ratio": class_max_ratios.iter().copied().fold(0.0f64, f64::max),
-               "class_max_ratio": class_max_ratios,
-               "class_max_deck": max_deck, "complete": complete, "decks_scored": tally.scored_decks,
-               "deck_searches": tally.band_decks, "loops_solved": pass.solved.len(),
-               "schedule_rejects": pass.schedule_rejects,
-               "cap_hit": tally.cap_hit, "budget_out": budget_out, "bound_filtered": tally.bound_rejections})
+        // (the names are shared: an Rc each)
+        let class_max_deck = tally.max_deck.each_ref().map(|example| {
+            example
+                .as_ref()
+                .map(|RatioExample { trainee_id, cards }| RatioDeck { trainee: *trainee_id, cards: cards.clone() })
+        });
+        ExactSummary {
+            rho: certified_cap,
+            rho_target: self.maximum_exact_ratio,
+            class_caps: self.exact_caps,
+            max_ratio: class_max_ratios.iter().copied().fold(0.0f64, f64::max),
+            class_max_ratio: class_max_ratios,
+            class_max_deck,
+            complete,
+            decks_scored: tally.scored_decks,
+            deck_searches: tally.band_decks,
+            loops_solved: pass.solved.len(),
+            schedule_rejects: pass.schedule_rejects,
+            cap_hit: tally.cap_hit,
+            budget_out,
+            bound_filtered: tally.bound_rejections,
+        }
     }
 }

@@ -1,7 +1,8 @@
 //! The roll of the plan's pick and its kept state.
 use crate::career::clock::{PROF, now_ms};
-use crate::career::plan::caps::{StepCaps, cap_in, cap_out};
+use crate::career::plan::caps::{StepCaps, StoredCap, cap_in, cap_out};
 use crate::career::plan::cont::{Cont, MAX_PARTNERS, ScoreBase, ScoringKnobs};
+use crate::career::plan::report::{RollAnswer, RollOutcome, RollReply};
 use crate::career::plan::score::fm_masks;
 use crate::career::plan::score::kernel::{BatchLeast, Scored};
 use crate::career::plan::search::sim_for;
@@ -9,10 +10,14 @@ use crate::career::plan::step::{NO_SLOT, Route, WhileBuilding};
 use crate::career::plan::{OutcomeIndex, PlanJob, TargetMask};
 use crate::career::search::Found;
 use crate::career::sim::Sim;
-use crate::career::state::{KeptState, hash_text};
+use crate::career::state::{KeptState, StoredDeck, chances, hash_text, number, numbers, sel_in, sel_out};
 use crate::career::{Env, JobInputs, Lineage};
 use crate::deck::space::SelectedDeck;
-use serde_json::{Value, json};
+use crate::hex::{Bits, Key, bits};
+use crate::refusal::Refusal;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use ts_rs::TS;
 // ---------- a roll of the plan's pick, on demand (`next.roll`) ----------
 /// The base a kept scoring was scored against (`ScoreBase` without the trios, their sides and C's umas, which only the
 /// scoring's routes read as it is built: V after her reads V0 and the scoring's routes). Per-candidate vectors follow
@@ -122,7 +127,7 @@ pub(crate) fn roll_kept<'data>(
     worker: &mut KeptState,
     input: &JobInputs<'data>,
     plan_job: &PlanJob,
-) -> Option<Value> {
+) -> Option<RollReply> {
     let stars = plan_job.roll.as_ref()?;
     let key = roll_key(input.job);
     let index = worker.rolls.iter().position(|roll| roll.key == key)?;
@@ -130,145 +135,239 @@ pub(crate) fn roll_kept<'data>(
     // (the roll's own timers and counters, `prof`; what the job counted before goes back after)
     let started = now_ms();
     let prof_before = PROF.with(|prof| std::mem::take(&mut *prof.borrow_mut()));
-    let answer = match sim_for(env, worker, input, plan_job) {
+    let outcome = match sim_for(env, worker, input, plan_job) {
         Ok(sim) => roll_answer(&sim, &kept, stars),
-        Err(error) => error,
+        Err(refusal) => RollOutcome::Refusal(refusal),
     };
     keep_roll(worker, kept);
-    let mut answer = answer;
-    let roll_prof = PROF.with(|prof| std::mem::replace(&mut *prof.borrow_mut(), prof_before));
-    if answer.is_object() {
-        answer["ms"] = json!(now_ms() - started);
-        answer["prof"] = json!(roll_prof);
-    }
-    Some(answer)
+    let prof = PROF.with(|prof| std::mem::replace(&mut *prof.borrow_mut(), prof_before));
+    Some(RollReply::Answer(RollAnswer { outcome, ms: now_ms() - started, prof, planned: None }))
 }
 
-fn roll_answer(simulator: &Sim, kept: &RollKeep, stars: &[u8]) -> Value {
+fn roll_answer(simulator: &Sim, kept: &RollKeep, stars: &[u8]) -> RollOutcome {
     let setup = &simulator.env.setup;
     if stars.len() != setup.target_count {
-        return json!({"error": format!("roll: {} stars for {} targets", stars.len(), setup.target_count)});
+        return RollOutcome::Refusal(Refusal::new(format!(
+            "roll: {} stars for {} targets",
+            stars.len(),
+            setup.target_count
+        )));
     }
     let outcome = OutcomeIndex::from_stars(stars, &setup.uncertain_targets, &setup.fixed_targets);
     let score_base = kept.base.base();
     let y = kept.roll(&score_base, outcome);
     // (the scoring's routes only: a route the scoring has not, another lineage of a candidate's whose C her veteran
     // improves without lifting her odds, can save more, so the page confirms every roll with a Compare)
-    json!({"y": (y * 100.0).round() / 100.0})
+    RollOutcome::Saving { y: (y * 100.0).round() / 100.0 }
 }
 
-/// a route's C while a lifted side builds, stored: {"f": its step's bits}, {"s": a finisher slot} or null
-fn building_out(while_building: WhileBuilding) -> Value {
+/// A roll state as stored (`RollKeep`): its key, the pick's lineage (uma index, two legacy indices) and deck, its base
+/// and its scorings (the first batch's, then the later ones'), every float as its bits.
+#[derive(Serialize, Deserialize, TS)]
+pub(crate) struct StoredRoll {
+    pub(crate) key: Key,
+    pub(crate) lineage: [usize; 3],
+    pub(crate) deck: StoredDeck,
+    pub(crate) base: StoredBase,
+    pub(crate) scored: StoredScored,
+    pub(crate) later: Vec<StoredScored>,
+}
+
+/// A roll state's base (`KeptBase`): the candidates (uma indices), their steps' costs, V, their odds now, their
+/// continuations and held caps.
+#[derive(Serialize, Deserialize, TS)]
+pub(crate) struct StoredBase {
+    pub(crate) candidates: Vec<usize>,
+    pub(crate) step_costs: Vec<Bits>,
+    pub(crate) current_value: Bits,
+    pub(crate) current_odds: Vec<Bits>,
+    /// per candidate: [lam, phi, pinf, whether it has its table (it builds), p0]
+    pub(crate) continuations: Vec<(Bits, Bits, Bits, bool, Bits)>,
+    /// per candidate, the caps she holds
+    pub(crate) step_caps: Vec<Vec<StoredCap>>,
+}
+
+/// A stored `Scored` (score/kernel.rs), its derived tables left out (`derive` rebuilds them).
+#[derive(Serialize, Deserialize, TS)]
+pub(crate) struct StoredScored {
+    pub(crate) uncertain_target_count: usize,
+    pub(crate) fixed_target_count: usize,
+    pub(crate) target_count: usize,
+    pub(crate) slot_count: usize,
+    pub(crate) completes_goal: bool,
+    pub(crate) star_mix: [Bits; 3],
+    pub(crate) uncertain_targets: Vec<usize>,
+    pub(crate) fixed_landed_masks: Vec<usize>,
+    pub(crate) misses_without_her: Vec<Vec<Bits>>,
+    pub(crate) miss_by_stars: Vec<[Bits; 4]>,
+    /// per setup, each target's pair of spark scales
+    pub(crate) target_spark_scales: Vec<Vec<[Bits; 2]>>,
+    pub(crate) setup_by_table: Vec<usize>,
+    pub(crate) initial_tables: Vec<Bits>,
+    pub(crate) collapsed_targets: Vec<bool>,
+    pub(crate) slot_by_setup: Vec<usize>,
+    pub(crate) current_probabilities: Vec<Bits>,
+    pub(crate) landed_set_chances: Vec<Bits>,
+    pub(crate) slot_candidates: Vec<usize>,
+    pub(crate) lift_candidates: Vec<usize>,
+    pub(crate) routes: Vec<StoredRoute>,
+}
+
+/// A route as stored: its lifted slots and finisher slot (null: none), whether it takes full veterans only, its fixed
+/// cost, and its C while a lifted side builds (null: skipped).
+#[derive(Serialize, Deserialize, TS)]
+pub(crate) struct StoredRoute {
+    pub(crate) lifts: [Option<usize>; 2],
+    pub(crate) full_only: bool,
+    pub(crate) fixed_cost: Bits,
+    pub(crate) finisher_slot: Option<usize>,
+    pub(crate) while_building: Option<StoredBuilding>,
+}
+
+/// A route's C while a lifted side builds: its step's fixed cost, or a finisher slot's.
+#[derive(Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum StoredBuilding {
+    Fixed(Bits),
+    Slot(usize),
+}
+
+const fn slot_out(slot: usize) -> Option<usize> {
+    if slot == NO_SLOT { None } else { Some(slot) }
+}
+
+const fn building_out(while_building: WhileBuilding) -> Option<StoredBuilding> {
     match while_building {
-        WhileBuilding::Fixed(cost) => json!({"f": crate::career::state::hx(cost)}),
-        WhileBuilding::Slot(slot) => json!({"s": slot}),
-        WhileBuilding::Skip => Value::Null,
+        WhileBuilding::Fixed(cost) => Some(StoredBuilding::Fixed(Bits(cost))),
+        WhileBuilding::Slot(slot) => Some(StoredBuilding::Slot(slot)),
+        WhileBuilding::Skip => None,
     }
 }
 
-fn building_in(stored: &Value) -> Option<WhileBuilding> {
-    use crate::career::state::{fx, usz};
-    if stored.is_null() {
-        return Some(WhileBuilding::Skip);
-    }
-    match (stored.get("f"), stored.get("s")) {
-        (Some(cost), None) => fx(cost).filter(|cost| *cost >= 0.0).map(WhileBuilding::Fixed),
-        (None, Some(slot)) => usz(slot).map(WhileBuilding::Slot),
-        _ => None,
+fn building_in(stored: Option<&StoredBuilding>) -> Option<WhileBuilding> {
+    match stored {
+        None => Some(WhileBuilding::Skip),
+        Some(&StoredBuilding::Fixed(cost)) => Some(cost.0).filter(|cost| *cost >= 0.0).map(WhileBuilding::Fixed),
+        Some(&StoredBuilding::Slot(slot)) => Some(WhileBuilding::Slot(slot)),
     }
 }
 
-/// the kept roll states for the page to store (`state_out`), every float as its bits
-pub(crate) fn rolls_out(rolls: &[RollKeep]) -> Value {
-    use crate::career::state::{fvec, hx, sel_out, ux};
-    let slot_out = |slot: usize| if slot == NO_SLOT { Value::Null } else { json!(slot) };
-    let base_out = |base: &KeptBase| {
-        json!({"cands": base.candidates, "c1": fvec(&base.step_costs), "v0": hx(base.current_value), "pnow": fvec(&base.current_odds),
-            "cont": base.continuations.iter().map(|continuation| json!([hx(continuation.lam), hx(continuation.phi), hx(continuation.pinf), !continuation.tables.is_empty(), hx(continuation.anchor_odds)])).collect::<Vec<_>>(),
-            "caps": base.step_caps.iter().map(|caps| caps.curves.iter().map(cap_out).collect::<Vec<_>>()).collect::<Vec<_>>()})
-    };
-    let scored_out = |scored: &Scored| {
-        json!({"n": [scored.uncertain_target_count, scored.fixed_target_count, scored.target_count, scored.slot_count], "goal": scored.completes_goal, "w": fvec(&scored.star_mix), "uncv": scored.uncertain_targets, "fmm": scored.fixed_landed_masks,
-            "x0": scored.misses_without_her.iter().map(|value| fvec(value)).collect::<Vec<_>>(), "xm": scored.miss_by_stars.iter().map(|value| fvec(value)).collect::<Vec<_>>(),
-            "pw": scored.target_spark_scales.iter().map(|value| fvec(&value.iter().flatten().copied().collect::<Vec<f64>>())).collect::<Vec<_>>(),
-            "tsi": scored.setup_by_table, "t0": fvec(&scored.initial_tables), "col": scored.collapsed_targets, "sslot": scored.slot_by_setup, "p0": fvec(&scored.current_probabilities), "os": fvec(&scored.landed_set_chances),
-            "sc": scored.slot_candidates, "lc": scored.lift_candidates,
-            "rt": scored.routes.iter().map(|route| json!([slot_out(route.lifts[0]), slot_out(route.lifts[1]), route.full_only, hx(route.fixed_cost), slot_out(route.finisher_slot), building_out(route.while_building)])).collect::<Vec<_>>()})
-    };
-    Value::Array(
-        rolls
+fn base_out(base: &KeptBase) -> StoredBase {
+    StoredBase {
+        candidates: base.candidates.iter().map(|candidate| candidate.0).collect(),
+        step_costs: bits(&base.step_costs),
+        current_value: Bits(base.current_value),
+        current_odds: bits(&base.current_odds),
+        continuations: base
+            .continuations
             .iter()
-            .map(|roll| {
-                let lineage = roll.lineage;
-                json!({
-                    "k": ux(roll.key), "x": [lineage.trainee, lineage.first_parent, lineage.second_parent],
-                    "sel": sel_out(&roll.deck),
-                    "base": base_out(&roll.base),
-                    "sd": scored_out(&roll.scored), "sdl": roll.later.iter().map(scored_out).collect::<Vec<_>>()})
+            .map(|continuation| {
+                (
+                    Bits(continuation.lam),
+                    Bits(continuation.phi),
+                    Bits(continuation.pinf),
+                    !continuation.tables.is_empty(),
+                    Bits(continuation.anchor_odds),
+                )
             })
             .collect(),
-    )
+        step_caps: base.step_caps.iter().map(|caps| caps.curves.iter().map(cap_out).collect()).collect(),
+    }
 }
 
-/// Kept roll states from the page's store (`state_in`); None refuses the store whole. (Absent in a state stored before
-/// them: none.)
-pub(crate) fn rolls_in(value: &Value) -> Option<Vec<RollKeep>> {
-    use crate::career::state::{sel_in, uxr};
-    let Some(stored) = value.as_array() else { return value.is_null().then(Vec::new) };
+fn scored_out(scored: &Scored) -> StoredScored {
+    StoredScored {
+        uncertain_target_count: scored.uncertain_target_count,
+        fixed_target_count: scored.fixed_target_count,
+        target_count: scored.target_count,
+        slot_count: scored.slot_count,
+        completes_goal: scored.completes_goal,
+        star_mix: scored.star_mix.map(Bits),
+        uncertain_targets: scored.uncertain_targets.to_vec(),
+        fixed_landed_masks: scored.fixed_landed_masks.iter().map(|mask| mask.bits()).collect(),
+        misses_without_her: scored.misses_without_her.iter().map(|misses| bits(misses)).collect(),
+        miss_by_stars: scored.miss_by_stars.iter().map(|misses| misses.map(Bits)).collect(),
+        target_spark_scales: scored
+            .target_spark_scales
+            .iter()
+            .map(|scales| scales.iter().map(|pair| pair.map(Bits)).collect())
+            .collect(),
+        setup_by_table: scored.setup_by_table.clone(),
+        initial_tables: bits(&scored.initial_tables),
+        collapsed_targets: scored.collapsed_targets.clone(),
+        slot_by_setup: scored.slot_by_setup.clone(),
+        current_probabilities: bits(&scored.current_probabilities),
+        landed_set_chances: bits(&scored.landed_set_chances),
+        slot_candidates: scored.slot_candidates.clone(),
+        lift_candidates: scored.lift_candidates.clone(),
+        routes: scored
+            .routes
+            .iter()
+            .map(|route| StoredRoute {
+                lifts: route.lifts.map(slot_out),
+                full_only: route.full_only,
+                fixed_cost: Bits(route.fixed_cost),
+                finisher_slot: slot_out(route.finisher_slot),
+                while_building: building_out(route.while_building),
+            })
+            .collect(),
+    }
+}
+
+/// the kept roll states for the page to store (`state_out`)
+pub(crate) fn rolls_out(rolls: &[RollKeep]) -> Vec<StoredRoll> {
+    rolls
+        .iter()
+        .map(|roll| StoredRoll {
+            key: Key(roll.key),
+            lineage: [roll.lineage.trainee.0, roll.lineage.first_parent, roll.lineage.second_parent],
+            deck: sel_out(&roll.deck),
+            base: base_out(&roll.base),
+            scored: scored_out(&roll.scored),
+            later: roll.later.iter().map(scored_out).collect(),
+        })
+        .collect()
+}
+
+/// Kept roll states from the page's store (`state_in`); None refuses the store whole.
+pub(crate) fn rolls_in(stored: &[StoredRoll]) -> Option<Vec<RollKeep>> {
     stored
         .iter()
         .map(|entry| {
-            let base = kept_base_in(&entry["base"])?;
-            let mut scored = scored_in(&entry["sd"])?;
+            let base = kept_base_in(&entry.base)?;
             // (a store that does not fit together is refused whole, as any other: the vectors' lengths and every index
-            // within what it indexes, as `evaluate_career` builds them, before `derive` sizes its tables)
-            if !scored.fits(&base) {
-                return None;
-            }
-            scored.derive();
-            // (the later batches, each fitting the base as the first; absent, as stored before them: none)
-            let later = match entry.get("sdl") {
-                None => vec![],
-                Some(stored) => stored
-                    .as_array()?
-                    .iter()
-                    .map(|stored_batch| {
-                        let mut batch = scored_in(stored_batch)?;
-                        batch.fits(&base).then(|| {
-                            batch.derive();
-                            batch
-                        })
-                    })
-                    .collect::<Option<Vec<_>>>()?,
+            // within what it indexes, as `evaluate_career` builds them, before `derive` sizes its tables; each later
+            // batch fitting the base as the first)
+            let fitted = |stored: &StoredScored| {
+                let mut scored = scored_in(stored)?;
+                scored.fits(&base).then(|| {
+                    scored.derive();
+                    scored
+                })
             };
-            let lineage = usize_vec(&entry["x"])?;
-            let &[trainee, first_parent, second_parent] = lineage.as_slice() else { return None };
+            let scored = fitted(&entry.scored)?;
+            let later = entry.later.iter().map(fitted).collect::<Option<Vec<_>>>()?;
+            let [trainee, first_parent, second_parent] = entry.lineage;
             Some(RollKeep {
-                key: uxr(&entry["k"])?,
+                key: entry.key.0,
                 scored,
                 later,
                 base,
                 lineage: Lineage { trainee: crate::uma::UmaIndex(trainee), first_parent, second_parent },
-                deck: sel_in(&entry["sel"])?,
+                deck: sel_in(&entry.deck)?,
             })
         })
         .collect()
 }
 
-fn usize_vec(value: &Value) -> Option<Vec<usize>> {
-    value.as_array()?.iter().map(crate::career::state::usz).collect()
-}
-
-fn kept_base_in(stored: &Value) -> Option<KeptBase> {
-    use crate::career::state::{fvec_r, fx};
-    let continuations = stored["cont"]
-        .as_array()?
+fn kept_base_in(stored: &StoredBase) -> Option<KeptBase> {
+    let continuations = stored
+        .continuations
         .iter()
-        .map(|continuation| {
-            let (lam, phi, pinf) = (fx(&continuation[0])?, fx(&continuation[1])?, fx(&continuation[2])?);
-            let anchor_odds = fx(&continuation[4])?;
+        .map(|&(lam, phi, pinf, has_table, anchor_odds)| {
+            let (lam, phi, pinf, anchor_odds) = (number(lam)?, number(phi)?, number(pinf)?, number(anchor_odds)?);
             // (a Cont without its table has no building: `Cont::default`'s lam 0; one that reads as building is refused)
-            Some(if continuation[3].as_bool()? {
+            Some(if has_table {
                 Cont::new(lam, phi, pinf, anchor_odds)
             } else if lam > 0.0 && phi > 0.0 {
                 return None;
@@ -277,30 +376,21 @@ fn kept_base_in(stored: &Value) -> Option<KeptBase> {
             })
         })
         .collect::<Option<Vec<Cont>>>()?;
-    let current_odds = fvec_r(&stored["pnow"])?;
-    // (each candidate's held caps, read at her odds now: a list of caps, or, as stored before, one cap or null; absent:
-    // none)
-    let step_caps = match stored["caps"].as_array() {
-        Some(caps) => caps
-            .iter()
-            .enumerate()
-            .map(|(candidate, stored_caps)| {
-                let curves = match stored_caps.as_array() {
-                    None if stored_caps.is_null() => vec![],
-                    Some(list) if list.iter().all(Value::is_array) => {
-                        list.iter().map(cap_in).collect::<Option<Vec<_>>>()?
-                    }
-                    _ => vec![cap_in(stored_caps)?],
-                };
-                Some(StepCaps::new(curves, *current_odds.get(candidate)?))
-            })
-            .collect::<Option<Vec<_>>>()?,
-        None => vec![],
-    };
+    let current_odds = numbers(&stored.current_odds)?;
+    // (each candidate's held caps, read at her odds now)
+    let step_caps = stored
+        .step_caps
+        .iter()
+        .enumerate()
+        .map(|(candidate, caps)| {
+            let curves = caps.iter().map(cap_in).collect::<Option<Vec<_>>>()?;
+            Some(StepCaps::new(curves, *current_odds.get(candidate)?))
+        })
+        .collect::<Option<Vec<_>>>()?;
     Some(KeptBase {
-        candidates: usize_vec(&stored["cands"])?.into_iter().map(crate::uma::UmaIndex).collect(),
-        step_costs: fvec_r(&stored["c1"])?,
-        current_value: fx(&stored["v0"])?,
+        candidates: stored.candidates.iter().map(|&candidate| crate::uma::UmaIndex(candidate)).collect(),
+        step_costs: numbers(&stored.step_costs)?,
+        current_value: number(stored.current_value)?,
         current_odds,
         continuations,
         step_caps,
@@ -308,12 +398,10 @@ fn kept_base_in(stored: &Value) -> Option<KeptBase> {
 }
 
 /// A stored `Scored`, its derived tables left empty (`derive`)
-fn scored_in(stored: &Value) -> Option<Scored> {
-    use crate::career::state::{fvec_r, fx, pvec_r, usz};
-    let sizes = usize_vec(&stored["n"])?;
+fn scored_in(stored: &StoredScored) -> Option<Scored> {
+    let StoredScored { uncertain_target_count, fixed_target_count, target_count, slot_count, .. } = *stored;
     // (the plan's limits, `sim_for`: at most 12 targets, 10 of them uncertain, the rest guaranteed; checked before
     // any table is sized by them)
-    let &[uncertain_target_count, fixed_target_count, target_count, slot_count] = sizes.as_slice() else { return None };
     if target_count > 12
         || uncertain_target_count > 10
         || fixed_target_count > 12
@@ -321,30 +409,27 @@ fn scored_in(stored: &Value) -> Option<Scored> {
     {
         return None;
     }
-    let four = |value: &Value| -> Option<[f64; 4]> {
-        let values = fvec_r(value)?;
-        values.try_into().ok()
-    };
-    let star_mix: [f64; 3] = pvec_r(&stored["w"])?.try_into().ok()?;
-    let target_spark_scales = stored["pw"]
-        .as_array()?
+    let four = |values: &[Bits; 4]| -> Option<[f64; 4]> { numbers(values)?.try_into().ok() };
+    let star_mix: [f64; 3] = chances(&stored.star_mix)?.try_into().ok()?;
+    let target_spark_scales = stored
+        .target_spark_scales
         .iter()
-        .map(|value| {
-            let scales = fvec_r(value)?;
-            (scales.len() == 2 * target_count).then(|| scales.chunks(2).map(|pair| [pair[0], pair[1]]).collect())
+        .map(|scales| {
+            (scales.len() == target_count)
+                .then(|| scales.iter().map(|&[first, second]| Some([number(first)?, number(second)?])).collect())
+                .flatten()
         })
         .collect::<Option<Vec<Vec<[f64; 2]>>>>()?;
-    let slot_in = |value: &Value| if value.is_null() { Some(NO_SLOT) } else { usz(value) };
-    let routes = stored["rt"]
-        .as_array()?
+    let routes = stored
+        .routes
         .iter()
         .map(|route| {
             Some(Route {
-                lifts: [slot_in(&route[0])?, slot_in(&route[1])?],
-                full_only: route[2].as_bool()?,
-                fixed_cost: fx(&route[3])?,
-                finisher_slot: slot_in(&route[4])?,
-                while_building: building_in(route.get(5)?)?,
+                lifts: route.lifts.map(|slot| slot.unwrap_or(NO_SLOT)),
+                full_only: route.full_only,
+                fixed_cost: number(route.fixed_cost)?,
+                finisher_slot: route.finisher_slot.unwrap_or(NO_SLOT),
+                while_building: building_in(route.while_building.as_ref())?,
             })
         })
         .collect::<Option<Vec<_>>>()?;
@@ -353,25 +438,21 @@ fn scored_in(stored: &Value) -> Option<Scored> {
         fixed_target_count,
         target_count,
         slot_count,
-        slot_candidates: usize_vec(&stored["sc"])?,
-        lift_candidates: usize_vec(&stored["lc"])?,
-        completes_goal: stored["goal"].as_bool()?,
+        slot_candidates: stored.slot_candidates.clone(),
+        lift_candidates: stored.lift_candidates.clone(),
+        completes_goal: stored.completes_goal,
         star_mix,
-        uncertain_targets: usize_vec(&stored["uncv"])?.into(),
-        fixed_landed_masks: usize_vec(&stored["fmm"])?
-            .into_iter()
-            .map(TargetMask::from_bits)
-            .collect::<Vec<_>>()
-            .into(),
-        misses_without_her: stored["x0"].as_array()?.iter().map(fvec_r).collect::<Option<_>>()?,
-        miss_by_stars: stored["xm"].as_array()?.iter().map(four).collect::<Option<_>>()?,
+        uncertain_targets: stored.uncertain_targets.clone().into(),
+        fixed_landed_masks: stored.fixed_landed_masks.iter().map(|&mask| TargetMask::from_bits(mask)).collect(),
+        misses_without_her: stored.misses_without_her.iter().map(|misses| numbers(misses)).collect::<Option<_>>()?,
+        miss_by_stars: stored.miss_by_stars.iter().map(four).collect::<Option<_>>()?,
         target_spark_scales,
-        setup_by_table: usize_vec(&stored["tsi"])?,
-        initial_tables: fvec_r(&stored["t0"])?,
-        collapsed_targets: stored["col"].as_array()?.iter().map(serde_json::Value::as_bool).collect::<Option<_>>()?,
-        slot_by_setup: usize_vec(&stored["sslot"])?,
-        current_probabilities: fvec_r(&stored["p0"])?,
-        landed_set_chances: pvec_r(&stored["os"])?.into(),
+        setup_by_table: stored.setup_by_table.clone(),
+        initial_tables: numbers(&stored.initial_tables)?,
+        collapsed_targets: stored.collapsed_targets.clone(),
+        slot_by_setup: stored.slot_by_setup.clone(),
+        current_probabilities: numbers(&stored.current_probabilities)?,
+        landed_set_chances: chances(&stored.landed_set_chances)?.into(),
         routes,
         // (a roll state's base prices every C at its common scale, 1)
         finisher_umas: vec![],

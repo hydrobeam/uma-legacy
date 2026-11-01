@@ -2,15 +2,20 @@
 //! (`plan_next`), rolls of a kept plan (`run_carried_roll`, `answer_kept_roll`), the kept proofs (`keep_seen`) and the
 //! certificates every search of the job made (`note_job_certificates`).
 use crate::career::decks::CfStats;
+use crate::career::plan::report::{PlanReply, RollReply};
 use crate::career::pool::Pool;
+use crate::career::reply::{CapRerun, CareerSearch, CarriedRoll, JobCertificates, SearchWork};
 use crate::career::search::{Assumes, CareerSearchResult, SearchRequest, Unproven, solve_kept};
 use crate::career::state::{KeptSeen, KeptState, SEEN_KEEP, hash_text, json_without};
-use crate::career::{CareerJob, CareerSetup, ClassFlags, DeckSearchAudit, Env, JobInputs, SearchState, run_career_in};
+use crate::career::{
+    CareerJob, CareerSetup, ClassFlags, DeckSearchAudit, Env, JobInputs, SearchState, answer_job, run_career_in,
+};
 use crate::data::Data;
 use crate::deck::CardsRaw;
+use crate::refusal::Refusal;
 use crate::skills::SkillsRaw;
 use crate::uma::UmaIndex;
-use serde_json::{Value, json};
+use serde_json::Value;
 /// A roll of a kept plan carried by another job (`roll`: {job: the plan job, stars}; the page's Reroll now sends the
 /// plan job with `next.roll` on its own first, so its saving shows before the search): the job runs without it, then
 /// the plan job with `next.roll` (its kept roll state, or the plan run again when the worker has none), its answer as
@@ -22,26 +27,21 @@ pub(super) fn run_carried_roll(
     job: &Value,
     roll: &Value,
     kept: &mut KeptState,
-) -> Value {
+) -> CarriedRoll {
     let mut search_job = job.clone();
     if let Some(object) = search_job.as_object_mut() {
         object.remove("roll");
     }
-    let mut out = run_career_in(data, skills, cards, &search_job, kept);
+    let reply = answer_job(data, skills, cards, &search_job, kept);
     let mut plan_job = roll["job"].clone();
-    out["roll"] = match plan_job.get_mut("next").and_then(|next| next.as_object_mut()) {
+    let roll = match plan_job.get_mut("next").and_then(|next| next.as_object_mut()) {
         Some(next) => {
             next.insert("roll".into(), roll["stars"].clone());
-            let plan_out = run_career_in(data, skills, cards, &plan_job, kept);
-            if plan_out["next"]["roll"].is_null() {
-                json!({"error": plan_out["error"].as_str().or_else(|| plan_out["next"]["error"].as_str()).unwrap_or("the plan has no roll")})
-            } else {
-                plan_out["next"]["roll"].clone()
-            }
+            run_career_in(data, skills, cards, &plan_job, kept).into_roll()
         }
-        None => json!({"error": "roll: the job is not a plan job (no `next`)"}),
+        None => RollReply::Refusal(Refusal::new("roll: the job is not a plan job (no `next`)")),
     };
-    out
+    CarriedRoll { reply, roll }
 }
 
 /// Keep this job's fully checked decks for the next job on its setup, trainees and pool (`seen_fingerprint`; the last
@@ -73,7 +73,7 @@ pub(super) fn answer_kept_roll<'data>(
     env: &mut Env<'data>,
     kept: &mut KeptState,
     run: &CareerRun<'_, 'data>,
-) -> Option<Value> {
+) -> Option<RollReply> {
     let career_job = run.job;
     let plan_job = career_job
         .next
@@ -90,7 +90,7 @@ pub(super) fn answer_kept_check<'data>(
     env: &mut Env<'data>,
     kept: &mut KeptState,
     run: &CareerRun<'_, 'data>,
-) -> Option<Value> {
+) -> Option<crate::career::plan::report::CheckReply> {
     let career_job = run.job;
     let plan_job = career_job
         .next
@@ -147,11 +147,11 @@ pub(super) fn search_output(
     env: &mut Env,
     run: &CareerRun,
     search: &CareerSearchResult,
-    search_work: Value,
+    work: SearchWork,
     rho_top: f64,
-) -> Value {
+) -> CareerSearch {
     let career_job = run.job;
-    let results: Vec<Value> = if career_job.no_reports {
+    let results = if career_job.no_reports {
         vec![]
     } else {
         search
@@ -161,27 +161,33 @@ pub(super) fn search_output(
             .map(|(i, found)| env.setup.report(&mut env.state, run.pool, found, i == 0))
             .collect()
     };
-    let mut out = json!({"results": results, "candidates": search.candidates, "solved": search.solved, "bounded": search.bounded, "scored": search.scored, "skipped": search.skipped,
-           "next_bound": search.next_bound, "complete": search.complete, "proven_top": search.proven, "cap": rho_top.min(search.certified_cap), "class_caps": env.setup.space.caps(), "work": search_work});
-    // why the main search is not complete (`Unproven`: "work_cap", "band_overflow", "cap_breach"); `job_unproven`
-    // (`note_job_certificates`) has every search of the job's
-    if search.unproven.any() {
-        out["unproven"] = json!(search.unproven.names());
+    CareerSearch {
+        results,
+        candidates: search.candidates,
+        solved: search.solved,
+        bounded: search.bounded,
+        scored: search.scored,
+        skipped: search.skipped,
+        next_bound: Some(search.next_bound),
+        // a deck band over EXACT_CAP decks (in the main search or any later one of this job) was certified at a lower
+        // cap only: `cap` says which, `complete` is false
+        complete: search.complete && !(search.certified_cap < rho_top),
+        proven_top: search.proven,
+        cap: rho_top.min(search.certified_cap),
+        class_caps: env.setup.space.caps(),
+        work,
+        given: None,
+        // why the main search is not complete (`Unproven`: "work_cap", "band_overflow", "cap_breach"); `job_unproven`
+        // (`note_job_certificates`) has every search of the job's
+        unproven: search.unproven.any().then_some(search.unproven),
+        // the named assumptions its proof rests on beyond the derived bounds and the measured class caps (`Assumes`:
+        // "two_feeder_cap", "multi_feeder_cap"; docs/SOLVER.md, *What "proven" rests on*)
+        assumes: (search.assumes != Assumes::default()).then_some(search.assumes),
+        compare: career_job.compare.then_some(true),
+        next: None,
+        certificates: JobCertificates::default(),
+        timing_s: 0.0,
     }
-    // the named assumptions its proof rests on beyond the derived bounds and the measured class caps (`Assumes`:
-    // "two_feeder_cap", "multi_feeder_cap"; docs/SOLVER.md, *What "proven" rests on*)
-    if search.assumes != Assumes::default() {
-        out["assumes"] = json!(search.assumes.names());
-    }
-    // a deck band over EXACT_CAP decks (in the main search or any later one of this job) was certified at a lower cap
-    // only: `cap` says which, `complete` is false
-    if search.certified_cap < rho_top {
-        out["complete"] = json!(false);
-    }
-    if career_job.compare {
-        out["compare"] = json!(true);
-    }
-    out
 }
 
 /// The job's `next`: the page's next career (`plan::index_rule`) on the main search `search`.
@@ -191,11 +197,11 @@ pub(super) fn plan_next<'data>(
     run: &CareerRun<'_, 'data>,
     search: &CareerSearchResult,
     next: &Value,
-) -> Value {
+) -> PlanReply {
     let career_job = run.job;
     let settings = match serde_json::from_value::<crate::career::plan::PlanJob>(next.clone()) {
         Ok(settings) => settings,
-        Err(e) => return json!({"error": format!("next: {e}")}),
+        Err(e) => return PlanReply::Refusal(Refusal::new(format!("next: {e}"))),
     };
     let borrowing;
     let (solved, pick_search) = match run.pick_pool {
@@ -231,22 +237,17 @@ pub(super) fn plan_next<'data>(
 /// The main search's output (`search_output`) qualified by its trainees' class flags `flags` as they stand at the end
 /// of the job (`CareerSearchResult::qualify`): a class a later search flagged (the plan's, or one of an earlier job on
 /// the deck space) unproves it (`unproven`, `complete` and `proven_top` false), and an assuming one adds to `assumes`.
-fn qualify_output(out: &mut Value, flags: ClassFlags) {
-    let (Some(mut unproven), Some(assumes)) = (
-        out.get("unproven").map_or(Some(Unproven::default()), Unproven::from_names),
-        Assumes::from_names(out.get("assumes")),
-    ) else {
-        return;
-    };
+fn qualify_output(out: &mut CareerSearch, flags: ClassFlags) {
+    let mut unproven = out.unproven.unwrap_or_default();
     unproven.cap_breach |= flags.breached;
     if unproven.any() {
-        out["unproven"] = json!(unproven.names());
-        out["complete"] = json!(false);
-        out["proven_top"] = json!(false);
+        out.unproven = Some(unproven);
+        out.complete = false;
+        out.proven_top = false;
     }
-    let assumes = assumes.union(flags.assumes);
+    let assumes = out.assumes.unwrap_or_default().union(flags.assumes);
     if assumes != Assumes::default() {
-        out["assumes"] = json!(assumes.names());
+        out.assumes = Some(assumes);
     }
 }
 
@@ -261,44 +262,50 @@ pub(super) fn note_job_certificates(
     setup: &CareerSetup,
     state: &SearchState,
     audit: &DeckSearchAudit,
-    out: &mut Value,
+    out: &mut CareerSearch,
     rho_top: f64,
     trainees: &[UmaIndex],
 ) {
     qualify_output(out, setup.trainee_flags(state, trainees));
     // (the classes the job answers for: the main search's trainees', and with a plan every uma it may pick)
-    let answered = if out.get("next").is_some() { setup.owned.as_slice() } else { trainees };
+    let answered = if out.next.is_some() { setup.owned.as_slice() } else { trainees };
     let job_flags = setup.trainee_flags(state, answered);
+    let certificates = &mut out.certificates;
     if audit.overflows > 0 {
-        out["complete"] = json!(false);
-        out["cap"] = json!(rho_top.min(audit.certified_cap));
-        out["band_overflows"] = json!(audit.overflows);
+        out.complete = false;
+        out.cap = rho_top.min(audit.certified_cap);
+        certificates.band_overflows = Some(audit.overflows);
     }
     // a scored deck past its class's assumed cap (in any search of the job): per class [class, ratio, cap]
     if audit.cap_breach > 0 {
         let caps = setup.space.caps();
-        out["cap_exceeded"] = json!(
+        certificates.cap_exceeded = Some(
             (0..4)
                 .filter(|&k| audit.max_ratio[k] > caps[k] * (1.0 + 1e-9))
-                .map(|k| json!([k, audit.max_ratio[k], caps[k]]))
-                .collect::<Vec<_>>()
+                .map(|k| (k, audit.max_ratio[k], caps[k]))
+                .collect(),
         );
     }
     // the deck searches that saw a breach and were answered by the cap-free search (`best_deck_cf`; every search of the
     // job, the plan's included), how many of those (or of a `cap_free` job's searches) proved nothing (then `complete`
     // is false), breaches left unanswered (`CAP_RERUN=0`), and the cap-free work
     if setup.space.deck_job.cap_free {
-        out["cap_free"] = json!(true);
+        certificates.cap_free = Some(true);
     }
     let cap_free = &audit.cap_free_stats;
     if *cap_free != CfStats::default() {
-        out["cap_rerun"] = json!({"searches": cap_free.reruns, "unproven": cap_free.open, "unanswered": cap_free.unhandled, "work": cap_free.work});
+        certificates.cap_rerun = Some(CapRerun {
+            searches: cap_free.reruns,
+            unproven: cap_free.open,
+            unanswered: cap_free.unhandled,
+            work: cap_free.work,
+        });
     }
     // capped deck searches that breached their caps (any search of the job): each such career search is not complete;
     // and the trainees (chara ids) whose deck class has breached in this job or a kept earlier one: no search or plan
     // row of theirs is proven (a row certified before the breach within this job included)
     if audit.capped_breaches > 0 {
-        out["cap_breaches"] = json!(audit.capped_breaches);
+        certificates.cap_breaches = Some(audit.capped_breaches);
     }
     let breached: Vec<u32> = setup
         .owned
@@ -307,17 +314,17 @@ pub(super) fn note_job_certificates(
         .map(|&uma| setup.data.umas[uma].id)
         .collect();
     if !breached.is_empty() {
-        out["cap_breached"] = json!(breached);
+        certificates.cap_breached = Some(breached);
     }
     // a scored deck past its class's cap within its nested-chain bound (no breach: proven where the bound is, else
     // under `multi_feeder_cap`)
     if audit.nested_max_ratio > f64::NEG_INFINITY {
-        out["nested_max_ratio"] = json!(audit.nested_max_ratio);
+        certificates.nested_max_ratio = Some(audit.nested_max_ratio);
     }
     // (a `cap_free` job's cap-free search that proved nothing ran out of its work; elsewhere it is a rerun's)
     // (and the main search's own reasons but its work cap, a kept search's included: it ran in an earlier job)
     let cap_free_job = setup.space.deck_job.cap_free;
-    let main_unproven = out.get("unproven").and_then(Unproven::from_names).unwrap_or_default();
+    let main_unproven = out.unproven.unwrap_or_default();
     let job_unproven = Unproven {
         work_cap: cap_free_job && cap_free.open > 0,
         band_overflow: audit.overflows > 0 || main_unproven.band_overflow,
@@ -331,12 +338,12 @@ pub(super) fn note_job_certificates(
     // search carries without running)
     let job_assumes = Assumes { two_feeder: audit.assumed_searches > 0, multi_feeder: audit.multi_searches > 0 }
         .union(job_flags.assumes)
-        .union(Assumes::from_names(out.get("assumes")).unwrap_or_default());
+        .union(out.assumes.unwrap_or_default());
     if job_assumes != Assumes::default() {
-        out["job_assumes"] = json!(job_assumes.names());
+        out.certificates.job_assumes = Some(job_assumes);
     }
     if job_unproven.any() {
-        out["job_unproven"] = json!(job_unproven.names());
-        out["complete"] = json!(false);
+        out.certificates.job_unproven = Some(job_unproven);
+        out.complete = false;
     }
 }

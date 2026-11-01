@@ -39,18 +39,20 @@ GENERAL_BATCHES) are context where they explain a result.
 import collections, functools, math, re, unicodedata
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from fractions import Fraction
 from itertools import pairwise
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 import numpy as np
 from scipy.optimize import minimize, minimize_scalar
 import common
 
+if TYPE_CHECKING:
+    from scipy.optimize._minimize import _MinimizeOptions  # scipy-stubs: minimize's options
+
 SEC: str = "7"
-MIL: list[int] = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]  # the milestone levels of support_card_effect_table
-# master.mdb support effect types
-EFFECT_INITIAL_BOND, EFFECT_HINT_LEVELS, EFFECT_HINT_FREQUENCY, EFFECT_SPECIALTY = 14, 17, 18, 19
-SCENARIOS: tuple[tuple[int, str], ...] = ((1, "URA Finale"), (2, "Unity Cup"), (3, "Grand Concert"), (4, "Trackblazer"))
-NELDER_MEAD: dict[str, float] = {"xatol": 1e-6, "fatol": 1e-7, "maxiter": 40000, "maxfev": 80000}
+SCENARIOS: tuple[tuple[int, str], ...] = tuple(common.SCEN.items())  # (scenario id, name)
+
+NELDER_MEAD: _MinimizeOptions = {"xatol": 1e-6, "fatol": 1e-7, "maxiter": 40000, "maxfev": 80000}
 GENERAL_BATCHES: range = range(18)  # the general collection's batches (later ones: targeted collections)
 CARD_ROWS: int = 200  # the rows a card needs for its own cell in the per-card tests
 CHI1: float = 1.920729  # chi2(1) 95% / 2: a likelihood gain beyond it is detectable
@@ -70,60 +72,25 @@ class GameData:
     """the master.mdb tables the observations read"""
 
     level_cap: dict[int, tuple[int, ...]]  # rarity -> the level cap at limit breaks 0-4
-    effects: dict[int, dict[int, tuple[int, ...]]]  # effect table -> type -> values at the milestones (-1: none)
     card_info: dict[int, tuple[int, int]]  # card -> (rarity, effect table)
-    unique: dict[int, list[tuple[int, int, int]]]  # card -> its unique effects (level, type, value)
     hint_pool: dict[int, list[str]]  # card -> its training-hint pool's skill names
     cards: dict[int, dict[str, Any]]  # web_cards.json by card id
 
 
+@functools.cache
 def _game() -> GameData:
-    if "g" in common._cache:
-        return common._cache["g"]
     db = common.mdb()
 
     def query(sql: str) -> list[tuple]:
         return db.execute(sql).fetchall()
 
-    level_cap = {
-        r[0]: r[1:] for r in query("select rarity, limit_0, limit_1, limit_2, limit_3, limit_4 from support_card_limit")
-    }
-    effects: collections.defaultdict[int, dict[int, tuple[int, ...]]] = collections.defaultdict(dict)
-    for row in query(
-        "select id, type, init,"
-        + ",".join(f"limit_lv{lv}" for lv in range(5, 55, 5))
-        + " from support_card_effect_table"
-    ):
-        effects[row[0]][row[1]] = row[2:]
-    card_info = {i: (rar, et) for i, rar, et in query("select id, rarity, effect_table_id from support_card_data")}
-    unique: collections.defaultdict[int, list[tuple[int, int, int]]] = collections.defaultdict(list)
-    for cid, lv, t0, v0, t1, v1 in query(
-        "select id, lv, type_0, value_0, type_1, value_1 from support_card_unique_effect"
-    ):
-        unique[cid] += [(lv, t0, v0), (lv, t1, v1)]
     skill_name = dict(query("select [index], text from text_data where category=47"))
     hint_pool: collections.defaultdict[int, list[str]] = collections.defaultdict(list)
     for cid, gain_type, v in query("select support_card_id, hint_gain_type, hint_value_1 from single_mode_hint_gain"):
         if gain_type == 0:
             hint_pool[cid].append(norm(skill_name[v]))
-    g = common._cache["g"] = GameData(level_cap, effects, card_info, unique, hint_pool, common.cards())
-    return g
-
-
-def effect(g: GameData, cid: int, typ: int, level: int) -> int:
-    """support effect `typ` at `level`: floored linear interpolation between milestones, plus the unique effect once its
-    level is reached"""
-    vals = g.effects[g.card_info[cid][1]].get(typ)
-    x = 0
-    if vals:
-        pts = [(m, v) for m, v in zip(MIL, vals) if v != -1]
-        if pts and level >= pts[0][0]:
-            x = pts[-1][1]
-            for (x0, y0), (x1, y1) in pairwise(pts):
-                if level <= x1:
-                    x = y0 + (y1 - y0) * (level - x0) // (x1 - x0)
-                    break
-    return x + sum(v for lv, t, v in g.unique.get(cid, []) if t == typ and level >= lv)
+    tables = common.card_effect_tables()
+    return GameData(tables.level_cap, tables.card_info, hint_pool, common.cards())
 
 
 # ---------------------------------------------------------------- observations
@@ -187,7 +154,7 @@ def card_runs(g: GameData) -> list[CardRun]:
     """every record's non-pal deck cards"""
     C = g.cards
     obs: list[CardRun] = []
-    for r in common.runs():
+    for r in common.records():
         hints = [(norm(h["name"]), h["lv"], tuple(h["src"])) for h in r["hints"]]
         npal = sum(1 for c, _, _ in r["deck"] if C.get(c, {}).get("pal"))
         for cid, lb, nm in r["deck"]:
@@ -212,10 +179,10 @@ def card_runs(g: GameData) -> list[CardRun]:
                     ch=ch,
                     rar=rar,
                     lb=lb,
-                    hf=effect(g, cid, EFFECT_HINT_FREQUENCY, level),
-                    hlv=effect(g, cid, EFFECT_HINT_LEVELS, level),
-                    spec=effect(g, cid, EFFECT_SPECIALTY, level),
-                    bond0=effect(g, cid, EFFECT_INITIAL_BOND, level),
+                    hf=common.card_effect(cid, common.EFFECT_HINT_FREQUENCY, level),
+                    hlv=common.card_effect(cid, common.EFFECT_HINT_LEVELS, level),
+                    spec=common.card_effect(cid, common.EFFECT_SPECIALTY, level),
+                    bond0=common.card_effect(cid, common.EFFECT_INITIAL_BOND, level),
                     hinc=C[cid]["hinc"],
                     nskill=C[cid]["nskill"],
                     opts=C[cid]["opts"],
@@ -262,11 +229,9 @@ def draws_of(x: CardRun, skill: str) -> tuple[int, int]:
     return 1, 1
 
 
+@functools.cache
 def build() -> Data:
     """card-runs and pool-skill rows of every record"""
-    key = "obs"
-    if key in common._cache:
-        return common._cache[key]
     obs = card_runs(_game())
     ci, skn, kk, kind, cat = [], [], [], [], []
     for i, x in enumerate(obs):
@@ -307,7 +272,6 @@ def build() -> Data:
         seq=per_card_run("seq", int),
         N=len(obs),
     )
-    common._cache[key] = D
     return D
 
 
@@ -322,7 +286,7 @@ def cap_draws(hinc: np.ndarray) -> np.ndarray:
 
 
 # ---------------------------------------------------------------- the draw model
-@functools.lru_cache(None)
+@functools.cache
 def miss(k: int, n: int, t: int, cap: int, extra: int = 0) -> float:
     """P(none of k given pool skills drawn) in t draws from an initial pool of n skills, each draw uniform over skills still below Lv 5; a skill
     leaves after `cap` draws (pkg/loopopt/src/deck/hints.rs miss_draws). `extra` options that never leave (a stat
@@ -700,7 +664,7 @@ def median_card() -> tuple[float, float, int]:
     wc = common.cards()
     deck_cards = [
         wc[c]
-        for r in common.runs()
+        for r in common.records()
         for c, _, _ in r["deck"]
         if c in wc and wc[c]["rarity"] > 1 and not wc[c]["pal"] and wc[c].get("kind") != "group"
     ]
@@ -889,6 +853,36 @@ def increment(D: Data, out: Out) -> None:
     add(out, "increment: single-source levels, iota 2+", total2)
 
 
+ROUNDINGS: dict[str, Callable[[Fraction], int]] = {
+    "down": math.floor,
+    "to nearest": lambda x: math.floor(x + Fraction(1, 2)),
+    "up": math.ceil,
+}
+
+
+def hint_level_rounding(D: Data, out: Out) -> None:
+    """how the game rounds an effect interpolated between milestone levels: on card-runs whose hint-level bonus at the
+    card's level falls between integers, the levels below Lv 5 that the card gave alone, against the increment under
+    each rounding (1 + the rounded bonus + the unique effect's)"""
+    total = 0
+    multiples = dict.fromkeys(ROUNDINGS, 0)
+    for x in D.obs:
+        if x.rar == 1:
+            continue  # R cards out
+        bonus = common.effect_interpolated(x.cid, common.EFFECT_HINT_LEVELS, common.card_level(x.cid, x.lb))
+        if bonus.denominator == 1:
+            continue
+        unique = x.hlv - math.floor(bonus)
+        for lv, src in x.tr.values():
+            if src == (x.ch,) and lv < 5:
+                total += 1
+                for rule, rounded in ROUNDINGS.items():
+                    multiples[rule] += lv % (1 + rounded(bonus) + unique) == 0
+    add(out, "hint-level rounding: single-source levels", total)
+    for rule, n in multiples.items():
+        add(out, f"hint-level rounding: multiples rounded {rule}", n)
+
+
 # ---------------------------------------------------------------- tests of the current model
 ADOPTED_NOTE: str = "the adopted rate, Lv-5 cap, max limit break, R cards out"
 
@@ -976,7 +970,7 @@ class CovariateRows:
             ll = hits @ np.log(1 - m) + (nr - hits) @ np.log(m)
             dll_dm = (nr - hits) / m - hits / (1 - m)
             dll_deta = dll_dm * slope * np.where(h < TMAX - 1e-6, h, 0.0)  # dh / d(Z th) = h below the table's end
-            return -ll, -(Z.T @ dll_deta)
+            return -float(ll), -(Z.T @ dll_deta)
 
         b = minimize(nll, x0, jac=True, method="L-BFGS-B", options={"maxiter": 2000})
         return CovFit(b.x, -b.fun)
@@ -1003,7 +997,7 @@ def covariates(D: Data, AR: AdoptedRate, out: Out) -> None:
     rows = CovariateRows(hit[AR.jm][nim], AR.tab[nim], hk, sk, ck, cls, rep)
     l0 = rows.fit(np.zeros((len(ck), 0))).ll
     add(out, "covariate rows", nim.sum(), note=ADOPTED_NOTE)
-    size = {len(r["deck"]) for r in common.runs()}
+    size = {len(r["deck"]) for r in common.records()}
     add(out, "cards per deck min", min(size), note="a fixed size makes pals per deck the same covariate as non-pals")
     add(out, "cards per deck max", max(size))
     for nm, X in covs.items():
@@ -1032,7 +1026,7 @@ def covariates(D: Data, AR: AdoptedRate, out: Out) -> None:
 
 def general_rows(D: Data, card_run: np.ndarray) -> Mask:
     """the given card-runs that belong to runs of the general collection"""
-    batch = {r["id"]: r["batch"] for r in common.runs()}
+    batch = {r["id"]: r["batch"] for r in common.records()}
     return np.isin([batch[int(r)] for r in run_of_rows(D, card_run)], GENERAL_BATCHES)
 
 
@@ -1231,7 +1225,7 @@ def priority(D: Data, AR: AdoptedRate, out: Out) -> None:
 
 
 def claims() -> list[common.Value | common.Finding]:
-    if not common.have_runs() or common.mdb() is None:
+    if not common.have_runs() or not common.have_mdb():
         return []
     out: Out = []
     D = build()
@@ -1247,6 +1241,7 @@ def claims() -> list[common.Value | common.Finding]:
     held_out_forms(D, forms, out)
     joint_draws(D, lv5_cap(D, out), h_form, out)
     increment(D, out)
+    hint_level_rounding(D, out)
     AR = adopted_rate(D, A)
     covariates(D, AR, out)
     spark_deficit(D, AR, out)
@@ -1434,6 +1429,17 @@ def findings(out: list[common.Value]) -> list[common.Finding]:
             m / t >= 0.995,
             f"{m:,.0f} of {t:,.0f}; every card {g['increment: multiples of iota']:,.0f} of "
             f"{g['increment: single-source levels']:,.0f}",
+        )
+    )
+    t = g["hint-level rounding: single-source levels"]
+    share = {rule: g[f"hint-level rounding: multiples rounded {rule}"] / t for rule in ROUNDINGS}
+    fs.append(
+        F(
+            "An effect between milestone levels is rounded down: where a card's hint-level bonus falls between integers, "
+            "at least 99.5% of the levels below 5 it gave alone are multiples of its increment rounded down, and under "
+            "rounding to nearest or up fewer are",
+            share["down"] >= 0.995 and share["to nearest"] < 0.995 and share["up"] < 0.995,
+            f"of {t:,.0f} levels, multiples: " + ", ".join(f"rounded {rule} {s:.1%}" for rule, s in share.items()),
         )
     )
     _, lo, hi = ci("held out: spark none obs/pred")
@@ -1981,7 +1987,7 @@ def specialty(A: Data, S: SpecialtyRows, fit: PerScenarioD) -> list[common.Value
     # robustness of the adopted per-scenario d's: one scale k on them, h = base_s (1 + hf/100) (1 + k d_s sp/100), the
     # d_s fitted on every row, a base per scenario refitted on each subset (halves of the records, rarity, without each
     # of the eight most-used cards); k = 1 on every row
-    runs = common.runs()
+    runs = common.records()
     cut = runs[len(runs) // 2]["seq"]  # the later half of the records starts here
     rob = {"earlier half": S.seq < cut, "later half": S.seq >= cut, "SR": S.rar == 2, "SSR": S.rar == 3}
     top = [k for k, _ in collections.Counter(S.cid).most_common(8)]
@@ -2213,8 +2219,8 @@ def clean_cards(g: GameData) -> set[int]:
         if rar == 1 or cid not in g.cards or g.cards[cid]["pal"]:
             continue
         levels = g.level_cap[rar]
-        hf = {effect(g, cid, EFFECT_HINT_FREQUENCY, lv) for lv in levels}
-        sp = {effect(g, cid, EFFECT_SPECIALTY, lv) for lv in levels}
+        hf = {common.card_effect(cid, common.EFFECT_HINT_FREQUENCY, lv) for lv in levels}
+        sp = {common.card_effect(cid, common.EFFECT_SPECIALTY, lv) for lv in levels}
         if len(hf) == 1 and len(sp) > 1:
             out.add(cid)
     return out

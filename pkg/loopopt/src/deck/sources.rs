@@ -4,7 +4,9 @@ use crate::deck::chains::{ChainKind, stop_risk_code};
 use crate::deck::hints::{hint_base, hint_miss, hint_spec, scenario_name};
 use crate::deck::space::{MAX_DECK, MAX_KINDS, MAX_UNCERTAIN, kinds_all};
 use crate::deck::{Card, CardsRaw, DeckJob};
+use crate::refusal::Refusal;
 use crate::skills::SkillsRaw;
+use serde::Deserialize;
 use serde_json::{Value, json};
 /// Mutually exclusive outcomes of one event firing. Probabilities sum to at most 1; the remainder gives no hint.
 /// Each outcome's rewards occur together, using hint levels 1 (white) and 2 (gold).
@@ -192,42 +194,45 @@ pub(super) fn group_nuod(group: &Group) -> bool {
             rewards: outcome.rewards.clone(),
         })
         .collect();
-    if let Some(cached) = GN.with(|cache| cache.borrow().get(&key).copied()) {
-        return cached;
-    }
-    let mut targets: Vec<usize> =
-        group.iter().flat_map(|outcome| outcome.rewards.iter().map(|reward| reward.target)).collect();
-    targets.sort_unstable();
-    targets.dedup();
-    // Exhaustive checking is exponential. An unchecked group is not a proof of negative dependence;
-    // decline the bound before constructing masks, which also avoids shifts beyond the mask width.
-    if targets.len() > 20 {
-        return false;
-    }
-    // per outcome, the targets it hints as a bit set
-    let outcomes: Vec<HintMaskOutcome> = group
-        .iter()
-        .map(|outcome| HintMaskOutcome {
-            probability: outcome.probability,
-            targets: outcome.rewards.iter().fold(0u32, |mask, reward| {
-                mask | (1 << targets.iter().position(|&target| target == reward.target).unwrap())
-            }),
+    GN.with(|memo| {
+        crate::memoised(memo, key, |_| {
+            let mut targets: Vec<usize> =
+                group.iter().flat_map(|outcome| outcome.rewards.iter().map(|reward| reward.target)).collect();
+            targets.sort_unstable();
+            targets.dedup();
+            // Exhaustive checking is exponential. An unchecked group is not a proof of negative dependence;
+            // decline the bound before constructing masks, which also avoids shifts beyond the mask width.
+            if targets.len() > 20 {
+                return false;
+            }
+            // per outcome, the targets it hints as a bit set
+            let outcomes: Vec<HintMaskOutcome> = group
+                .iter()
+                .map(|outcome| HintMaskOutcome {
+                    probability: outcome.probability,
+                    targets: outcome.rewards.iter().fold(0u32, |mask, reward| {
+                        mask | (1 << targets.iter().position(|&target| target == reward.target).unwrap())
+                    }),
+                })
+                .collect();
+            let marginal_chance: Vec<f64> = (0..targets.len())
+                .map(|i| {
+                    outcomes
+                        .iter()
+                        .filter(|outcome| outcome.targets >> i & 1 == 1)
+                        .map(|outcome| outcome.probability)
+                        .sum()
+                })
+                .collect();
+            (1u32..1 << targets.len()).filter(|s| s.count_ones() >= 2).all(|s| {
+                let joint: f64 =
+                    outcomes.iter().filter(|outcome| outcome.targets & s == s).map(|outcome| outcome.probability).sum();
+                joint
+                    <= (0..targets.len()).filter(|i| s >> i & 1 == 1).map(|i| marginal_chance[i]).product::<f64>()
+                        * (1.0 + ORTHANT_RELATIVE)
+            })
         })
-        .collect();
-    let marginal_chance: Vec<f64> = (0..targets.len())
-        .map(|i| {
-            outcomes.iter().filter(|outcome| outcome.targets >> i & 1 == 1).map(|outcome| outcome.probability).sum()
-        })
-        .collect();
-    let certified = (1u32..1 << targets.len()).filter(|s| s.count_ones() >= 2).all(|s| {
-        let joint: f64 =
-            outcomes.iter().filter(|outcome| outcome.targets & s == s).map(|outcome| outcome.probability).sum();
-        joint
-            <= (0..targets.len()).filter(|i| s >> i & 1 == 1).map(|i| marginal_chance[i]).product::<f64>()
-                * (1.0 + ORTHANT_RELATIVE)
-    });
-    GN.with(|cache| cache.borrow_mut().insert(key, certified));
-    certified
+    })
 }
 /// What `upper_na` needs of a group: the orthant inequality at every hint level, since a target's factor rises with
 /// gold as well as with any hint. A white-only group has one level, so the any-hint check is that (`group_nuod`, up to
@@ -414,8 +419,60 @@ impl TargetSources {
 }
 
 /// Merge a card-event cache (card_events.json) into a deck job: skill names -> (group, level) via the skills table.
-pub(crate) fn apply_events_db(job: &mut Value, skills: &SkillsRaw, event_cache: &Value) {
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn apply_events_db(job: &mut Value, skills: &SkillsRaw, event_cache: &CardEventCache) {
     apply_event_lists(job, &event_lists(skills, event_cache));
+}
+
+/// A card-event cache (card_events.json, `build_card_events.py`): per card (its id as text, in that text's order), the
+/// events it hints a skill through. A field missing from an entry that has it is a parse error, never a default.
+#[derive(Deserialize, Default)]
+pub(crate) struct CardEventCache {
+    #[serde(default)]
+    cards: std::collections::BTreeMap<String, CardEvents>,
+}
+
+/// One card's events (the fields the solver reads; the file's notes on the card are not read).
+#[derive(Deserialize)]
+struct CardEvents {
+    /// per chain link: [link, its rewards]
+    #[serde(default)]
+    chain: Vec<(u64, Vec<EventReward>)>,
+    /// per choice that ends the chain: [link, its rewards]
+    #[serde(default)]
+    end: Vec<(u64, Vec<EventReward>)>,
+    /// [link, k, n]: IT's default choice there ends the chain on k of n outcomes
+    #[serde(default)]
+    stop_risk: Vec<(u8, u8, u8)>,
+    /// events naming two or more skills: [link, [choice][outcome] -> skill names]
+    #[serde(default)]
+    alts: Vec<(u8, Vec<Vec<Vec<String>>>)>,
+    /// measured outcome weights of `alts`' events: [link, [choice][outcome] -> share]
+    #[serde(default)]
+    alt_w: Vec<(u8, Vec<Vec<f64>>)>,
+    /// skills it hints whenever it is in the deck
+    #[serde(default)]
+    always: Vec<String>,
+    /// non-chain events with a chance per run: [skill name, chance]
+    #[serde(default)]
+    chance: Vec<(String, f64)>,
+}
+
+/// An event's reward: a skill by name, for certain or at a chance given the event fires.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum EventReward {
+    Certain(String),
+    Chance(String, f64),
+}
+
+impl EventReward {
+    fn name_and_chance(&self) -> (&str, f64) {
+        match self {
+            Self::Certain(name) => (name, 1.0),
+            Self::Chance(name, chance) => (name, *chance),
+        }
+    }
 }
 
 /// The job lists a card-event cache adds, in `EVENT_KEYS` order: the same for every job (the page's worker builds
@@ -434,16 +491,10 @@ pub(crate) fn apply_event_lists(job: &mut Value, lists: &EventLists) {
         job[*key] = Value::Array(list);
     }
 }
-/// Cached rewards are either a bare skill name (certain) or [name, chance]. Keep the cache reader's defaults
-/// here so chain and early-end rewards interpret the same representation in the same way.
-fn event_reward(value: &Value) -> (&str, f64) {
-    if let Some(reward) = value.as_array() {
-        (reward[0].as_str().unwrap_or(""), reward[1].as_f64().unwrap_or(0.0))
-    } else {
-        (value.as_str().unwrap_or(""), 1.0)
-    }
-}
-pub(crate) fn event_lists(skills: &SkillsRaw, event_cache: &Value) -> EventLists {
+/// The job lists of a card-event cache: its entries written as the job's own (`DeckJob`'s tuples), skill names read
+/// through the skills table (a name it does not know hints nothing). They go into the job itself, which the solver reads
+/// as `DeckJob` and keys its kept searches by.
+pub(crate) fn event_lists(skills: &SkillsRaw, event_cache: &CardEventCache) -> EventLists {
     let lookup_skill = |name: &str| skills.names.get(name).copied();
     let [
         mut events,
@@ -455,70 +506,55 @@ pub(crate) fn event_lists(skills: &SkillsRaw, event_cache: &Value) -> EventLists
         mut alternatives,
         mut alternative_weights,
     ]: [Vec<Value>; 8] = Default::default();
-    if let Some(cards) = event_cache["cards"].as_object() {
-        for (id, card) in cards {
-            let Ok(id) = id.parse::<u32>() else { continue };
-            for link in card["chain"].as_array().into_iter().flatten() {
-                let link_number = link[0].as_u64().unwrap_or(0);
-                for reward in link[1].as_array().into_iter().flatten() {
-                    let (name, probability) = event_reward(reward);
-                    if let Some((group, level)) = lookup_skill(name) {
-                        if probability >= 1.0 {
-                            events.push(json!([id, group, level, link_number]));
-                        } else {
-                            probabilistic_events.push(json!([id, group, level, link_number, probability]));
-                        }
+    for (id, card) in &event_cache.cards {
+        let Ok(id) = id.parse::<u32>() else { continue };
+        for (link_number, rewards) in &card.chain {
+            for reward in rewards {
+                let (name, probability) = reward.name_and_chance();
+                if let Some((group, level)) = lookup_skill(name) {
+                    if probability >= 1.0 {
+                        events.push(json!([id, group, level, link_number]));
+                    } else {
+                        probabilistic_events.push(json!([id, group, level, link_number, probability]));
                     }
                 }
             }
-            for link in card["end"].as_array().into_iter().flatten() {
-                let link_number = link[0].as_u64().unwrap_or(0);
-                end_links.push(json!([id, link_number]));
-                for reward in link[1].as_array().into_iter().flatten() {
-                    let (name, probability) = event_reward(reward);
-                    if let Some((group, level)) = lookup_skill(name) {
-                        end_rewards.push(json!([id, link_number, group, level, probability]));
-                    }
+        }
+        for (link_number, rewards) in &card.end {
+            end_links.push(json!([id, link_number]));
+            for reward in rewards {
+                let (name, probability) = reward.name_and_chance();
+                if let Some((group, level)) = lookup_skill(name) {
+                    end_rewards.push(json!([id, link_number, group, level, probability]));
                 }
             }
-            for risk in card["stop_risk"].as_array().into_iter().flatten() {
-                stop_risks.push(json!([id, risk[0], risk[1], risk[2]]));
+        }
+        for &(link, k, n) in &card.stop_risk {
+            stop_risks.push(json!([id, link, k, n]));
+        }
+        for (link, choices) in &card.alts {
+            let choices: Vec<Vec<Vec<(u32, u8)>>> = choices
+                .iter()
+                .map(|choice| {
+                    choice
+                        .iter()
+                        .map(|outcome| outcome.iter().filter_map(|name| lookup_skill(name)).collect())
+                        .collect()
+                })
+                .collect();
+            alternatives.push(json!([id, link, choices]));
+        }
+        for (link, weights) in &card.alt_w {
+            alternative_weights.push(json!([id, link, weights]));
+        }
+        for name in &card.always {
+            if let Some((group, level)) = lookup_skill(name) {
+                events.push(json!([id, group, level, 0]));
             }
-            for event in card["alts"].as_array().into_iter().flatten() {
-                let choices: Vec<Vec<Vec<(u32, u8)>>> = event[1]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .map(|choice| {
-                        choice
-                            .as_array()
-                            .into_iter()
-                            .flatten()
-                            .map(|outcome| {
-                                outcome
-                                    .as_array()
-                                    .into_iter()
-                                    .flatten()
-                                    .filter_map(|name| lookup_skill(name.as_str().unwrap_or("")))
-                                    .collect()
-                            })
-                            .collect()
-                    })
-                    .collect();
-                alternatives.push(json!([id, event[0], choices]));
-            }
-            for weights in card["alt_w"].as_array().into_iter().flatten() {
-                alternative_weights.push(json!([id, weights[0], weights[1]]));
-            }
-            for name in card["always"].as_array().into_iter().flatten() {
-                if let Some((group, level)) = lookup_skill(name.as_str().unwrap_or("")) {
-                    events.push(json!([id, group, level, 0]));
-                }
-            }
-            for event in card["chance"].as_array().into_iter().flatten() {
-                if let Some((group, level)) = lookup_skill(event[0].as_str().unwrap_or("")) {
-                    odds_events.push(json!([id, group, level, event[1].as_f64().unwrap_or(0.0)]));
-                }
+        }
+        for (name, chance) in &card.chance {
+            if let Some((group, level)) = lookup_skill(name) {
+                odds_events.push(json!([id, group, level, chance]));
             }
         }
     }
@@ -939,23 +975,25 @@ pub(crate) fn deck_entries<'data>(
     deck_job: &DeckJob,
     target_groups: &[u32],
     pool_ids: &[u32],
-) -> Result<Entries<'data>, Value> {
+) -> Result<Entries<'data>, Refusal> {
     // the packed search's limits (`MAX_DECK`, `MAX_UNCERTAIN`; `MAX_KINDS` and the locks below), refused before any table
     if !(1..=MAX_DECK).contains(&deck_job.deck_size) {
-        return Err(
-            json!({"error": format!("deck_size: a deck holds 1 to {MAX_DECK} cards, not {}.", deck_job.deck_size)}),
-        );
+        return Err(Refusal::new(format!(
+            "deck_size: a deck holds 1 to {MAX_DECK} cards, not {}.",
+            deck_job.deck_size
+        )));
     }
     if target_groups.len() > MAX_UNCERTAIN {
-        return Err(
-            json!({"error": format!("At most {MAX_UNCERTAIN} targets can be left to the deck, not {}.", target_groups.len())}),
-        );
+        return Err(Refusal::new(format!(
+            "At most {MAX_UNCERTAIN} targets can be left to the deck, not {}.",
+            target_groups.len()
+        )));
     }
     if deck_job.chain_events.is_some() && deck_job.chain_budget.is_some() {
-        return Err(json!({"error": "chain_events and chain_budget both set: give one chain-event law, not both."}));
+        return Err(Refusal::new("chain_events and chain_budget both set: give one chain-event law, not both."));
     }
     if let Some(rule) = deck_job.chain_rule.as_deref().filter(|rule| !["card", "slots"].contains(rule)) {
-        return Err(json!({"error": format!("chain_rule: \"card\" or \"slots\", not \"{rule}\".")}));
+        return Err(Refusal::new(format!("chain_rule: \"card\" or \"slots\", not \"{rule}\".")));
     }
     let is_owned = |id: u32| {
         deck_job.owned_cards.is_empty() || deck_job.owned_cards.contains(&id) || deck_job.lock_cards.contains(&id)
@@ -968,9 +1006,11 @@ pub(crate) fn deck_entries<'data>(
         .find(|id| banned.contains(id))
         .and_then(|id| cards.cards.iter().find(|card| card.id == *id))
     {
-        return Err(
-            json!({"error": format!("{} can't be used in {}: the game bans it from that scenario's deck.", card.name, scenario_name(&deck_job.scenario))}),
-        );
+        return Err(Refusal::new(format!(
+            "{} can't be used in {}: the game bans it from that scenario's deck.",
+            card.name,
+            scenario_name(&deck_job.scenario)
+        )));
     }
     let usable =
         |id: u32| (is_owned(id) || deck_job.borrow) && !deck_job.exclude_cards.contains(&id) && !banned.contains(&id);
@@ -1094,15 +1134,17 @@ pub(crate) fn deck_entries<'data>(
     locked.sort_unstable();
     locked.dedup();
     if locked.len() > deck_job.deck_size {
-        return Err(
-            json!({"error": format!("{} locked cards don't fit in a deck of {}.", locked.len(), deck_job.deck_size)}),
-        );
+        return Err(Refusal::new(format!(
+            "{} locked cards don't fit in a deck of {}.",
+            locked.len(),
+            deck_job.deck_size
+        )));
     }
     let kind_count = kinds_all(&kind).len();
     if kind_count > MAX_KINDS {
-        return Err(
-            json!({"error": format!("The cards' chains come in {kind_count} kinds (lengths, early ends, stop risks); the search takes at most {MAX_KINDS}.")}),
-        );
+        return Err(Refusal::new(format!(
+            "The cards' chains come in {kind_count} kinds (lengths, early ends, stop risks); the search takes at most {MAX_KINDS}."
+        )));
     }
     Ok(Entries { cards, card_indices, kind, end_links, variants, sources, plain_ids, plain_names, plain_chars, locked })
 }

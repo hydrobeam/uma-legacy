@@ -202,17 +202,20 @@ for r in gametora.load("training_events_char"):
         choices = []
         for ch in gametora.choices(event_version[1]):
             hints_before = len(hints)
-            for kind, x, level in gametora.hints(ch[1]):
-                if kind == "hint":
+            for hint in gametora.hints(ch[1]):
+                if hint.kind == "hint":
+                    x = hint.skills
                     hints.append(
-                        SkillHint(name=skill_names.get(x, x), level=level, is_target=skill_groups.get(x) in TARGETS)
+                        SkillHint(
+                            name=skill_names.get(x, x), level=hint.level, is_target=skill_groups.get(x) in TARGETS
+                        )
                     )
                 else:
                     hints.append(
                         SkillHint(
-                            name="random: " + "/".join(skill_names.get(d, "?") for d in x),
+                            name="random: " + "/".join(skill_names.get(d, "?") for d in hint.skills),
                             level="",
-                            is_target=any(skill_groups.get(d) in TARGETS for d in x),
+                            is_target=any(skill_groups.get(d) in TARGETS for d in hint.skills),
                         )
                     )
             choices.append(hints[hints_before:])

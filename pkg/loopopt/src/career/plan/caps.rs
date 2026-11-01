@@ -5,9 +5,12 @@
 //! curves (`KeptCaps`, in `KeptState::step_caps` and the page's store) and a later plan of the same setup reads them
 //! while its pool holds that pool's veterans; a removed veteran voids them.
 use crate::career::plan::cont::{BuildPlan, Cont};
-use crate::career::state::{KeptState, STATE_MAX_N, fx, hash_text, hx, usz, ux, uxr};
+use crate::career::state::{KeptState, STATE_MAX_N, hash_text};
+use crate::hex::{Bits, Key};
 use crate::uma::UmaIndex;
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use ts_rs::TS;
 
 /// Kept plans' caps held (the most recent last): a few numbers each.
 const CAPS_KEEP: usize = 8;
@@ -234,16 +237,17 @@ pub(crate) fn keep_caps(kept: &mut KeptState, pool: CapPool, caps: Vec<(UmaIndex
 }
 
 /// A cap as stored: [lam, phi, pinf, p0, lam decay, odds], every float as its bits.
-pub(crate) fn cap_out(cap: &KeptCap) -> Value {
+pub(crate) type StoredCap = [Bits; 6];
+
+pub(crate) const fn cap_out(cap: &KeptCap) -> StoredCap {
     let CapCurve { lam, phi, pinf, anchor_odds, lam_decay } = cap.curve;
-    json!([hx(lam), hx(phi), hx(pinf), hx(anchor_odds), hx(lam_decay), hx(cap.odds)])
+    [Bits(lam), Bits(phi), Bits(pinf), Bits(anchor_odds), Bits(lam_decay), Bits(cap.odds)]
 }
 
 /// A stored cap (`cap_out`): every field finite, lam, pinf and p0 not negative, phi in [0, 1], the decay positive and
 /// her odds in (0, 1]
-pub(crate) fn cap_in(value: &Value) -> Option<KeptCap> {
-    let fields = value.as_array().filter(|fields| fields.len() == 6)?;
-    let field = |index: usize| fx(&fields[index]).filter(|value| value.is_finite());
+pub(crate) fn cap_in(stored: &StoredCap) -> Option<KeptCap> {
+    let field = |index: usize| Some(stored[index].0).filter(|value| value.is_finite());
     let curve =
         CapCurve { lam: field(0)?, phi: field(1)?, pinf: field(2)?, anchor_odds: field(3)?, lam_decay: field(4)? };
     let odds = field(5)?;
@@ -257,36 +261,41 @@ pub(crate) fn cap_in(value: &Value) -> Option<KeptCap> {
     valid.then_some(KeptCap { curve, odds })
 }
 
-/// The kept caps for the page to store (`state_out`).
-pub(crate) fn caps_out(kept: &[KeptCaps]) -> Value {
-    Value::Array(
-        kept.iter()
-            .map(|entry| {
-                json!({"s": ux(entry.pool.scope), "vets": entry.pool.veterans.iter().map(|&veteran| ux(veteran)).collect::<Vec<_>>(),
-                    "caps": entry.caps.iter().map(|(uma, cap)| json!([uma.0, cap_out(cap)])).collect::<Vec<_>>()})
-            })
-            .collect(),
-    )
+/// A plan's kept caps as stored (`KeptCaps`): its pool's scope and veterans (hashes), and per uma (index) her cap.
+#[derive(Serialize, Deserialize, TS)]
+pub(crate) struct StoredCaps {
+    pub(crate) scope: Key,
+    pub(crate) veterans: Vec<Key>,
+    pub(crate) caps: Vec<(usize, StoredCap)>,
 }
 
-/// Kept caps from the page's store (`state_in`); None refuses the store whole. (Absent: none.)
-pub(crate) fn caps_in(value: &Value) -> Option<Vec<KeptCaps>> {
-    let Some(stored) = value.as_array() else { return value.is_null().then(Vec::new) };
+/// The kept caps for the page to store (`state_out`).
+pub(crate) fn caps_out(kept: &[KeptCaps]) -> Vec<StoredCaps> {
+    kept.iter()
+        .map(|entry| StoredCaps {
+            scope: Key(entry.pool.scope),
+            veterans: entry.pool.veterans.iter().map(|&veteran| Key(veteran)).collect(),
+            caps: entry.caps.iter().map(|(uma, cap)| (uma.0, cap_out(cap))).collect(),
+        })
+        .collect()
+}
+
+/// Kept caps from the page's store (`state_in`); None refuses the store whole.
+pub(crate) fn caps_in(stored: &[StoredCaps]) -> Option<Vec<KeptCaps>> {
     stored
         .iter()
         .map(|entry| {
-            let stored_veterans = entry["vets"].as_array().filter(|list| list.len() <= STATE_MAX_N)?;
-            let mut veterans: Vec<u64> = stored_veterans.iter().map(uxr).collect::<Option<_>>()?;
+            if entry.veterans.len() > STATE_MAX_N {
+                return None;
+            }
+            let mut veterans: Vec<u64> = entry.veterans.iter().map(|veteran| veteran.0).collect();
             veterans.sort_unstable();
-            let caps = entry["caps"]
-                .as_array()?
+            let caps = entry
+                .caps
                 .iter()
-                .map(|stored_cap| {
-                    let uma = usz(stored_cap.get(0)?).filter(|&uma| uma < STATE_MAX_N)?;
-                    Some((UmaIndex(uma), cap_in(stored_cap.get(1)?)?))
-                })
+                .map(|(uma, cap)| Some(((*uma < STATE_MAX_N).then_some(UmaIndex(*uma))?, cap_in(cap)?)))
                 .collect::<Option<Vec<_>>>()?;
-            Some(KeptCaps { pool: CapPool { scope: uxr(&entry["s"])?, veterans }, caps })
+            Some(KeptCaps { pool: CapPool { scope: entry.scope.0, veterans }, caps })
         })
         .collect()
 }
@@ -294,6 +303,7 @@ pub(crate) fn caps_in(value: &Value) -> Option<Vec<KeptCaps>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     /// Her odds in the kept plan and now (a veteran added since lifted her).
     const KEPT_ODDS: f64 = 0.001;
@@ -347,10 +357,14 @@ mod tests {
         // stored and read back, bit for bit
         let stored = caps_out(&kept.step_caps);
         let restored = caps_in(&stored).unwrap();
-        assert_eq!(caps_out(&restored), stored);
-        let bad_phi = json!([{"s": ux(1), "vets": [], "caps": [[4, [hx(0.1), hx(1.5), hx(0.01), hx(0.001), hx(1.5), hx(0.001)]]]}]);
-        assert!(caps_in(&bad_phi).is_none());
-        assert!(caps_in(&Value::Null).unwrap().is_empty());
+        assert_eq!(serde_json::to_value(caps_out(&restored)).unwrap(), serde_json::to_value(&stored).unwrap());
+        let bad_phi = StoredCaps {
+            scope: Key(1),
+            veterans: vec![],
+            caps: vec![(4, [0.1, 1.5, 0.01, 0.001, 1.5, 0.001].map(Bits))],
+        };
+        assert!(caps_in(&[bad_phi]).is_none());
+        assert!(caps_in(&[]).unwrap().is_empty());
     }
 
     /// A fixed parent is her veteran, not her position (Astra's p10 case, 2026-10-26: legacies 1 and 6 swapped with

@@ -59,13 +59,14 @@ import argparse
 import json
 import math
 import os
-import re
-import subprocess
 import sys
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
+
+import solver
+from solver import CAP_CLASSES, PLAN_DIR, near_cap, read_output
 
 PROXY_GATE = 0.03
 SAVING_GATE = 0.25  # careers
@@ -80,9 +81,6 @@ class CapWarning(NamedTuple):
     cap: float
 
 
-VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(VALIDATION_DIR)
-PLAN_DIR = os.path.join(VALIDATION_DIR, "plan")
 parser = argparse.ArgumentParser(description="Run the career planner's validation jobs.", allow_abbrev=False)
 parser.add_argument("binary", metavar="BIN")
 parser.add_argument("tag", help="writes val/plan/TAG__NAME.out")
@@ -113,15 +111,8 @@ times = {}
 def run(job_entry):
     era, name = job_entry
     started = time.time()
-    result = subprocess.run(
-        [binary, "data.json", os.path.join(PLAN_DIR, name + ".json")],
-        cwd=os.path.join(REPO, "pkg", "loopopt", "data", era),
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode:
-        raise RuntimeError(f"{name}: solver exited {result.returncode}\n{result.stderr}")
-    open(os.path.join(PLAN_DIR, f"{tag}__{name}.out"), "w").write(result.stdout)
+    stdout = solver.run(binary, era, os.path.join(PLAN_DIR, name + ".json"), name=name)
+    open(os.path.join(PLAN_DIR, f"{tag}__{name}.out"), "w").write(stdout)
     times[name] = round(time.time() - started, 2)
 
 
@@ -147,41 +138,6 @@ SKIP = {
 }
 
 
-def walk(reference, candidate, path, differences):
-    if len(differences) >= 8:
-        return
-    if type(reference) != type(candidate):
-        differences.append(f"{path}: type {type(reference).__name__} vs {type(candidate).__name__}")
-        return
-    if isinstance(reference, dict):
-        for k in sorted(set(reference) | set(candidate)):
-            if k in SKIP or k.endswith("_ms"):
-                continue
-            if k not in reference or k not in candidate:
-                differences.append(f"{path}.{k}: only in {'new' if k in candidate else 'ref'}")
-                continue
-            walk(reference[k], candidate[k], f"{path}.{k}", differences)
-    elif isinstance(reference, list):
-        if len(reference) != len(candidate):
-            differences.append(f"{path}: length {len(reference)} vs {len(candidate)}")
-            return
-        for i, (reference_item, candidate_item) in enumerate(zip(reference, candidate)):
-            walk(reference_item, candidate_item, f"{path}[{i}]", differences)
-    elif reference != candidate:
-        differences.append(f"{path}: {str(reference)[:60]} vs {str(candidate)[:60]}")
-
-
-# the deck structure classes of the exact caps (`cap_class`: chain-varying targets; a multi-target group counts as 4+)
-CLS = ["0-1", "2", "3", "4+"]
-
-
-def near_cap(ratio, cap):
-    # a scored deck's exact / product r is near its class's assumed cap c: past three quarters of the cap's headroom
-    # over 1 (1.1875 of 1.25; 1.0375 of 1.05).
-    # The same rule as val/cmp2.py.
-    return ratio > 1 + 0.75 * (cap - 1)
-
-
 def compare_job(name):
     reference_path, candidate_path = (
         os.path.join(PLAN_DIR, f"{ref}__{name}.out"),
@@ -191,12 +147,11 @@ def compare_job(name):
         print(f"{name}: no reference ({ref})")
         return 1
     try:
-        reference, candidate = json.load(open(reference_path)), json.load(open(candidate_path))
+        reference, candidate = read_output(reference_path), read_output(candidate_path)
     except Exception as e:
         print(f"{name}: PARSE FAIL {e}")
         return 1
-    differences = []
-    walk(reference, candidate, "", differences)
+    differences = solver.differences(reference, candidate, SKIP, limit=8)
     reference_times = (
         dict(l.split() for l in open(os.path.join(PLAN_DIR, f"{ref}_times.txt")))
         if os.path.exists(os.path.join(PLAN_DIR, f"{ref}_times.txt"))
@@ -215,11 +170,13 @@ def compare_job(name):
     max_ratios, caps = candidate_work.get("class_max_ratio"), candidate_work.get("class_caps")
     if not isinstance(max_ratios, list):
         max_ratios, caps = [candidate_work.get("max_ratio")], [candidate_work.get("cap")]
+    if not isinstance(caps, list):  # (ratios without their caps: none is near a cap)
+        caps = [None] * len(max_ratios)
     is_number = lambda candidate: isinstance(candidate, (int, float))
     near = [
         CapWarning(class_index=k, ratio=ratio, cap=cap)
         for k, (ratio, cap) in enumerate(zip(max_ratios, caps))
-        if is_number(ratio) and is_number(cap) and near_cap(ratio, cap)
+        if isinstance(ratio, (int, float)) and isinstance(cap, (int, float)) and near_cap(ratio, cap)
     ]
     print(
         f"{name}: {'identical' if not differences else 'DIFFERS'}  {reference_times.get(name, '?')} s -> {times[name]} s  {work}"
@@ -231,7 +188,7 @@ def compare_job(name):
     )
     for k, ratio, cap in near:
         print(
-            f"    CAP: a scored deck of class {CLS[k] if len(max_ratios) == 4 else 'any'} reached exact/product {ratio:.4f}, near its assumed cap {cap}"
+            f"    CAP: a scored deck of class {CAP_CLASSES[k] if len(max_ratios) == 4 else 'any'} reached exact/product {ratio:.4f}, near its assumed cap {cap}"
         )
     for o in differences:
         print("   ", o)
@@ -287,9 +244,8 @@ def proxy_errors(output):
 
 
 def exact_builders_targets():
-    """`EXACT_BUILDERS_TARGETS` from the solver's source (career/plan/candidates.rs), read as its build reads it"""
-    source = open(os.path.join(REPO, "pkg", "loopopt", "src", "career", "plan", "candidates.rs")).read()
-    return int(re.search(r"const EXACT_BUILDERS_TARGETS: usize = (\d+);", source).group(1))
+    """the fewest targets at which the plan searches every builder exactly (`EXACT_BUILDERS_TARGETS`, from the solver)"""
+    return solver.constants(binary)["exact_builders_targets"]
 
 
 def builders_searched_exactly(job):
@@ -320,16 +276,9 @@ def proxy_gate(job_entry, job_dir):
     job["next"] = {**plan, "proxy_check": True}
     path = os.path.join(job_dir, name + ".json")
     json.dump(job, open(path, "w"))
-    result = subprocess.run(
-        [binary, "data.json", path],
-        cwd=os.path.join(REPO, "pkg", "loopopt", "data", era),
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode:
-        raise RuntimeError(f"{name} (proxy_check): solver exited {result.returncode}\n{result.stderr}")
-    open(os.path.join(PLAN_DIR, f"{tag}_proxy__{name}.out"), "w").write(result.stdout)
-    output = json.loads([line for line in result.stdout.splitlines() if line.strip()][-1])
+    stdout = solver.run(binary, era, path, name=f"{name} (proxy_check)")
+    open(os.path.join(PLAN_DIR, f"{tag}_proxy__{name}.out"), "w").write(stdout)
+    output = solver.last_output(stdout)
     if "proxy_check" not in (output.get("next") or {}):
         return None
     uses_proxies = output["next"]["proxy_check"].get("plan_uses_proxies", True)
@@ -433,13 +382,18 @@ def route_first_step(plan, job):
     finisher = (plan.get("v0_plan") or {}).get("c")
     members = sorted(ids.get(m["trainee"], -1) for m in plan.get("members") or [])
     legacies = job.get("legacies") or []
-    chara = lambda i: legacies[i]["chara"] if 0 <= i < len(legacies) else None
+
+    def parent_charas(row):
+        """the row's parents' umas, sorted; None where a parent is no legacy of the job (no match)"""
+        parents = row.get("parents") or []
+        if not all(0 <= i < len(legacies) for i in parents):
+            return None
+        return sorted(legacies[i]["chara"] for i in parents)
+
     rows = [
         o
         for o in options
-        if o.get("role") == "finish"
-        and o["trainee"]["name"] == finisher
-        and sorted(chara(i) for i in o.get("parents") or []) == members
+        if o.get("role") == "finish" and o["trainee"]["name"] == finisher and parent_charas(o) == members
     ]
     return only_row("the finish on two real full veterans", rows, "no finish row of C's on the two members' veterans")
 
@@ -488,7 +442,7 @@ def first_step_tripwire(name):
     why): a null V with no route at all (`no_route`), a Cont the job gave, a builder the borrowing rule keeps out."""
     path = os.path.join(PLAN_DIR, f"{tag}__{name}.out")
     try:
-        output = json.loads([line for line in open(path).read().splitlines() if line.strip()][-1])
+        output = read_output(path)
         job = json.load(open(os.path.join(PLAN_DIR, name + ".json")))
     except (OSError, IndexError, ValueError) as error:
         print(f"{name}: route's first step: FAIL, no plan output or job to check ({error})")
@@ -572,7 +526,7 @@ def scoring_incomplete(name, proxy_run):
     for kind in ("", "_proxy") if proxy_run else ("",):
         path = os.path.join(PLAN_DIR, f"{tag}{kind}__{name}.out")
         try:
-            plan = json.loads([line for line in open(path).read().splitlines() if line.strip()][-1]).get("next")
+            plan = read_output(path).get("next")
         except (OSError, IndexError, ValueError) as error:
             reasons.append(f"{kind[1:] or 'plan'} output unreadable ({error})")
             continue
@@ -613,11 +567,8 @@ for (_era, name), gate in zip(proxy_jobs, gates):
         proxy_failures += 1
         continue
     errors, exact_view, uses_proxies = gate
-    run_output = os.path.join(PLAN_DIR, f"{tag}__{name}.out")
-    lines = (
-        [line for line in open(run_output).read().splitlines() if line.strip()] if os.path.exists(run_output) else []
-    )
-    moved = not lines or plan_view(json.loads(lines[-1])["next"]) != exact_view
+    planned = solver.read_output_or_none(os.path.join(PLAN_DIR, f"{tag}__{name}.out"))
+    moved = planned is None or plan_view(planned["next"]) != exact_view
     efficiency_low, saving_low = errors.efficiency_low < -PROXY_GATE, errors.careers_low < -SAVING_GATE
     # (a plan that searches every builder exactly, `exact_all` or the solver's `exact_builders`, reads no proxy: their
     # errors are reported there, and only a moved plan fails)

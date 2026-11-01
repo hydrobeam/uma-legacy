@@ -6,6 +6,7 @@ use crate::career::plan::cont::Want;
 use crate::career::plan::kept::{
     CachedSearch, KeptPlans, best_of, bests_key, plan_scope, same_career, stamp_ok, stamped, take_kept_plan,
 };
+use crate::career::plan::report::{CandidateHint, SurrogateDifference};
 use crate::career::plan::rows::{PlanRow, RowOrigin};
 use crate::career::plan::score::kernel::LiftStats;
 use crate::career::plan::score::{CareerScore, score_career};
@@ -21,7 +22,6 @@ use crate::career::pool::Pool;
 use crate::career::search::{CareerSearchResult, Found};
 use crate::career::sim::Sim;
 use crate::deck::space::SelectedDeck;
-use serde_json::{Value, json};
 /// Choose the stage candidates, search their best careers, and build the simulator the later phases share.
 pub(crate) fn setup_plan_candidates<'env, 'data>(
     env: &'env mut Env<'data>,
@@ -30,7 +30,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     started_ms: f64,
     pick_career: Found,
     buf: &mut Vec<f64>,
-) -> Result<PlanSetup<'env, 'data>, Value> {
+) -> Result<PlanSetup<'env, 'data>, crate::refusal::Refusal> {
     let settings = input.settings;
     let legacies = input.legacies;
     let data = input.resources.data;
@@ -129,7 +129,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
         }
     }
     // the surrogate's best careers (sur 1: in place of the searches; 2: beside them, differences reported)
-    let mut surrogate_differences: Vec<Value> = vec![];
+    let mut surrogate_differences: Vec<SurrogateDifference> = vec![];
     if settings.surrogate_mode > 0 {
         let surrogate_started_ms = now_ms();
         capped(&mut sim, settings.search_work, env_budget, |sim| {
@@ -242,8 +242,8 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
 /// left out (`cut`), and the side-only umas.
 struct StageCandidates {
     trainees: Vec<crate::uma::UmaIndex>,
-    hint: Vec<Value>,
-    cut: Vec<Value>,
+    hint: Vec<CandidateHint>,
+    cut: Vec<CandidateHint>,
     /// Umas with a usable real full veteran that are not stage candidates (`side_only_umas`), ascending.
     side_only: Vec<crate::uma::UmaIndex>,
 }
@@ -322,7 +322,7 @@ mod proxy_tests {
 
 /// The fewest targets at which builders are searched exactly (`exact_builders`): the measured case is p16_t10's 10
 /// targets (8 uncertain); gm16_nu8's 8 uncertain of 8 keeps its proxies within the band
-const EXACT_BUILDERS_TARGETS: usize = 10;
+pub(crate) const EXACT_BUILDERS_TARGETS: usize = 10;
 
 fn stage_candidates(
     env: &mut Env,
@@ -366,7 +366,7 @@ fn stage_candidates(
         push(found.trainee, &mut trainees);
     }
     trainees.truncate(IDX_CANDS);
-    let (mut hint, mut cut): (Vec<Value>, Vec<Value>) = (vec![], vec![]);
+    let (mut hint, mut cut): (Vec<CandidateHint>, Vec<CandidateHint>) = (vec![], vec![]);
     if let Some(fit) = &settings.fit {
         // (each uma once, in the fit's order, at most IDX_CANDS: the planner's candidate limit, which the scoring's
         // memory budget assumes)
@@ -389,9 +389,12 @@ fn stage_candidates(
         ranked.sort_by(|first, second| second.1.total_cmp(&first.1).then(first.0.cmp(&second.0)));
         let free_slots = IDX_CANDS - trainees.len();
         for (rank, (trainee, value)) in ranked.into_iter().enumerate() {
-            let record = json!({
-                "id": data.umas[trainee].id, "name": data.umas[trainee].name, "ceiling": value, "basis": "searched"
-            });
+            let record = CandidateHint {
+                id: data.umas[trainee].id,
+                name: data.umas[trainee].name.clone(),
+                ceiling: value,
+                basis: "searched",
+            };
             if rank < free_slots {
                 trainees.push(trainee);
                 hint.push(record);
@@ -416,9 +419,8 @@ fn stage_candidates(
         let ranked =
             today.into_iter().map(|uma| (uma, "today")).chain(full_loop.into_iter().map(|uma| (uma, "full_loop")));
         for (rank, (HintUma { trainee, ceiling }, basis)) in ranked.enumerate() {
-            let record = json!({
-                "id": data.umas[trainee].id, "name": data.umas[trainee].name, "ceiling": ceiling, "basis": basis
-            });
+            let record =
+                CandidateHint { id: data.umas[trainee].id, name: data.umas[trainee].name.clone(), ceiling, basis };
             if rank < free_slots {
                 trainees.push(trainee);
                 hint.push(record);
@@ -676,7 +678,7 @@ impl PlanContext<'_, '_> {
                     row,
                 })
                 .collect();
-            efficiencies.sort_by(|first, second| second.efficiency.partial_cmp(&first.efficiency).unwrap());
+            efficiencies.sort_by(|first, second| second.efficiency.total_cmp(&first.efficiency));
             let Some(best) = efficiencies.first() else { continue };
             let second = efficiencies.get(1).map_or(best.efficiency, |runner_up| runner_up.efficiency);
             for candidate_row in &efficiencies {
@@ -737,7 +739,7 @@ fn plan_surrogate(
     best_careers: &mut crate::uma::UmaTable<CachedSearch>,
     trainee: crate::uma::UmaIndex,
     buf: &mut Vec<f64>,
-) -> Option<Value> {
+) -> Option<SurrogateDifference> {
     let settings = input.settings;
     let surrogate = best_sur(simulator, input.input_parents(), trainee, settings.sur_margin, buf);
     if settings.surrogate_mode != 2 {
@@ -750,9 +752,13 @@ fn plan_surrogate(
     let same = searched.as_ref().map(Found::unordered_parents) == surrogate.as_ref().map(Found::unordered_parents);
     if !same || (searched_value - surrogate_value).abs() > 1e-9 * searched_value.max(surrogate_value) {
         let data = input.resources.data;
-        return Some(
-            json!({"trainee": data.umas[trainee].name, "search": [searched.as_ref().map(|career| [career.first_parent, career.second_parent]), searched_value], "sur": [surrogate.as_ref().map(|career| [career.first_parent, career.second_parent]), surrogate_value]}),
-        );
+        let parents =
+            |career: &Option<Found>| career.as_ref().map(|career| [career.first_parent, career.second_parent]);
+        return Some(SurrogateDifference {
+            trainee: data.umas[trainee].name.clone(),
+            search: (parents(&searched), searched_value),
+            sur: (parents(&surrogate), surrogate_value),
+        });
     }
     None
 }

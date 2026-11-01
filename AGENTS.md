@@ -27,7 +27,8 @@ evidence), `docs/RESEARCH.md` (the maths), `research/README.md` (the scripts beh
   reference is re-taken. When results move on purpose:
   - the new outputs replace `val/ref__*` / `val/refpu__*` (or `val/plan/ref__*`) in the same commit;
   - `val/joint_check.py TAG` (part of `val`), an independent recomputation of the odds, agrees within 1e-3;
-  - the `plan_roll` fixture (`pkg/loopopt/tests/fixtures/plan_roll.json`) is re-taken from the solver's own rolls;
+  - the `plan_roll` fixture (`pkg/loopopt/tests/fixtures/plan_roll.json`) is re-taken from the solver's own rolls
+    (`BLESS=1`, `docs/BUILD.md`, *Tests*);
   - `./build.sh research` runs again, since §6 recomputes the references and §13 runs the solver.
 
   Speed work keeps outputs byte-identical (`val/same.py`, `docs/PERF.md`). After data or solver changes, rerun
@@ -44,8 +45,8 @@ evidence), `docs/RESEARCH.md` (the maths), `research/README.md` (the scripts beh
   its test made robust; it is never tuned to pass. An undetected effect is "not detectable", not "no effect".
 - **Game facts come from data**: `master.mdb`, the exported JSON and GameTora's files, never memory. GameTora's files
   are read and decoded only through `pkg/loopopt/export/gametora.py`.
-- **Pages** recreate the game's UI: its colours with a 3:1 contrast floor on the planner pages and WCAG AAA on /about,
-  both checked by the browser suite; phones are designed at 375 px wide first.
+- **Pages** recreate the game's UI: its colours with a 3:1 contrast floor on the planner pages and WCAG AAA on /about
+  (judged by eye: no automated audit since 2026-11-01); phones are designed at 375 px wide first.
 - **Never commit** anything from the game (`game/`, `webapp/img/`) or downloaded (`cache/`). `.gitignore` is a
   whitelist: a path outside the whitelisted directories (`docs/`, `research/`, `pkg/loopopt/src/`, …) needs its own
   line; `git check-ignore -v PATH` shows which rule applies.

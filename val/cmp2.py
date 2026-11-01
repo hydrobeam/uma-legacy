@@ -7,11 +7,12 @@ is printed as such and passes here; `val/same.py`, which `./build.sh val` runs n
 commit that moves a tie re-takes the reference."""
 
 import argparse
-import json
 import sys
 import glob
 import os
 from typing import NamedTuple
+
+from solver import CAP_CLASSES, near_cap, read_output_or_none
 
 
 class DeckSignature(NamedTuple):
@@ -121,17 +122,6 @@ def career_signatures(output):
 
 
 VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__)) + "/"
-# the deck structure classes of the exact caps (`cap_class`: chain-varying targets; a multi-target group counts as 4+)
-CAP_CLASSES = ["0-1", "2", "3", "4+"]
-
-
-def near_cap(ratio, cap):
-    # a scored deck's exact / product r is near its class's assumed cap c: past three quarters of the cap's headroom
-    # over 1 (1.1875 of 1.25; 1.0375 of 1.05).
-    # The same rule as val/planval.py.
-    return ratio > 1 + 0.75 * (cap - 1)
-
-
 parser = argparse.ArgumentParser(
     description="Compare rounded validation values, selected decks or careers, and exact/product cap margins.",
     allow_abbrev=False,
@@ -142,14 +132,6 @@ arguments = parser.parse_args()
 tag, ref = arguments.tag, arguments.ref
 mismatches = 0
 compared = 0
-
-
-def load(p):
-    t = open(p).read()
-    try:
-        return json.loads(t[t.index("{") :])
-    except Exception:
-        return None
 
 
 # an output without a reference (a new job) compares with nothing: it fails until its reference is taken
@@ -163,7 +145,7 @@ for reference_path in sorted(glob.glob(VALIDATION_DIR + ref + "__*.out")):
     candidate_path = VALIDATION_DIR + f"{tag}__{name}"
     if not os.path.exists(candidate_path):
         continue
-    reference, candidate = load(reference_path), load(candidate_path)
+    reference, candidate = read_output_or_none(reference_path), read_output_or_none(candidate_path)
     compared += 1
     if reference is None or candidate is None:
         print(name, "PARSE FAIL", reference is None, candidate is None)

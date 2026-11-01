@@ -5,26 +5,15 @@ import { ASSETS, gameData } from '../data.ts';
 import { isOwned, jobTargets, ownedFields, scenarioFields, starDist } from '../job.ts';
 import { ERA } from '../saved.ts';
 import type { SettingsView } from '../settings.ts';
+import type { Request } from '../gen/solver.ts';
 import type { LoopReport, Status } from './types.ts';
 
 /** a target as the job sends it: its skill group, and 2 when the scenario hands out its gold */
 export type JobTarget = ReturnType<typeof jobTargets>[number];
-/** the loop search's job (the solver's `deck` command, pkg/loopopt/src/web.rs). Its field order is part of its key
- *  (jobKey), which the kept result and the suite's recorded solver replies are found by: keep it. */
-export type DeckJob = {
-  cmd: 'deck';
-  targets: JobTarget[];
-  star_dist: number[];
-  exclude: number[];
-  exclude_outfits: number[];
-  extra: number[][];
-  owned_cards: number[];
-  borrow: boolean;
-  top_decks: number;
-  per_uma: boolean;
-  scenario: string;
-  exclude_cards?: number[];
-};
+/** the loop search's job: the solver's `Request` for `deck` (its targets and roster, `SkillJob`, and its deck search's
+ *  settings, `DeckJob`; generated). The field order `buildDeckJob` writes is part of its key (jobKey), which the kept
+ *  result and the suite's recorded solver replies are found by: keep it. */
+export type DeckJob = Extract<Request, { cmd: 'deck' }>;
 /** settings the search cannot start from: no target, or fewer than 3 umas owned (`owned` of them) */
 export type Blocked = { blocked: 'targets' } | { blocked: 'umas'; owned: number };
 export type Built = { job: DeckJob; targets: JobTarget[] } | Blocked;

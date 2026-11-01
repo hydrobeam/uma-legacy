@@ -5,24 +5,13 @@
 //! that bound and prune its routes (`lift_reads`), and its routes. It saves about one career, as V's route promises
 //! (planval's first-step tripwire, -0.1); with no lift of an Alternative side it scored -0.585 (c89918a's admission
 //! with no lift), so a broken own-parent construction, or reads that prune its routes, fail it.
-use serde_json::Value;
-use std::process::Command;
+mod common;
+use common::{run_job, val_job};
 
 #[test]
 fn an_alternative_sides_builder_saves_about_one_career() {
-    let job = concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p10.json");
-    let output = Command::new(env!("CARGO_BIN_EXE_loopopt"))
-        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global"))
-        .arg("data.json")
-        .arg(job)
-        .env_remove("LOOPOPT_STATE_IN")
-        .env_remove("LOOPOPT_STATE_OUT")
-        .output()
-        .unwrap();
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    let text = String::from_utf8_lossy(&output.stdout);
-    let last = text.lines().rev().find(|line| !line.trim().is_empty()).unwrap();
-    let plan = &serde_json::from_str::<Value>(last).unwrap()["next"];
+    let output = run_job("plan-alternative", &val_job("plan/p10.json"));
+    let plan = &output["next"];
     let members = plan["members"].as_array().unwrap();
     let alternative = members
         .iter()

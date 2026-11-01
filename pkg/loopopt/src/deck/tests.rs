@@ -1107,13 +1107,8 @@ fn land_factor_forms_match() {
             _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - nh * (1.0 - ew) * (1.0 - q)),
         }
     };
-    let mut s = 0x2545_f491_4f6c_dd1d_u64;
-    let mut rnd = || {
-        s ^= s << 13;
-        s ^= s >> 7;
-        s ^= s << 17;
-        (s >> 11) as f64 / (1u64 << 53) as f64
-    };
+    let mut rng = crate::rng::XorShift64(0x2545_f491_4f6c_dd1d);
+    let mut rnd = || rng.unif();
     let odd = [f64::NAN, f64::INFINITY, -0.0, 0.0, 1.0, 1e-300];
     for it in 0..20000usize {
         let st = (rnd() * 3.0) as u8;
@@ -1139,7 +1134,7 @@ fn deck_limits_refuse_with_an_error() {
     let target_groups = [20159u32];
     let err = |deck_job: &DeckJob, target_groups: &[u32]| match deck_entries(&cards, deck_job, target_groups, &[]) {
         Ok(_) => None,
-        Err(e) => Some(e["error"].as_str().expect("an error message").to_string()),
+        Err(e) => Some(e.error),
     };
     assert_eq!(err(&job_with(json!({})), &target_groups), None);
     for size in [0, 7, 8, usize::MAX] {
@@ -1172,7 +1167,7 @@ fn deck_limits_refuse_with_an_error() {
                 passed += 1;
             }
             Err(e) => {
-                assert!(e["error"].as_str().unwrap().contains("kinds"), "{n} cards: {e}");
+                assert!(e.error.contains("kinds"), "{n} cards: {}", e.error);
                 refused += 1;
             }
         }

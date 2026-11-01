@@ -4,10 +4,13 @@
 use crate::career::evaluator::{Cur, DeckRequest, SurrogatePick};
 use crate::career::plan;
 use crate::career::plan::ScoringContext;
+use crate::career::plan::report::{CheckReply, Plan, Recommendation};
 use crate::career::pool::Pool;
+use crate::career::reply::CareerReport;
 use crate::career::sim::draw::{Keys, Outcomes, VeteranDraw};
 use crate::career::sim::play::PathState;
-use crate::career::sim::{ForcedCareer, Goal, IndexAction, PAGE_TOP, Sim, leg_json};
+use crate::career::sim::report::{ExecutedCareer, RotationAudit, SurrogateAudit, TraceReport, TraceRun};
+use crate::career::sim::{ForcedCareer, Goal, IndexAction, PAGE_TOP, Sim, legacy_job_value};
 use crate::career::{Career, Lineage, run_career_in};
 use serde_json::{Value, json};
 use std::rc::Rc;
@@ -54,33 +57,33 @@ pub(super) struct IndexRunCounts {
     pub(super) careers: Vec<String>,
     pub(super) check_seconds: Vec<f64>,
     pub(super) career_job_seconds: Vec<f64>,
-    pub(super) executed: Vec<Value>,
+    pub(super) executed: Vec<ExecutedCareer>,
 }
 impl IndexRunCounts {
-    fn record_plan(&mut self, report: &Value, started: std::time::Instant) {
+    fn record_plan(&mut self, plan: Option<&Plan>, started: std::time::Instant) {
         self.plans += 1;
         self.plan_seconds.push((started.elapsed().as_secs_f64() * 1e3).round() / 1e3);
-        if let Some(chosen) = report["next"]["options"]
-            .as_array()
-            .and_then(|options| options.iter().find(|option| option["chosen"].as_bool() == Some(true)))
-        {
-            *self.roles.entry(chosen["role"].as_str().unwrap_or("?").to_string()).or_default() += 1;
-            if chosen["best_odds"].as_bool() == Some(true) {
+        if let Some(chosen) = plan.and_then(|plan| plan.options.iter().find(|option| option.chosen)) {
+            *self.roles.entry(chosen.role.name().to_string()).or_default() += 1;
+            if chosen.best_odds {
                 self.best_odds_picks += 1;
             }
         }
     }
     /// `act_on` "pair_search": a plan's action (`IndexRunCounts::acted_on`).
-    fn record_action(&mut self, source: &str, career: &Value, check_ms: f64) {
+    fn record_action(&mut self, source: &str, career: Option<&str>, check_ms: f64) {
         *self.acted_on.entry(source.to_string()).or_default() += 1;
-        self.careers.push(career.as_str().unwrap_or("?").to_string());
+        self.careers.push(career.unwrap_or("?").to_string());
         self.check_seconds.push(check_ms.round() / 1e3);
     }
     /// `act_on` "pair_search": the career a plan's action ran (`IndexRunCounts::executed`), `ran_from` the report its
     /// `Cur` was built from.
-    fn record_executed(&mut self, ran_from: &Value, career: &Cur) {
-        self.executed.push(json!({"career": ran_from["career"], "p_all": career.p_all,
-            "outcome_sets": career.outcome_sets}));
+    fn record_executed(&mut self, ran_from: &CareerReport, career: &Cur) {
+        self.executed.push(ExecutedCareer {
+            career: ran_from.career.clone(),
+            p_all: career.p_all,
+            outcome_sets: career.outcome_sets.clone(),
+        });
     }
 }
 thread_local! { pub(super) static INDEX_RUN_COUNTS: std::cell::RefCell<IndexRunCounts> = std::cell::RefCell::new(IndexRunCounts::default()); }
@@ -137,7 +140,7 @@ impl Sim<'_, '_> {
     /// `trace`: building for loop_members[0] (A) with the others as builders. Each career: per builder her best career's
     /// exact chance of raising A's best odds (lam) and mean odds raised to (p1); the most efficient (lam (1/p - 1/p1)) runs,
     /// her veteran (drawn from every landed set) joins; recorded per career: A's odds before, the builder, lam, p1, and A's odds after
-    pub(super) fn trace(&mut self, initial_state: &PathState) -> Value {
+    pub(super) fn trace(&mut self, initial_state: &PathState) -> TraceReport {
         let finisher = self.members[0];
         let mut runs = vec![];
         for run in self.settings.first..self.settings.first + self.settings.runs {
@@ -158,14 +161,14 @@ impl Sim<'_, '_> {
                 let veteran = self.draw(&career, &state, VeteranDraw { keys, career_index, outcomes: Outcomes::Any });
                 self.add_veteran(&mut state, veteran, true, &mut interpolation_scratch);
                 let after = state.member_best[0].map_or(finisher_odds, |pick| pick.value);
-                rows.push(json!([
+                rows.push((
                     career_index,
                     finisher_odds,
-                    self.data.umas[builder.pick.lineage.trainee].name,
+                    self.data.umas[builder.pick.lineage.trainee].name.clone(),
                     builder.lift_chance,
                     builder.lifted_odds,
-                    after
-                ]));
+                    after,
+                ));
             }
             eprintln!(
                 "trace run {}: {} careers, A from {:.3e} to {:.3e}, {:.1} s",
@@ -175,9 +178,13 @@ impl Sim<'_, '_> {
                 state.member_best[0].map_or(0.0, |pick| pick.value),
                 started.elapsed().as_secs_f64()
             );
-            runs.push(json!({"run": run, "rows": rows}));
+            runs.push(TraceRun { run, rows });
         }
-        json!({"trace": runs, "trainee": self.data.umas[finisher].name, "builders": self.members[1..].iter().map(|&member| self.data.umas[member].name.clone()).collect::<Vec<_>>()})
+        TraceReport {
+            trace: runs,
+            trainee: self.data.umas[finisher].name.clone(),
+            builders: self.members[1..].iter().map(|&member| self.data.umas[member].name.clone()).collect(),
+        }
     }
     fn trace_builder(
         &mut self,
@@ -352,28 +359,32 @@ impl Sim<'_, '_> {
                 total
             };
             let (previous_exact, new_exact) = (exact(self, previous_veteran), exact(self, veteran_index));
-            self.audits.push(json!({"t": state.rotation.position, "rotation": [previous_surrogate, new_surrogate, previous_exact, new_exact, (new_surrogate > previous_surrogate) == (new_exact > previous_exact)]}));
+            self.audits.push(SurrogateAudit::Rotation(RotationAudit {
+                t: state.rotation.position,
+                rotation: (
+                    previous_surrogate,
+                    new_surrogate,
+                    previous_exact,
+                    new_exact,
+                    (new_surrogate > previous_surrogate) == (new_exact > previous_exact),
+                ),
+            }));
         }
         if new_surrogate > previous_surrogate {
             state.rotation.latest[member_index] = Some(veteran_index);
         }
     }
-    /// Builds a runnable career from a selected internal solver result.
-    /// The caller checks that `pick` is an object. Its required fields supply the
-    /// exact probabilities; resolving the win chances also fills the schedule cache.
-    fn cur_from_solver_pick(&mut self, pool: &Pool, pick: &Value) -> Cur {
-        let trainee = self.env.setup.uma_index(pick["trainee"]["id"].as_u64().unwrap() as u32).unwrap();
-        let (parent_a, parent_b) =
-            (pick["parents"][0].as_u64().unwrap() as usize, pick["parents"][1].as_u64().unwrap() as usize);
-        let outcome_sets: Vec<f64> =
-            pick["outcome_sets"].as_array().unwrap().iter().map(|chance| chance.as_f64().unwrap()).collect();
-        let lineage = Lineage { trainee, first_parent: parent_a, second_parent: parent_b };
+    /// Builds a runnable career from a selected internal solver result: its trainee, its parents (`parents`: the
+    /// report's, or as the caller maps them into the pool) and its exact probabilities (a report with its schedule,
+    /// so its `outcome_sets`); resolving the win chances also fills the schedule cache.
+    fn cur_from_solver_pick(&mut self, pool: &Pool, pick: &CareerReport, parents: [usize; 2]) -> Cur {
+        let trainee = self.env.setup.uma_index(pick.trainee.id).unwrap();
+        let outcome_sets = pick.outcome_sets.clone().expect("a pick's report has its landed sets");
+        let lineage = Lineage { trainee, first_parent: parents[0], second_parent: parents[1] };
         // (the outfit the pick's schedule ran: the report's `schedule_outfit`)
-        let outfit = crate::career::schedule::ScheduleOutfits::Card(
-            pick["trainee"]["schedule_outfit"].as_u64().unwrap_or(0) as u32,
-        );
+        let outfit = crate::career::schedule::ScheduleOutfits::Card(pick.trainee.schedule_outfit);
         let record = self.evaluator.wins(&self.env.setup, pool, lineage, outfit);
-        Cur { lineage, p_all: pick["p_all"].as_f64().unwrap(), outcome_sets, record, rotation: false }
+        Cur { lineage, p_all: pick.p_all, outcome_sets, record, rotation: false }
     }
     /// the in-process career search's pick (greedy_exact: the best career by P(all); under goal `looped` the best
     /// among the full veterans' careers when they make one)
@@ -397,22 +408,17 @@ impl Sim<'_, '_> {
         job_fields.remove("simulate");
         job_fields.insert(
             "legacies".into(),
-            Value::Array(legacies.iter().map(|&legacy| leg_json(&state.legacies[legacy])).collect()),
+            Value::Array(legacies.iter().map(|&legacy| legacy_job_value(&state.legacies[legacy])).collect()),
         );
         // (the job's `fix` indexes its own legacies, not these: the simulator ignores it)
         job_fields.insert("fix".into(), json!([]));
         job_fields.insert("top".into(), json!(1));
         job_fields.insert("per_trainee".into(), json!(false));
         let report = run_career_in(self.data, self.skills, self.cards, &job, self.kept);
-        let mut pick = report["results"][0].clone();
-        if !pick.is_object() {
-            return None;
-        }
+        let pick = report.search()?.results.first()?;
         // (the search's parents index `legacies`; the path's pool indexes every legacy)
-        for parent in pick["parents"].as_array_mut()? {
-            *parent = json!(legacies[parent.as_u64()? as usize]);
-        }
-        Some(self.cur_from_solver_pick(&state.pool, &pick))
+        let parents = pick.parents.map(|parent| legacies[parent]);
+        Some(self.cur_from_solver_pick(&state.pool, pick, parents))
     }
     /// `force`: the forced first career, the trainee on the two parents with her best deck (the career search with
     /// both parents fixed, in process)
@@ -420,21 +426,17 @@ impl Sim<'_, '_> {
         let mut job = self.job.clone();
         let job_fields = job.as_object_mut().unwrap();
         job_fields.remove("simulate");
-        job_fields.insert("legacies".into(), Value::Array(state.legacies.iter().map(leg_json).collect()));
+        job_fields.insert("legacies".into(), Value::Array(state.legacies.iter().map(legacy_job_value).collect()));
         job_fields.insert("trainees".into(), json!([forced.trainee]));
         job_fields.insert("fix".into(), json!(forced.parents));
         job_fields.insert("top".into(), json!(1));
         job_fields.insert("per_trainee".into(), json!(false));
         let report = run_career_in(self.data, self.skills, self.cards, &job, self.kept);
-        let pick = report["results"][0].clone();
-        assert!(
-            pick.is_object() && pick["trainee"]["id"] == forced.trainee,
-            "force: no career of {} on {:?}: {}",
-            forced.trainee,
-            forced.parents,
-            report.to_string().chars().take(300).collect::<String>()
-        );
-        self.cur_from_solver_pick(&state.pool, &pick)
+        let pick = report.search().and_then(|search| search.results.first());
+        let Some(pick) = pick.filter(|pick| pick.trainee.id == forced.trainee) else {
+            panic!("force: no career of {} on {:?}: {}", forced.trainee, forced.parents, report.excerpt(300));
+        };
+        self.cur_from_solver_pick(&state.pool, pick, pick.parents)
     }
     /// `index`: the page's plan for this pool (the career job with the pool as legacies, no places, the page's `top`,
     /// `next`, `no_reports`: the plan job the page sends, docs/SOLVER.md "Next career"), in process; its `choice` runs.
@@ -443,7 +445,7 @@ impl Sim<'_, '_> {
         let mut job = self.job.clone();
         let job_fields = job.as_object_mut().unwrap();
         job_fields.remove("simulate");
-        job_fields.insert("legacies".into(), Value::Array(state.legacies.iter().map(leg_json).collect()));
+        job_fields.insert("legacies".into(), Value::Array(state.legacies.iter().map(legacy_job_value).collect()));
         job_fields.insert("fix".into(), json!([]));
         job_fields.insert("top".into(), json!(PAGE_TOP));
         job_fields.insert("per_trainee".into(), json!(false));
@@ -458,72 +460,70 @@ impl Sim<'_, '_> {
         job_fields.insert("no_reports".into(), json!(true));
         let started = std::time::Instant::now();
         let report = run_career_in(self.data, self.skills, self.cards, &job, self.kept);
-        let pick = report["next"]["choice"].clone();
-        assert!(
-            pick.is_object(),
-            "index: the plan gave no pick: {}",
-            report.to_string().chars().take(300).collect::<String>()
-        );
-        INDEX_RUN_COUNTS.with(|counts| counts.borrow_mut().record_plan(&report, started));
+        let plan = report.plan();
+        let Some(pick) = plan.and_then(|plan| plan.choice.as_ref()) else {
+            panic!("index: the plan gave no pick: {}", report.excerpt(300));
+        };
+        INDEX_RUN_COUNTS.with(|counts| counts.borrow_mut().record_plan(plan, started));
         match self.settings.act_on {
-            IndexAction::Choice => self.cur_from_solver_pick(&state.pool, &pick),
-            IndexAction::PairSearch => self.recommended_cur(state, &report, &pick),
+            IndexAction::Choice => self.cur_from_solver_pick(&state.pool, pick, pick.parents),
+            IndexAction::PairSearch => self.recommended_cur(state, plan, pick),
         }
     }
     /// `act_on` "pair_search": the career the plan's check recommends (`next.robust.pairs.recommendation`, robust.rs
     /// `CheckWork::verdict`, what the page's `pairSearchNotes` shows): the plan's pick (`pick`, its `next.choice`) where
     /// it names that, or where the plan kept no check (no pair search: the page shows none); else the career it names,
     /// run with its own deck (`named_cur`)
-    fn recommended_cur(&mut self, state: &PathState, report: &Value, pick: &Value) -> Cur {
-        let plan_pick = &report["next"]["outcomes"]["career"];
-        let check = &report["next"]["robust"];
-        let recommendation = &check["pairs"]["recommendation"];
-        let source = recommendation["source"].as_str().unwrap_or("no_check");
-        let career = if recommendation.is_object() { &recommendation["career"] } else { plan_pick };
-        let check_ms = check["check_ms"].as_f64().unwrap_or(0.0);
+    fn recommended_cur(&mut self, state: &PathState, plan: Option<&Plan>, pick: &CareerReport) -> Cur {
+        let plan_pick = plan.and_then(|plan| plan.outcomes.as_ref()).map(|outcomes| outcomes.career.as_str());
+        let check = match plan.and_then(|plan| plan.robust.as_ref()) {
+            Some(CheckReply::Report(check)) => Some(check),
+            _ => None,
+        };
+        let recommendation = check.and_then(|check| check.pairs.as_ref()).map(|pairs| &pairs.recommendation);
+        let source = recommendation.map_or("no_check", |recommendation| recommendation.source);
+        let career = recommendation.map_or(plan_pick, |recommendation| Some(recommendation.career.as_str()));
+        let check_ms = check.map_or(0.0, |check| check.check_ms);
         INDEX_RUN_COUNTS.with(|counts| counts.borrow_mut().record_action(source, career, check_ms));
-        match source {
-            "no_check" | "plan_pick" => {
+        match (source, recommendation) {
+            ("no_check" | "plan_pick", _) | (_, None) => {
                 assert!(
-                    career == plan_pick && plan_pick.is_string(),
-                    "index: the check's plan pick {career} is not the plan's {plan_pick}"
+                    career == plan_pick && plan_pick.is_some(),
+                    "index: the check's plan pick {career:?} is not the plan's {plan_pick:?}"
                 );
-                let cur = self.cur_from_solver_pick(&state.pool, pick);
+                let cur = self.cur_from_solver_pick(&state.pool, pick, pick.parents);
                 INDEX_RUN_COUNTS.with(|counts| counts.borrow_mut().record_executed(pick, &cur));
                 cur
             }
-            _ => self.named_cur(state, recommendation),
+            (_, Some(recommendation)) => self.named_cur(state, recommendation),
         }
     }
     /// The career `recommendation` names (its `career` id, `trainee_id` and `parents`), run as the page runs a named
     /// career: a `career` job (docs/SOLVER.md) with her the one trainee and both parents fixed, its deck as named, no
     /// deck search; its report gives the career's exact P(all) and landed-set chances
-    fn named_cur(&mut self, state: &PathState, recommendation: &Value) -> Cur {
+    fn named_cur(&mut self, state: &PathState, recommendation: &Recommendation) -> Cur {
         let mut job = self.job.clone();
         let job_fields = job.as_object_mut().unwrap();
         job_fields.remove("simulate");
         job_fields.remove("next");
-        job_fields.insert("legacies".into(), Value::Array(state.legacies.iter().map(leg_json).collect()));
-        job_fields.insert("trainees".into(), json!([recommendation["trainee_id"]]));
-        job_fields.insert("fix".into(), recommendation["parents"].clone());
-        job_fields.insert("career".into(), recommendation["career"].clone());
+        job_fields.insert("legacies".into(), Value::Array(state.legacies.iter().map(legacy_job_value).collect()));
+        job_fields.insert("trainees".into(), json!([recommendation.trainee_id]));
+        job_fields.insert("fix".into(), json!(recommendation.parents));
+        job_fields.insert("career".into(), json!(recommendation.career));
         job_fields.insert("top".into(), json!(1));
         job_fields.insert("per_trainee".into(), json!(false));
         let started = std::time::Instant::now();
         let report = run_career_in(self.data, self.skills, self.cards, &job, self.kept);
-        let named = report["results"][0].clone();
-        assert!(
-            named.is_object() && named["trainee"]["id"] == recommendation["trainee_id"],
-            "index: the recommended career {} did not run: {}",
-            recommendation["career"],
-            report.to_string().chars().take(300).collect::<String>()
-        );
+        let named = report.search().and_then(|search| search.results.first());
+        let Some(named) = named.filter(|named| named.trainee.id == recommendation.trainee_id) else {
+            panic!("index: the recommended career {} did not run: {}", recommendation.career, report.excerpt(300));
+        };
         let seconds = (started.elapsed().as_secs_f64() * 1e3).round() / 1e3;
-        let cur = self.cur_from_solver_pick(&state.pool, &named);
+        let cur = self.cur_from_solver_pick(&state.pool, named, named.parents);
         INDEX_RUN_COUNTS.with(|counts| {
             let mut counts = counts.borrow_mut();
             counts.career_job_seconds.push(seconds);
-            counts.record_executed(&named, &cur);
+            counts.record_executed(named, &cur);
         });
         cur
     }

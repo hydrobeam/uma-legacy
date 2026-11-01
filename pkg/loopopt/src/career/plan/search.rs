@@ -1,13 +1,15 @@
 //! Candidate searches, rotation setup and proxy limits.
 use crate::career::evaluator::DeckRequest;
+use crate::career::plan::report::UmaName;
 use crate::career::plan::{ParentPool, PlanJob};
 use crate::career::pool::Pool;
 use crate::career::search::{Bar, Found, RankedPair};
 use crate::career::sim::{Sim, SimJob, SimulationOptions, SimulationRoster};
 use crate::career::{Ancestor, CareerSetup, Env, JobInputs, Legacy, Lineage};
 use crate::data::Data;
+use crate::refusal::Refusal;
 use crate::skills::SkillJob;
-use serde_json::{Value, json};
+use serde_json::json;
 pub(crate) const fn p_margin() -> f64 {
     1e9
 }
@@ -21,29 +23,29 @@ pub(crate) fn sim_for<'env, 'data>(
     kept: &'env mut crate::career::state::KeptState,
     input: &JobInputs<'data>,
     settings: &PlanJob,
-) -> Result<Sim<'env, 'data>, Value> {
+) -> Result<Sim<'env, 'data>, Refusal> {
     if env.setup.target_count > 12 || env.setup.uncertain_count > 10 {
-        return Err(json!({"error": "The plan takes at most 12 targets, 10 of them not guaranteed by the scenario."}));
+        return Err(Refusal::new("The plan takes at most 12 targets, 10 of them not guaranteed by the scenario."));
     }
     if !(1..=crate::career::plan::cont::MAX_PARTNERS).contains(&settings.partners)
         || !(1..=8).contains(&settings.builder_careers)
         || !(1..=crate::career::plan::combine::MAX_FRESH_LINEAGES).contains(&settings.fresh_lineages)
     {
-        return Err(
-            json!({"error": "next.partners takes 1 to 8, next.builder_careers 1 to 8, next.fresh_lineages 1 to 64."}),
-        );
+        return Err(Refusal::new(
+            "next.partners takes 1 to 8, next.builder_careers 1 to 8, next.fresh_lineages 1 to 64.",
+        ));
     }
     // (the partner and lift slots' leaf rows within the scoring's memory, `OUTCOME_BUDGET`; with their corner tables
     // past it, the setups ranked last are left out, `score::build::fit_partner_setups`)
     if (2 * settings.partners * IDX_CANDS) << (2 * env.setup.uncertain_count)
         > crate::career::plan::score::build::OUTCOME_BUDGET
     {
-        return Err(
-            json!({"error": "next.partners: too many partners for the scoring's memory at this many uncertain targets."}),
-        );
+        return Err(Refusal::new(
+            "next.partners: too many partners for the scoring's memory at this many uncertain targets.",
+        ));
     }
     let sim_job: SimJob = serde_json::from_value(json!({"margin": settings.margin}))
-        .map_err(|error| json!({"error": format!("The plan's margin does not make a simulator setting: {error}")}))?;
+        .map_err(|error| Refusal::new(format!("The plan's margin does not make a simulator setting: {error}")))?;
     // as `simulate` builds it (the continuations are the player's later careers: every owned trainee)
     let trainees = env.setup.owned.clone();
     Ok(Sim::new(
@@ -61,7 +63,7 @@ pub(crate) struct LoopRotation {
     /// Members as uma indices (`Data::umas`); empty when the base is refused.
     pub(crate) members: Vec<crate::uma::UmaIndex>,
     /// Each named member's {id, name}, for the page.
-    pub(crate) member_info: Vec<Value>,
+    pub(crate) member_info: Vec<UmaName>,
     /// Why there is no rotation.
     pub(crate) note: Option<String>,
 }
@@ -69,11 +71,11 @@ pub(crate) struct LoopRotation {
 /// The rotation for the loop base `ids` (chara ids). Members must be owned umas with a legal deck, at least three of
 /// them.
 pub(crate) fn rotation(setup: &CareerSetup, ids: &[u32]) -> LoopRotation {
-    let member_info: Vec<Value> = ids
+    let member_info: Vec<UmaName> = ids
         .iter()
         .map(|&id| {
             let uma = setup.data.umas.iter().find(|roster_uma| roster_uma.id == id);
-            json!({"id": id, "name": uma.map_or_else(|| format!("Uma {id}"), |roster_uma| roster_uma.name.clone())})
+            UmaName { id, name: uma.map_or_else(|| format!("Uma {id}"), |roster_uma| roster_uma.name.clone()) }
         })
         .collect();
     if member_info.is_empty() {
@@ -83,8 +85,7 @@ pub(crate) fn rotation(setup: &CareerSetup, ids: &[u32]) -> LoopRotation {
             note: Some("no loop base (loop_members empty)".into()),
         };
     }
-    let members: Vec<Option<crate::uma::UmaIndex>> =
-        member_info.iter().map(|info| info["id"].as_u64().and_then(|id| setup.uma_index(id as u32))).collect();
+    let members: Vec<Option<crate::uma::UmaIndex>> = member_info.iter().map(|info| setup.uma_index(info.id)).collect();
     if members.len() < 3
         || members.iter().any(|member| {
             member.is_none_or(|trainee| !setup.owned.contains(&trainee) || setup.deck_odds_ceilings[trainee].is_none())
@@ -545,7 +546,7 @@ pub(crate) fn hint_umas(
         working_pool.pop_veteran();
     }
     // best first; equal odds in uma order (stable)
-    out.sort_by(|first, second| second.ceiling.partial_cmp(&first.ceiling).unwrap());
+    out.sort_by(|first, second| second.ceiling.total_cmp(&first.ceiling));
     out.truncate(count);
     out
 }

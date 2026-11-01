@@ -1,66 +1,46 @@
-// The veterans' views and editors on happy-dom's document, bundled with esbuild as the page bundles them: the
+// @vitest-environment happy-dom
+// The veterans' views and editors on happy-dom's document, compiled as the page's build compiles them: the
 // spark editor (ui/Sparks under ui/InspView) shows each edit of the store's draft, a new record each (review-8c 1); change uma commits the uma at the pick, saved and
 // seen by the page's effects once the skills prompt is gone (the search held while it is open, review-10 1), and the
 // prompt dismissed keeps her sparks (review-8c 7).
-// node --test 'test/unit/*.test.*' (in webapp)
-import './fakepage.mjs';
+// npx vitest run (in webapp)
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import * as esbuild from 'esbuild';
+import { test, vi } from 'vitest';
+import '@preact/signals';
+import { h, render } from 'preact';
+import * as vs from '../../src/veterans/store.ts';
+import { on } from '../../src/store.ts';
+import {
+  addOpen,
+  askClosed,
+  askSkills,
+  changeUma,
+  openAdd,
+  openUmaPicker,
+  openWins,
+  searchHeld,
+  umaPickClosed,
+  winsClosed,
+} from '../../src/veterans/pickers.ts';
+import { AddList, VetEditors } from '../../src/veterans/Editors.tsx';
+import { WinsEditor } from '../../src/ui/Agenda.tsx';
+import { openColour } from '../../src/veterans/sparks.ts';
+import { InspView } from '../../src/ui/InspView.tsx';
+import { Details, legaciesOf } from '../../src/career/analysis/Details.tsx';
+import { loadData } from '../../src/data.ts';
 import { memory } from './fakes.mjs';
-import { GlobalRegistrator } from '@happy-dom/global-registrator';
 
-GlobalRegistrator.register({ width: 1440, height: 900 });
+vi.mock('#page-data', () => import('./fakepage.mjs'));
+
 document.documentElement.className = 'game'; // (the planner pages' class)
-
-const WEBAPP = fileURLToPath(new URL('../..', import.meta.url));
-const built = await esbuild.build({
-  stdin: {
-    contents: `
-      import '@preact/signals';
-      export * as store from './src/veterans/store.ts';
-      export { on } from './src/store.ts';
-      export { openUmaPicker, umaPickClosed } from './src/veterans/pickers.ts';
-      export { changeUma, searchHeld, openWins, winsClosed, askSkills, askClosed, openAdd, addOpen } from './src/veterans/pickers.ts';
-      export { VetEditors, AddList } from './src/veterans/Editors.tsx';
-      export { WinsEditor } from './src/ui/Agenda.tsx';
-      export { openColour } from './src/veterans/sparks.ts';
-      export { InspView } from './src/ui/InspView.tsx';
-      export { Details, legaciesOf } from './src/career/analysis/Details.tsx';
-      export { h, render } from 'preact';
-      export { loadData } from './src/data.ts';`,
-    resolveDir: WEBAPP,
-    loader: 'js',
-  },
-  bundle: true,
-  write: false,
-  format: 'esm',
-  jsx: 'automatic',
-  jsxImportSource: 'preact',
-  logLevel: 'silent',
-});
-// (imported from a file, so a failure's stack names its lines)
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llp-views-')),
-  file = path.join(dir, 'views.mjs');
-fs.writeFileSync(file, built.outputFiles[0].text);
-const page = await import(pathToFileURL(file).href);
-fs.rmSync(dir, { recursive: true });
-const { store: vs, on, changeUma, searchHeld, VetEditors, InspView, Details, legaciesOf, h, render, loadData } = page;
-const { openWins, winsClosed, askSkills, askClosed, openAdd, addOpen, AddList, WinsEditor, openColour } = page;
-const { openUmaPicker, umaPickClosed } = page;
 // the career tables the spark bars read (blue, pink and unique names; no races)
-globalThis.__LLP_DATA['data-career'] = {
+await loadData({
   blues: {},
   pinks: { 11: 'Turf', 12: 'Dirt' },
   uniques: { 30001: 'Her Own' },
   races: ['Arima Kinen'],
   race_turns: [[47, 71]],
-};
-await loadData(globalThis.__LLP_DATA['data-career']);
+});
 
 const settle = async () => {
   for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));

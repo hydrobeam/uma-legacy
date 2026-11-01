@@ -4,7 +4,7 @@ For every deck result of a validation run, recompute P(all targets land) from th
 reported decks and loops, jointly over the chain process (Binomial(CHAIN_N, p) events with logit p = CHAIN_A + CHAIN_B x
 the deck's pals, group cards not counted, or the job's chain_events; each event advancing a running chain card, all
 equally likely, or weighted by links left under job chain_rule "slots"; a card-event stop risk ending its chain on
-CHAIN_STOP_SHARE of its firings, its own k/n under "slots"; the constants read from src/deck/chains.rs), over each event's outcomes and over one card's training draws
+CHAIN_STOP_SHARE of its firings, its own k/n under "slots"; the constants as `loopopt constants` prints them), over each event's outcomes and over one card's training draws
 (P(no hint for a set A of its targets) by forward simulation of the draws, each uniform over the skills below Lv 5, a
 skill leaving after ceil(5 / hint levels per draw) draws; floor/ceil(h) draws, h = base(scenario) x (1 + hf/100) x
 (1 + d(scenario) x specialty/100), the two constants read from research/results.json as the solver's build reads
@@ -21,11 +21,12 @@ import itertools
 import json
 import math
 import os
-import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import NamedTuple
+
+import solver
 
 
 class SkillReference(NamedTuple):
@@ -36,16 +37,10 @@ class SkillReference(NamedTuple):
 
 
 def chain_constants():
-    """CHAIN_N, CHAIN_A, CHAIN_B and CHAIN_STOP_SHARE (as k, n) from the solver's source, read as its build reads them"""
-    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pkg/loopopt/src/deck/chains.rs")).read()
-    number = lambda name, kind: float(re.search(rf"const {name}: {kind} = (-?[\d._]+);", src).group(1).replace("_", ""))
-    share = re.search(r"const CHAIN_STOP_SHARE: \(u\d+, u\d+\) = \((\d+), (\d+)\);", src)
-    return (
-        int(number("CHAIN_N", "u32")),
-        number("CHAIN_A", "f64"),
-        number("CHAIN_B", "f64"),
-        (int(share[1]), int(share[2])),
-    )
+    """CHAIN_N, CHAIN_A, CHAIN_B and CHAIN_STOP_SHARE (as k, n), as the solver uses them (`loopopt constants`)"""
+    c = solver.constants()
+    k, n = c["chain_stop_share"]
+    return c["chain_n"], c["chain_a"], c["chain_b"], (k, n)
 
 
 CHAIN_N, CHAIN_A, CHAIN_B, CHAIN_STOP_SHARE = chain_constants()
@@ -60,7 +55,7 @@ class StopRisk(NamedTuple):
 class TargetSkill(NamedTuple):
     """An uncertain target's index and hint tier (1 white, 2 gold)."""
 
-    index: int
+    target: int
     tier: int
 
 
@@ -222,7 +217,7 @@ def deck_model(job, d):
     target_count = len(uncertain_targets)
     nm = lambda x: (x, 1.0) if isinstance(x, str) else (x[0], x[1])
     target_skill = lambda n: (
-        TargetSkill(index=uncertain_targets.index(skill_targets[n].group), tier=skill_targets[n].tier)
+        TargetSkill(target=uncertain_targets.index(skill_targets[n].group), tier=skill_targets[n].tier)
         if n in skill_targets and skill_targets[n].group in uncertain_targets
         else None
     )
@@ -398,9 +393,14 @@ def deck_model(job, d):
     )
 
 
-def check(out, job, d, alt_q=None):
-    """max |recomputed / reported p_all - 1| over the result's loops; with `alt_q` (top -> list of per-lineage q
-    vectors) also, per loop, the mean P(all) at each of those q vectors: returns worst alone, or (worst, [[P per vector] per loop]) with alt_q"""
+def check(out, job, d):
+    """max |recomputed / reported p_all - 1| over the result's loops"""
+    return check_loops(out, job, d)[0]
+
+
+def check_loops(out, job, d, alt_q=None):
+    """(max |recomputed / reported p_all - 1| over the result's loops, [[P per vector] per loop]): with `alt_q` (top ->
+    list of per-lineage q vectors), per loop the mean P(all) at each of those q vectors (none without it)"""
     deck_miss_probability, lineage, skills_db, uncertain_targets, _ = deck_model(job, d)
     worst = 0.0
     alt = []
@@ -448,7 +448,7 @@ def check(out, job, d, alt_q=None):
                     for qs in alt_q(top)
                 ]
             )
-    return worst if alt_q is None else (worst, alt)
+    return worst, alt
 
 
 if __name__ == "__main__":

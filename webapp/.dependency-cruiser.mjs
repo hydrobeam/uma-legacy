@@ -17,7 +17,8 @@ export const LAYERS = [
   ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'saved', 'storage']],
   [
     'model',
-    ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'career/job', 'career/keys', 'career/run']
+    ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'career/job', 'career/reply']
+      .concat(['career/keys', 'career/run'])
       .concat(['career/analysis/compare', 'loop/job', 'loop/keys', 'loop/members', 'loop/run', 'umamoesetup'])
       .concat(['veterans/names']),
   ],

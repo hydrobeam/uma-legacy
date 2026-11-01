@@ -14,24 +14,18 @@ usage: uv run val/sim/lam_regress.py MONO_DIR    (the folder val/mono.py prints 
 
 import argparse
 import glob
-import json
 import math
 import os
-import re
 import statistics
 import sys
 
-REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-
-def lam_decay():
-    src = open(os.path.join(REPO, "pkg", "loopopt", "src", "career", "plan", "cont.rs")).read()
-    return float(re.search(r"const LAM_DECAY: f64 = ([\d.]+);", src).group(1))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # val/, for the shared solver module
+import solver
+from solver import read_output
 
 
 def fit_of(path):
-    lines = [line for line in open(path).read().splitlines() if line.strip()]
-    plan = json.loads(lines[-1]).get("next") or {}
+    plan = read_output(path).get("next") or {}
     return {entry[0]: entry for entry in plan.get("fit") or [] if len(entry) >= 5}
 
 
@@ -45,7 +39,7 @@ def implied_decay(points):
 
 
 def main(mono_dir):
-    decay = lam_decay()
+    decay = solver.constants()["lam_decay"]  # cont.rs's LAM_DECAY, as the solver uses it
     points = []  # (pool, roll, chara, ln g, ln(lam_refit / lam0), lam_refit / lam(p'), lam0)
     for base_path in sorted(glob.glob(os.path.join(mono_dir, "*_base.out"))):
         pool = os.path.basename(base_path)[: -len("_base.out")]

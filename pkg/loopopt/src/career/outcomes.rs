@@ -2,6 +2,10 @@
 use crate::career::clock::{now_ms, prof};
 use crate::career::inherit::{ExactOptions, Inheritance, aff_factor, inherit, set_ews};
 use crate::career::pool::Pool;
+use crate::career::reply::{
+    AptitudeStart, Aptitudes, CareerReport, CareerSlot, CareerTarget, CareerTrainee, PinkFireReport, PinkInheritance,
+    PinkOutcomeReport, PinkTypeChance, ScenarioBuy, SourcedBuy, TargetBuy, WeightedPinkOutcome,
+};
 use crate::career::schedule::{ExpectedRecord, PinkOutcome, ScheduleOutfits, apt_pink, pink_p};
 use crate::career::search::Found;
 use crate::career::{Ancestor, CareerSetup, DeckSearchMemo, Legacy, Lineage, SearchState};
@@ -9,8 +13,8 @@ use crate::deck::joint::exact::{JointScratch, joint_eval_in, joint_prep};
 use crate::deck::joint::{JointExt, JointOptions};
 use crate::deck::sources::TargetSources;
 use crate::deck::space::SelectedDeck;
-use crate::skills::{GEN_GOLD, OutfitOption};
-use serde_json::{Value, json};
+use crate::loop_planner::output::{OutfitLabel, TargetCover};
+use crate::skills::{GEN_GOLD, LegacyKind, OutfitOption};
 /// What a corner table (`CareerSetup::corners_kept`) reads besides the model: the trainee's deck class and the deck's
 /// entries and filler cards.
 #[derive(PartialEq, Eq, Hash)]
@@ -61,7 +65,13 @@ fn named_outfits<'option>(
 
 impl CareerSetup<'_> {
     /// One career's report: trainee and outfit, parents, the six legacy slots, per target odds, aptitudes, deck, schedule.
-    pub(crate) fn report(&self, state: &mut SearchState, pool: &Pool, found: &Found, with_schedule: bool) -> Value {
+    pub(crate) fn report(
+        &self,
+        state: &mut SearchState,
+        pool: &Pool,
+        found: &Found,
+        with_schedule: bool,
+    ) -> CareerReport {
         let data = self.data;
         let target_count = self.target_count;
         let uncertain_count = self.uncertain_count;
@@ -104,25 +114,38 @@ impl CareerSetup<'_> {
         );
         let skill_job = self.skill_job;
         let OutfitOption { coverage, .. } = &self.model.outfit_options[trainee][outfit];
-        let covers: Vec<Value> = coverage
+        let covers = coverage
             .iter()
             .zip(&self.uncertain_targets)
             .filter(|(level, i)| **level > 0 && !(**level == 1 && skill_job.targets[**i].guaranteed == 1))
-            .map(|(level, i)| json!({"group": skill_job.targets[*i].group, "level": level}))
+            .map(|(&level, &i)| TargetCover { group: skill_job.targets[i].group, level })
             .collect();
         let default_coverage: Vec<u8> =
             self.uncertain_targets.iter().map(|&i| u8::from(skill_job.targets[i].guaranteed == 1)).collect();
-        let outfits: Vec<Value> = named_outfits(
+        let outfits = named_outfits(
             &data.umas[trainee],
             &self.model.outfit_options[trainee][outfit],
             &default_coverage,
             &tied_grades,
         )
         .iter()
-        .map(|card| json!({"id": card.0, "label": card.1}))
+        .map(|(id, label)| OutfitLabel { id: *id, label: label.clone() })
         .collect();
-        let slots: Vec<Value> = legacy_slots.iter().map(|slot| json!({"kind": if slot.parent { "parent" } else { "grandparent" }, "legacy": slot.legacy, "gp": slot.grandparent_slot,
-            "chara": slot.character_id, "name": name(slot.character_id), "rel": slot.relation_points, "race": slot.race, "aff": slot.relation_points + slot.race, "stars": &*slot.stars, "pinks": &*slot.pinks})).collect();
+        let slots = legacy_slots
+            .iter()
+            .map(|slot| CareerSlot {
+                kind: if slot.parent { LegacyKind::Parent } else { LegacyKind::Grandparent },
+                legacy: slot.legacy,
+                gp: slot.grandparent_slot,
+                chara: slot.character_id,
+                name: name(slot.character_id),
+                rel: slot.relation_points,
+                race: slot.race,
+                aff: slot.relation_points + slot.race,
+                stars: std::rc::Rc::clone(&slot.stars),
+                pinks: std::rc::Rc::clone(&slot.pinks),
+            })
+            .collect();
         // per target, buying it and landing it (MODEL.md, skills): bought as gold (her outfit's gold, or a deck gold hint)
         // or white (her outfit's white; else not gold and hinted by the deck, her own events or inheritance), each landing
         // with GEN_GOLD / GEN_WHITE x her spark scale. The gold chance is the exact one over the deck's chain states
@@ -132,7 +155,7 @@ impl CareerSetup<'_> {
         // landing GEN_GOLD.
         let scales = self.scale(&carriers);
         let outfit_event_chances = &self.model.event_chances[trainee][outfit];
-        let buy = |i: usize| -> Value {
+        let buy = |i: usize| -> TargetBuy {
             if let Some(pos) = self.uncertain_targets.iter().position(|&target| target == i) {
                 let (coverage_level, white_hint_chances, gold_hint_chances, e) = (
                     coverage[pos],
@@ -145,17 +168,36 @@ impl CareerSetup<'_> {
                 let land_gold = gold * crate::skills::GEN_GOLD * scale;
                 let land_white = if coverage_level == 2 { 0.0 } else { target_chances[i] - land_gold };
                 let white = land_white / (crate::skills::GEN_WHITE * scale);
-                json!({"gold": gold, "white": white, "land_gold": land_gold, "land_white": land_white,
-                       "deck_gold": gold_hint_chances, "deck_white": white_hint_chances, "own_event": e, "inherit": q[i], "outfit": coverage_level})
+                TargetBuy::Sourced(SourcedBuy {
+                    gold,
+                    white,
+                    land_gold,
+                    land_white,
+                    deck_gold: gold_hint_chances,
+                    deck_white: white_hint_chances,
+                    own_event: e,
+                    inherit: q[i],
+                    outfit: coverage_level,
+                })
             } else {
                 let pos = self.fixed_targets.iter().position(|&target| target == i).unwrap_or(0);
-                json!({"gold": 1.0, "white": 0.0, "land_gold": crate::skills::GEN_GOLD * scales.guaranteed.get(pos).copied().unwrap_or(1.0), "land_white": 0.0, "scenario": true})
+                TargetBuy::Scenario(ScenarioBuy {
+                    gold: 1.0,
+                    white: 0.0,
+                    land_gold: crate::skills::GEN_GOLD * scales.guaranteed.get(pos).copied().unwrap_or(1.0),
+                    land_white: 0.0,
+                    scenario: true,
+                })
             }
         };
-        let targets: Vec<Value> = (0..target_count)
-            .map(|i| {
-                json!({"group": skill_job.targets[i].group, "q": q[i], "carriers": carriers[i], "p": target_chances[i],
-            "gold": skill_job.targets[i].guaranteed == 2, "buy": buy(i)})
+        let targets = (0..target_count)
+            .map(|i| CareerTarget {
+                group: skill_job.targets[i].group,
+                q: q[i],
+                carriers: carriers[i],
+                p: target_chances[i],
+                gold: skill_job.targets[i].guaranteed == 2,
+                buy: buy(i),
             })
             .collect();
         let display_deck = self.space.pdeck(&found.deck, &[trainee_id]);
@@ -164,7 +206,7 @@ impl CareerSetup<'_> {
             legacy_slots.iter().flat_map(|slot| slot.pinks.iter().map(|spark| spark.0)).collect();
         pink_groups.sort_unstable();
         pink_groups.dedup();
-        let pinks: Vec<Value> = pink_groups
+        let pinks = pink_groups
             .iter()
             .map(|&group| {
                 let (mut miss, mut n) = (1.0f64, 0);
@@ -177,7 +219,7 @@ impl CareerSetup<'_> {
                         miss *= 1.0 - pink_p(stars, aff_factor(slot.relation_points, slot.race));
                     }
                 }
-                json!({"group": group, "q": 1.0 - miss * miss, "carriers": n})
+                PinkInheritance { group, q: 1.0 - miss * miss, carriers: n }
             })
             .collect();
         // her aptitudes in the schedule's outfit and her veteran's pink spark (MODEL.md): base and start grades (data.json
@@ -193,31 +235,67 @@ impl CareerSetup<'_> {
         };
         let aptitudes = pink_career.map(|pink| {
             let pink_gen = Self::pink_gen(pink);
-            let fire_json = |outcome: &PinkOutcome| -> Vec<Value> {
-                outcome.fire.iter().map(|spark| json!({"group": apt_pink(spark.aptitude), "apt": spark.aptitude, "p": spark.chance, "slot": spark.slot, "stars": spark.stars})).collect()
+            let outcome_report = |outcome: &PinkOutcome| PinkOutcomeReport {
+                start: outcome.start,
+                fire: outcome
+                    .fire
+                    .iter()
+                    .map(|spark| PinkFireReport {
+                        group: apt_pink(spark.aptitude),
+                        apt: spark.aptitude,
+                        p: spark.chance,
+                        slot: spark.slot,
+                        stars: spark.stars,
+                    })
+                    .collect(),
             };
-            let mut aptitudes = json!({"base": pink.base,
-                   "pink_gen": (0..10).map(|k| json!({"group": apt_pink(k), "p": pink_gen[k]})).collect::<Vec<_>>()});
-            if let [outcome] = pink.outcomes.as_slice() {
-                aptitudes["start"] = json!(outcome.start);
-                aptitudes["fire"] = json!(fire_json(outcome));
+            let start = if let [outcome] = pink.outcomes.as_slice() {
+                AptitudeStart::Known(outcome_report(outcome))
             } else {
-                aptitudes["outcomes"] = pink.outcomes.iter().map(|outcome| json!({"p": outcome.chance, "start": outcome.start, "fire": fire_json(outcome)})).collect();
+                AptitudeStart::Outcomes {
+                    outcomes: pink
+                        .outcomes
+                        .iter()
+                        .map(|outcome| WeightedPinkOutcome { p: outcome.chance, outcome: outcome_report(outcome) })
+                        .collect(),
+                }
+            };
+            Aptitudes {
+                base: pink.base,
+                pink_gen: (0..10).map(|k| PinkTypeChance { group: apt_pink(k), p: pink_gen[k] }).collect(),
+                start,
             }
-            aptitudes
         });
-        let outcomes =
-            if with_schedule && target_count <= 12 { json!(self.outcome_sets(outfit, extras)) } else { Value::Null };
-        let (schedule, win_chances) = match &planned {
+        let outcome_sets = (with_schedule && target_count <= 12).then(|| self.outcome_sets(outfit, extras));
+        let (schedule, g1_wins) = match &planned {
             Some(planned) if with_schedule => {
-                (self.schedule_rows(pool, lineage, planned), planned.win_chances.as_slice())
+                (Some(self.schedule_rows(pool, lineage, planned)), Some(planned.win_chances.iter().sum::<f64>()))
             }
-            _ => (Value::Null, [].as_slice()),
+            _ => (None, None),
         };
-        json!({"trainee": {"id": trainee_id, "name": data.umas[trainee].name, "outfits": outfits, "covers": covers, "schedule_outfit": schedule_outfit.card},
-               "career": crate::career::plan::kept::career_id(&self.space, trainee_id, found),
-               "parents": [first_parent, second_parent], "slots": slots, "targets": targets, "p_all": exact.p_all, "p_minus1": exact.p_all_but_one, "expected": target_chances.iter().sum::<f64>(),
-               "bound": found.ceiling, "deck": display_deck.out(&self.uncertain_groups), "pinks": pinks, "aptitudes": aptitudes, "schedule": schedule, "outcome_sets": outcomes, "g1_wins": if with_schedule { json!(win_chances.iter().sum::<f64>()) } else { Value::Null }})
+        CareerReport {
+            trainee: CareerTrainee {
+                id: trainee_id,
+                name: data.umas[trainee].name.clone(),
+                outfits,
+                covers,
+                schedule_outfit: schedule_outfit.card,
+            },
+            career: crate::career::plan::kept::career_id(&self.space, trainee_id, found),
+            parents: [first_parent, second_parent],
+            slots,
+            targets,
+            p_all: exact.p_all,
+            p_minus1: exact.p_all_but_one,
+            expected: target_chances.iter().sum::<f64>(),
+            bound: found.ceiling,
+            deck: display_deck.out(&self.uncertain_groups),
+            pinks,
+            aptitudes,
+            schedule,
+            outcome_sets,
+            g1_wins,
+        }
     }
 
     /// Corner table of trainee t with deck `deck`: per outfit, P(all) with every spark-generation scale 1 at the 2^nu

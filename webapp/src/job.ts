@@ -3,6 +3,7 @@
 import { gameData, SCEN_GOLDS } from './data.ts';
 import type { Uma } from './data.ts';
 import type { SettingsView } from './settings.ts';
+import { assert } from './must.ts';
 
 export type { SettingsView };
 // skills a career always gives an uma outside her outfit and the deck: Tokai Teio's Head-On (her Triple Crown event;
@@ -34,7 +35,11 @@ const noOutfit = (u: Uma, outfits: SettingsView['outfits']): boolean =>
 export const isOwned = (u: Uma, s: Pick<SettingsView, 'roster' | 'outfits'>): boolean =>
   s.roster[u.id] !== 'out' && !noOutfit(u, s.outfits);
 // the lineage rank's chances of 1, 2 and 3 stars
-export const starDist = (s: SettingsView) => s.rank.split(',').map(Number);
+export const starDist = (s: SettingsView): [number, number, number] => {
+  const [one, two, three, ...rest] = s.rank.split(',').map(Number);
+  assert(one !== undefined && two !== undefined && three !== undefined && !rest.length, 'a rank is three star shares');
+  return [one, two, three];
+};
 // The fields both pages' jobs carry, in two runs, each spread into both jobs (which order them differently: a job's
 // field order is part of its key, the kept result's and the suite's recorded replies', so each keeps its own):
 // what is owned: the umas left out (`exclude`, which each page decides), the outfits not owned, the skills a career

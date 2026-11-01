@@ -19,7 +19,7 @@ within CAREERS careers (S_K = 1: every run of the 2026-10-26 measurement on p10,
 CAREERS + V(final pool): both terms are V's, so the check cannot give V's level or the true cost of finishing
 (val/sim/v_level.py measures V against complete greedy runs).
 
-usage: uv run val/sim/rollouts.py BIN OUT_DIR [--runs 50] [--careers 50] [--rows 3] [-j 2] [POOL ...]
+usage: uv run --group research val/sim/rollouts.py BIN OUT_DIR [--runs 50] [--careers 50] [--rows 3] [-j 2] [POOL ...]
   pools default p10 p11 boot_mob p16 (val/plan); writes OUT_DIR/POOL_plan.{json,out}, OUT_DIR/POOL_rowI.{json,out}
   and OUT_DIR/POOL_rowI_runR_final.{json,out}; prints per pool each row's mean T, the paired T(row) - T(pick) with a
   95% t interval, and the score difference it is compared with. Cost: one plan per run and row (the final pool's), so
@@ -30,47 +30,25 @@ import json
 import math
 import os
 import statistics
-import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
+from scipy.stats import t as student_t
+
 SIM_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(os.path.dirname(SIM_DIR))
-PLAN_DIR = os.path.join(REPO, "val", "plan")
+sys.path.insert(0, os.path.dirname(SIM_DIR))  # val/, for the shared solver module
+from solver import PLAN_DIR, solve
+
 DEFAULT_POOLS = ["p10", "p11", "boot_mob", "p16"]
 
 
-def t975(degrees):
-    """the t distribution's 97.5% quantile (series in 1/df, as sim/play.rs `tq975`)"""
-    z = 1.959964
-    return (
-        z
-        + (z**3 + z) / (4 * degrees)
-        + (5 * z**5 + 16 * z**3 + 3 * z) / (96 * degrees**2)
-        + (3 * z**7 + 19 * z**5 + 17 * z**3 - 15 * z) / (384 * degrees**3)
-    )
-
-
 def interval(values):
+    """the mean with its 95% t interval"""
     mean = statistics.fmean(values)
     if len(values) < 2:
         return mean, math.nan, math.nan
-    half = t975(len(values) - 1) * statistics.stdev(values) / math.sqrt(len(values))
+    half = float(student_t.ppf(0.975, len(values) - 1)) * statistics.stdev(values) / math.sqrt(len(values))
     return mean, mean - half, mean + half
-
-
-def solve(binary, era, job, path):
-    json.dump(job, open(path + ".json", "w"))
-    result = subprocess.run(
-        [binary, "data.json", path + ".json"],
-        cwd=os.path.join(REPO, "pkg", "loopopt", "data", era),
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode:
-        raise RuntimeError(f"{path}: solver exited {result.returncode}\n{result.stderr}")
-    open(path + ".out", "w").write(result.stdout)
-    return json.loads([line for line in result.stdout.splitlines() if line.strip()][-1])
 
 
 def era_of(pool):

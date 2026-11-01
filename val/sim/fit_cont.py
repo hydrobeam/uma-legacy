@@ -52,14 +52,15 @@ import json
 import math
 import os
 import random
-import re
-import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
 SIM_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(os.path.dirname(SIM_DIR))
+sys.path.insert(0, os.path.dirname(SIM_DIR))  # val/, for the shared solver module
+import solver
+from solver import REPO
+
 CHECKPOINTS = (10, 25, 50, 100, 200, 400)
 BUILDERS = 5
 CONT_N = 500  # cont.rs: successes before grinding, at most
@@ -67,13 +68,8 @@ SHARES = [round(0.3 + 0.05 * i, 2) for i in range(19)]  # 0.3 .. 1.2
 DECAYS = [round(0.5 + 0.1 * i, 1) for i in range(46)]  # 0.5 .. 5.0
 
 
-def cont_constant(name):
-    """`CEIL_SHARE` or `LAM_DECAY` as cont.rs states it"""
-    src = open(os.path.join(REPO, "pkg", "loopopt", "src", "career", "plan", "cont.rs")).read()
-    return float(re.search(rf"const {name}: f64 = ([\d.]+);", src).group(1))
-
-
-CEIL_SHARE, LAM_DECAY = cont_constant("CEIL_SHARE"), cont_constant("LAM_DECAY")
+# cont.rs's shape, as the solver uses it (`loopopt constants`)
+CEIL_SHARE, LAM_DECAY = solver.constants()["ceil_share"], solver.constants()["lam_decay"]
 
 
 class Trace(NamedTuple):
@@ -87,25 +83,9 @@ class Trace(NamedTuple):
     ceiling: float | None  # her full-loop odds C, None where the plan's pinf was p1
     lam_after_lift: float | None  # lam at the first row after her odds first rose, mean over runs
     odds: list  # per run, A's odds after n careers (n = 0..careers)
-    plan_cont: tuple | None  # the plan's fit entry for her as (lam, phi, pinf, p0), None without one
-
-
-def last_line(path):
-    return json.loads([line for line in open(path).read().splitlines() if line.strip()][-1])
-
-
-def run_solver(binary, era, job, path):
-    json.dump(job, open(path + ".json", "w"))
-    result = subprocess.run(
-        [binary, "data.json", path + ".json"],
-        cwd=os.path.join(REPO, "pkg", "loopopt", "data", era),
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode:
-        raise RuntimeError(f"{path}: solver exited {result.returncode}\n{result.stderr}")
-    open(path + ".out", "w").write(result.stdout)
-    return last_line(path + ".out")
+    plan_cont: (
+        tuple[float, float, float, float] | None
+    )  # the plan's fit entry for her as (lam, phi, pinf, p0), None without one
 
 
 def pool_job(entry):
@@ -146,9 +126,9 @@ def measure(binary, out_dir, entry, settings):
     job = pool_job(entry)
     plan_path = os.path.join(out_dir, f"{name}_plan")
     if settings["fit_only"]:
-        plan = last_line(plan_path + ".out").get("next") or {}
+        plan = solver.read_output(plan_path + ".out").get("next") or {}
     else:
-        plan = run_solver(binary, era, dict(job, next={**job.get("next", {})}), plan_path).get("next") or {}
+        plan = solver.solve(binary, era, dict(job, next={**job.get("next", {})}), plan_path).get("next") or {}
     if not plan.get("v0_plan") or not plan.get("choice"):
         print(f"{name}: no plan with a trio ({plan.get('error', 'no next')}), skipped")
         return []
@@ -163,9 +143,9 @@ def measure(binary, out_dir, entry, settings):
             "loop_members": [trainee_id, *builders],
         }
         if settings["fit_only"]:
-            output = last_line(trace_path + ".out")
+            output = solver.read_output(trace_path + ".out")
         else:
-            output = run_solver(binary, era, dict(job, simulate=simulate), trace_path)
+            output = solver.solve(binary, era, dict(job, simulate=simulate), trace_path)
         traces.append(trace_of(name, trainee_name, fit_entry(plan, trainee_id), output, settings["careers"]))
     return [trace for trace in traces if trace]
 
@@ -335,15 +315,15 @@ class PlanCont:
             best = cost
         return best
 
-    def lattice_plan(self, p):
+    def lattice_plan(self, lattice, p):
         g = math.log(p / self.pinf) / math.log(self.p0 / self.pinf)
         r = 1 - self.phi
         t = max(0.0, math.log(g) / math.log(r)) if r > 0 else 0.0
         j = math.floor(t)
         if j >= CONT_N:
-            cost = self.lattice[CONT_N]
+            cost = lattice[CONT_N]
         else:
-            low, high = self.lattice[j], self.lattice[j + 1]
+            low, high = lattice[j], lattice[j + 1]
             cost = min(max(low + (t - j) * (high - low), min(low, high)), max(low, high))
         return min(cost, 1 / p)
 
@@ -357,7 +337,7 @@ class PlanCont:
         if self.lam <= 0 or self.phi <= 0 or self.pinf <= p:
             return 1 / p
         if p > self.p0 and self.lattice:
-            return self.lattice_plan(p)
+            return self.lattice_plan(self.lattice, p)
         return self.plan_n(p)
 
 
@@ -571,7 +551,10 @@ def report(traces, careers):
         cost, k = achievable(trace)
         split = achievable_split(trace)
         variant_lam = max(trace.lam, trace.lam_after_lift) if trace.lam_after_lift else trace.lam
-        plan_cont = f"{plan_cost(*trace.plan_cont, LAM_DECAY):,.0f}" if trace.plan_cont else "-"
+        plan_cont = "-"
+        if trace.plan_cont:
+            lam, phi, pinf, p0 = trace.plan_cont
+            plan_cont = f"{plan_cost(lam, phi, pinf, p0, LAM_DECAY):,.0f}"
         held = f"{cont_cost(trace, held_out[trace.pool]):,.0f}" if trace.pool in held_out else "-"
         print(
             f"| {trace.pool} | {trace.trainee} | 1/{1 / trace.p0:,.0f} | "

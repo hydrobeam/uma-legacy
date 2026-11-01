@@ -12,7 +12,8 @@ use crate::career::plan::score::score_career;
 use crate::career::plan::{PlanContext, found_career};
 use crate::career::search::{Found, RankedPair};
 use crate::career::sim::Sim;
-use serde_json::{Value, json};
+use serde::Serialize;
+use ts_rs::TS;
 
 /// Trainees swept: the best-scoring ones (by their best runnable row).
 const SWEEP_TRAINEES: usize = 4;
@@ -30,10 +31,10 @@ pub(crate) fn pair_sweep(
     runs: &[PlanRow],
     scores: &PlanScores,
     buf: &mut Vec<f64>,
-) -> Value {
+) -> Option<PairSweep> {
     let input = context.input;
     if !input.settings.pair_sweep || !scores.any_scored || !scores.fit.current_value.is_finite() {
-        return Value::Null;
+        return None;
     }
     let started_ms = now_ms();
     let data = context.data();
@@ -50,7 +51,7 @@ pub(crate) fn pair_sweep(
     ranked.sort_by(|first, second| second.1.total_cmp(&first.1));
     ranked.truncate(SWEEP_TRAINEES);
     let parents = context.parents();
-    let (trainees, scoring_complete): (Vec<Value>, bool) = aside_complete(simulator, |simulator| {
+    let (trainees, scoring_complete): (Vec<SweptTrainee>, bool) = aside_complete(simulator, |simulator| {
         ranked
             .iter()
             .map(|&(trainee, row_score)| {
@@ -62,14 +63,20 @@ pub(crate) fn pair_sweep(
                     .collect();
                 let (mut chances, mut scratch) = (vec![], vec![]);
                 let mut best_pair: Option<(f64, Lineage)> = None;
-                let swept: Vec<Value> = pairs
+                let swept: Vec<SweptPair> = pairs
                     .iter()
                     .map(|&RankedPair { ceiling, first_parent, second_parent, .. }| {
                         let lineage = Lineage { trainee, first_parent, second_parent };
                         let deck_odds = deck_odds(simulator, parents.pool, lineage, &mut chances, &mut scratch);
                         let Some(best) = (0..deck_odds.len()).max_by(|&a, &b| deck_odds[a].total_cmp(&deck_odds[b]))
                         else {
-                            return json!({"parents": [first_parent, second_parent], "ceiling": ceiling});
+                            return SweptPair {
+                                parents: [first_parent, second_parent],
+                                ceiling,
+                                p_all: None,
+                                score: None,
+                                deck_odds: None,
+                            };
                         };
                         let career = Found {
                             trainee,
@@ -91,12 +98,17 @@ pub(crate) fn pair_sweep(
                         if best_pair.is_none_or(|(best_score, _)| score > best_score) {
                             best_pair = Some((score, lineage));
                         }
-                        json!({"parents": [first_parent, second_parent], "ceiling": ceiling, "p_all": deck_odds[best],
-                            "score": score, "deck_odds": deck_odds})
+                        SweptPair {
+                            parents: [first_parent, second_parent],
+                            ceiling,
+                            p_all: Some(deck_odds[best]),
+                            score: Some(score),
+                            deck_odds: Some(deck_odds),
+                        }
                     })
                     .collect();
                 // every cached deck on her best-scoring pair, scored
-                let decks: Vec<Value> = best_pair
+                let decks: Vec<ScoredDeck> = best_pair
                     .map(|(_, lineage)| {
                         let deck_odds = deck_odds(simulator, parents.pool, lineage, &mut chances, &mut scratch);
                         (0..deck_odds.len())
@@ -116,16 +128,59 @@ pub(crate) fn pair_sweep(
                                     Want::Score,
                                     buf,
                                 );
-                                json!({"p_all": deck_odds[deck], "score": scored.expected_saving - 1.0})
+                                ScoredDeck { p_all: deck_odds[deck], score: scored.expected_saving - 1.0 }
                             })
                             .collect()
                     })
                     .unwrap_or_default();
-                json!({"trainee": data.umas[trainee].name, "row_score": row_score, "pairs": swept, "decks": decks})
+                SweptTrainee { trainee: data.umas[trainee].name.clone(), row_score, pairs: swept, decks }
             })
             .collect()
     });
-    json!({"trainees": trainees, "sweep_ms": now_ms() - started_ms, "scoring_complete": scoring_complete})
+    Some(PairSweep { trainees, sweep_ms: now_ms() - started_ms, scoring_complete })
+}
+
+/// The pair sweep (`next.pair_sweep`): the best-scoring trainees' pairs by ceiling, each with her best cached deck
+/// there scored.
+#[derive(Serialize, TS)]
+pub(crate) struct PairSweep {
+    pub(crate) trainees: Vec<SweptTrainee>,
+    pub(crate) sweep_ms: f64,
+    pub(crate) scoring_complete: bool,
+}
+
+/// A trainee's swept pairs, and every cached deck on her best-scoring pair, scored.
+#[derive(Serialize, TS)]
+pub(crate) struct SweptTrainee {
+    pub(crate) trainee: String,
+    /// her best row's score in the plan
+    pub(crate) row_score: f64,
+    pub(crate) pairs: Vec<SweptPair>,
+    pub(crate) decks: Vec<ScoredDeck>,
+}
+
+/// A pair by its ceiling; where she has a cached deck, her best one there (P(all), score) and every cached deck's
+/// P(all) on it.
+#[derive(Serialize, TS)]
+pub(crate) struct SweptPair {
+    pub(crate) parents: [usize; 2],
+    pub(crate) ceiling: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub(crate) p_all: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub(crate) score: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub(crate) deck_odds: Option<Vec<f64>>,
+}
+
+/// A cached deck on a pair: its P(all) and its career's score.
+#[derive(Serialize, TS)]
+pub(crate) struct ScoredDeck {
+    pub(crate) p_all: f64,
+    pub(crate) score: f64,
 }
 
 /// Her P(all) with each of her cached decks on `lineage` (their corner tables at its chances, as

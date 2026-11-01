@@ -51,7 +51,7 @@ deck). Intervals on rates over observations that come several to a run (final li
 started) are run-clustered (common.cluster_ci), the spread between cards a run-clustered Wald test
 (common.cluster_chi2)."""
 
-import collections, functools, itertools, math, os, re, sys
+import collections, functools, itertools, math, os, sys
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, NamedTuple
@@ -145,10 +145,9 @@ def pois_pmf(lam: float, upto: int = 61) -> list[float]:
 
 
 def chain_model() -> tuple[int, float]:
-    """the solver's event count n (CHAIN_N, pkg/loopopt/src/deck/chains.rs) and today's p: the model before the
-    pal-count budget, N ~ Binomial(21, 0.35) for every deck, the baseline the budget is tested against"""
-    src = open(f"{common.ROOT}/pkg/loopopt/src/deck/chains.rs", encoding="utf-8").read()
-    return int(re.search(r"CHAIN_N: u32 = (\d+);", src).group(1)), 0.35
+    """the solver's event count n (CHAIN_N, `loopopt constants`) and today's p: the model before the pal-count budget,
+    N ~ Binomial(21, 0.35) for every deck, the baseline the budget is tested against"""
+    return common.solver_constants()["chain_n"], 0.35
 
 
 CN, CP = chain_model()
@@ -162,9 +161,6 @@ def canon(kinds: Sequence[Kind]) -> tuple[tuple[Kind, ...], dict[int, int]]:
     return tuple(kinds[i] for i in order), {ci: j for j, ci in enumerate(order)}
 
 
-_paths: dict[tuple[tuple[Kind, ...], str], Paths] = {}
-
-
 def stop_outcomes(k: Kind) -> list[tuple[int, float]]:
     """the links a card's chain can end at, with their chances: each stop risk in link order, else its last link"""
     v, go = [], 1.0
@@ -175,15 +171,13 @@ def stop_outcomes(k: Kind) -> list[tuple[int, float]]:
     return v
 
 
+@functools.cache
 def paths(ck: tuple[Kind, ...], rule: str = "slots") -> Paths:
     """Every (state, events taken, absorbed) the chain process passes through, with its probability, summed over
     stop-risk outcomes, as arrays (S: links fired per card, L, A, P). A state at level l is final with P(N = l), or with
     P(N >= l) when nothing can advance (absorbed). rule: 'slots' (weight = links left), 'cards' (uniform over the
     running cards) or 'wasted' (uniform over the cards short of their full length: an ended card keeps taking picks and
     shows none, the alternative to an end freeing its events)."""
-    key = (ck, rule)
-    if key in _paths:
-        return _paths[key]
     n = len(ck)
     acc: collections.defaultdict[tuple[tuple[int, ...], int, bool], float] = collections.defaultdict(float)
     for combo in itertools.product(*[stop_outcomes(k) for k in ck]):
@@ -212,14 +206,12 @@ def paths(ck: tuple[Kind, ...], rule: str = "slots") -> Paths:
             layer = nxt
             lvl += 1
     ks = list(acc)
-    out = Paths(
+    return Paths(
         np.array([k[0] for k in ks], dtype=int).reshape(len(ks), n),
         np.array([k[1] for k in ks]),
         np.array([k[2] for k in ks]),
         np.array([acc[k] for k in ks]),
     )
-    _paths[key] = out
-    return out
 
 
 def final_w(ck: tuple[Kind, ...], pmf: Pmf, rule: str = "slots") -> tuple[np.ndarray, np.ndarray]:
@@ -237,17 +229,18 @@ def survival(pmf: Pmf) -> np.ndarray:
     return np.maximum(0.0, np.concatenate([[1.0], 1.0 - np.cumsum(pmf)[:-1]]))
 
 
-_reach: dict[tuple[Any, ...], dict[tuple[int, int], float]] = {}
+@functools.cache
+def canonical_reach(ck: tuple[Kind, ...], rule: str, pmf_key: Any) -> dict[tuple[int, int], float]:
+    """reach() on a canonical deck, the pmf named by its key: "B" (BIN), "P" (POIS) or its values as a tuple"""
+    pmf = BIN if pmf_key == "B" else POIS if pmf_key == "P" else pmf_key
+    S, w = final_w(ck, pmf, rule)
+    return {(j, k): float(w[S[:, j] >= k].sum()) for j in range(len(ck)) for k in range(1, ck[j][0] + 1)}
 
 
 def reach(kinds: Sequence[Kind], pmf: Pmf = BIN, rule: str = "slots") -> dict[tuple[int, int], float]:
     """{(card index, link): P(the card reaches the link)} for a deck's chain kinds"""
     ck, pos = canon(tuple(kinds))
-    key = (ck, rule, "B" if pmf is BIN else "P" if pmf is POIS else tuple(pmf))
-    if key not in _reach:
-        S, w = final_w(ck, pmf, rule)
-        _reach[key] = {(j, k): float(w[S[:, j] >= k].sum()) for j in range(len(ck)) for k in range(1, ck[j][0] + 1)}
-    r = _reach[key]
+    r = canonical_reach(ck, rule, "B" if pmf is BIN else "P" if pmf is POIS else tuple(pmf))
     return {(ci, k): r[(j, k)] for ci, j in pos.items() for k in range(1, kinds[ci][0] + 1)}
 
 
@@ -402,7 +395,7 @@ def dataset(groups: set[int]) -> list[Row]:
     """[(run, kinds, chain card ids, observations)] for every run record with a pal count in `groups` (decks with an
     unknown or non-pal R card left out)"""
     out: list[Row] = []
-    for r in common.runs():
+    for r in common.records():
         if pals(r) not in groups:
             continue
         if r["id"] not in _obs:
@@ -415,7 +408,7 @@ def dataset(groups: set[int]) -> list[Row]:
 def dropped(groups: set[int]) -> int:
     """records with a pal count in `groups` left out for an unknown or non-pal R card"""
     dataset(groups)
-    return sum(1 for r in common.runs() if pals(r) in groups and _obs[r["id"]] is None)
+    return sum(1 for r in common.records() if pals(r) in groups and _obs[r["id"]] is None)
 
 
 def cmp_pmf(lam: float, nu: float, upto: int = 61) -> list[float]:
@@ -839,16 +832,13 @@ def rows_at(stop: float, nolist: float) -> list[Row]:
     return dataset(ALL)
 
 
-_kinds_at: dict[tuple[float, float], list[list[Kind]]] = {}
-
-
+@functools.cache
 def kinds_at(stop: float, nolist: float) -> list[list[Kind]]:
     """every run's chain kinds at this stop share and no-list scale, in dataset order (the observations themselves do
     not depend on them); the model's values are restored after"""
-    if (stop, nolist) not in _kinds_at:
-        _kinds_at[(stop, nolist)] = [x.kinds for x in rows_at(stop, nolist)]
-        rows_at(*MODEL_ENDS)
-    return _kinds_at[(stop, nolist)]
+    kinds = [x.kinds for x in rows_at(stop, nolist)]
+    rows_at(*MODEL_ENDS)
+    return kinds
 
 
 def run_ll(M: np.ndarray, P: np.ndarray, ab: Sequence[float]) -> np.ndarray:
@@ -1156,32 +1146,26 @@ def refine(M_at: MatrixAt, P: np.ndarray, f: EndFit) -> EndFit:
     return best
 
 
-_link_levels: list[dict[int, dict[int, dict[str, set[int]]]]] = []
-
-
+@functools.cache
 def link_levels() -> dict[int, dict[int, dict[str, set[int]]]]:
     """card -> chain link -> skill -> the fixed hint levels that link's outcomes give it (GameTora's outcomes, links from
     master.mdb single_mode_story_data.show_progress_1; random levels left out)"""
-    if not _link_levels:
-        gt, db = common.gametora(), common.mdb()
-        sk = dict(db.execute("select [index], text from text_data where category = 47"))
-        title = dict(db.execute("select [index], text from text_data where category = 181"))
-        cchar = dict(db.execute("select id, chara_id from support_card_data"))
-        link_of = dict(
-            db.execute("select story_id, show_progress_1 from single_mode_story_data where show_progress_1 > 0")
-        )
-        out: collections.defaultdict[int, collections.defaultdict[int, collections.defaultdict[str, set[int]]]]
-        out = collections.defaultdict(lambda: collections.defaultdict(lambda: collections.defaultdict(set)))
-        for cid, es in common.card_outcome_events(gt, title, cchar).items():
-            for _, sid, chs in es:
-                if link_of.get(sid):
-                    for ch in chs:
-                        for o in common.outcome_skills(ch, gt, sk):
-                            for skill, v in o.items():
-                                if isinstance(v, int):
-                                    out[cid][link_of[sid]][skill].add(v)
-        _link_levels.append(out)
-    return _link_levels[0]
+    gt, db = common.gametora(), common.mdb()
+    sk = dict(db.execute("select [index], text from text_data where category = 47"))
+    title = dict(db.execute("select [index], text from text_data where category = 181"))
+    cchar = dict(db.execute("select id, chara_id from support_card_data"))
+    link_of = dict(db.execute("select story_id, show_progress_1 from single_mode_story_data where show_progress_1 > 0"))
+    out: collections.defaultdict[int, collections.defaultdict[int, collections.defaultdict[str, set[int]]]]
+    out = collections.defaultdict(lambda: collections.defaultdict(lambda: collections.defaultdict(set)))
+    for cid, es in common.card_outcome_events(gt, title, cchar).items():
+        for _, sid, chs in es:
+            if link_of.get(sid):
+                for ch in chs:
+                    for o in common.outcome_skills(ch, gt, sk):
+                        for skill, v in o.items():
+                            if isinstance(v, int):
+                                out[cid][link_of[sid]][skill].add(v)
+    return out
 
 
 def impossible_links(base: list[Row]) -> set[tuple[int, int]]:

@@ -46,8 +46,7 @@ import { Button, FileButton } from '../../ui/Button.tsx';
 const wideVets = () => matchMedia('(min-width: 760px)').matches;
 
 // ---------- the views
-/** the dialog's head: the two tabs, each with its count, and the order menu (@public: test/unit/careerviews.test.mjs
- * draws it from an esbuild bundle written as a string, which knip does not read) */
+/** the dialog's head: the two tabs, each with its count, and the order menu */
 export function PoolHead() {
   const { by, reversed } = order.value;
   return (
@@ -188,8 +187,7 @@ function PoolList({ t }: { t: Tab }) {
     </div>
   );
 }
-/** the lists and the pane beside them (a wide dialog: the one chosen; nothing while the dialog is closed; @public: as
- * PoolHead) */
+/** the lists and the pane beside them (a wide dialog: the one chosen; nothing while the dialog is closed) */
 export function PoolBody() {
   const id = poolOpen.value ? selected.value : null;
   return (

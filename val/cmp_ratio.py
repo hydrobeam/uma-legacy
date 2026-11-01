@@ -2,10 +2,11 @@
 new/reference ratios of p_all and p_minus1 for the first result. usage: cmp_ratio.py TAG REF"""
 
 import argparse
-import json
 import glob
 import os
 from dataclasses import dataclass
+
+from solver import read_output_or_none
 
 
 @dataclass(frozen=True)
@@ -33,21 +34,13 @@ arguments = parser.parse_args()
 tag, ref = arguments.tag, arguments.ref
 
 
-def load(p):
-    t = open(p).read()
-    try:
-        return json.loads(t[t.index("{") :])
-    except Exception:
-        return None
-
-
 rows = []
 for reference_path in sorted(glob.glob(VALIDATION_DIR + ref + "__*.out")):
     name = reference_path.split(ref + "__")[1]
     candidate_path = VALIDATION_DIR + f"{tag}__{name}"
     if not os.path.exists(candidate_path):
         continue
-    reference, candidate = load(reference_path), load(candidate_path)
+    reference, candidate = read_output_or_none(reference_path), read_output_or_none(candidate_path)
     if reference is None or candidate is None:
         print(name, "PARSE FAIL")
         continue

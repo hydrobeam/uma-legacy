@@ -50,8 +50,7 @@ fn streak_positions() {
         schedule[t - 1] = Choice::Opt(o as u8);
     }
     let rows = chart::chart_rows(d, &[ix(d, 1019)], &[schedule]);
-    let positions: Vec<u64> =
-        rows.as_array().unwrap().iter().map(|row| row["cells"][0]["row"].as_u64().unwrap()).collect();
+    let positions: Vec<usize> = rows.iter().map(|row| row.cells[0].as_ref().unwrap().row).collect();
     assert_eq!(positions, vec![1, 2, 3]);
 }
 

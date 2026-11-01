@@ -234,7 +234,7 @@ export function engineSaveState() {
 // what has not started yet (data.ts gameData().later) is left out of every search (a roll's plan job, `next.roll`, alike: the
 // solver finds the plan's kept state by the job as it ran)
 const gate = (job: SolverJob): SolverJob =>
-  !['deck', 'career'].includes(job.cmd)
+  job.cmd !== 'deck' && job.cmd !== 'career'
     ? job
     : {
         ...job,

@@ -107,11 +107,7 @@ export function Dialog({ id, cls, skin, size, tall, labelledBy, label, open, onC
 // ---------- the game skin's parts ----------
 /** its title, in the green bar */
 export const DialogTitle = ({ id, children }: { id: string; children: ComponentChildren }) => (
-  <h3
-    id={id}
-    data-art=""
-    class="art-bar text-shadow-outline m-0 flex-none px-3 py-2 text-center text-xl font-black text-white"
-  >
+  <h3 id={id} class="art-bar text-shadow-outline m-0 flex-none px-3 py-2 text-center text-xl font-black text-white">
     {children}
   </h3>
 );
@@ -202,10 +198,7 @@ export function DialogHead({
   children?: ComponentChildren;
 }) {
   return (
-    <div
-      data-art=""
-      class="art-bar sticky -top-4.5 z-6 -mx-4.5 -mt-4.5 flex flex-nowrap items-center justify-between gap-2 px-4.5 pt-3 pb-2.5"
-    >
+    <div class="art-bar sticky -top-4.5 z-6 -mx-4.5 -mt-4.5 flex flex-nowrap items-center justify-between gap-2 px-4.5 pt-3 pb-2.5">
       <h3
         id={id}
         title={tip}

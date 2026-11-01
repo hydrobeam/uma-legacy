@@ -1,7 +1,7 @@
 // ---------- the game's green header bar: white outlined text on green, stripes at its left fading out ----------
 // Its right end is cut on a slant, with two slanted notches. `section` (the default): a section's or a box's title bar
 // (the career page's sections, "Sparks", the loop page's Swaps); `card`: the title on top of a card, centred, its top
-// corners round (Try a run's veteran). Exempt from the contrast audit as the game's art (data-art).
+// corners round (Try a run's veteran).
 import type { ComponentChildren } from 'preact';
 import { variants } from './variants.ts';
 
@@ -27,7 +27,7 @@ interface GameBarProps {
 /** a green header bar */
 export function GameBar({ as: Tag = 'h3', shape, id, class: place, children }: GameBarProps) {
   return (
-    <Tag id={id} data-art="" class={look({ shape }, place)}>
+    <Tag id={id} class={look({ shape }, place)}>
       {children}
     </Tag>
   );

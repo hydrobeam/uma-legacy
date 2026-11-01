@@ -1,18 +1,19 @@
 // The career page's search follows the veterans and places (career/current.ts `followPool`, which the entry calls with
 // its run machine and comparison): an edit searches again, a change of who is in the pool drops the answer on show
 // and clears the comparison, and while a pool veteran's G1 wins window or a skills prompt is open nothing searches
-// until it closes (review-10 1, 2). node --test 'test/unit/*.test.*' (in webapp)
-import './fakepage.mjs';
+// until it closes (review-10 1, 2). npx vitest run (in webapp)
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test, vi } from 'vitest';
+import { loadData } from '../../src/data.ts';
+import * as vs from '../../src/veterans/store.ts';
+import { askClosed, askSkills, openWins, winsClosed } from '../../src/veterans/pickers.ts';
+import { followPool } from '../../src/career/current.ts';
+import { answerPool, showAnswer } from '../../src/career/state.ts';
 import { memory } from './fakes.mjs';
 
-const { loadData } = await import('../../src/data.ts');
+vi.mock('#page-data', () => import('./fakepage.mjs'));
+
 await loadData();
-const vs = await import('../../src/veterans/store.ts');
-const { askClosed, askSkills, openWins, winsClosed } = await import('../../src/veterans/pickers.ts');
-const { followPool } = await import('../../src/career/current.ts');
-const { answerPool, showAnswer } = await import('../../src/career/state.ts');
 
 const node = (chara) => ({ chara, sparks: {}, pinks: {}, blues: {}, greens: {}, wins: [] });
 const vet = (id) => ({ id, src: 'import', borrowed: false, ...node(1001), parents: [node(1002), node(1003)] });

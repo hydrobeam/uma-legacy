@@ -1,4 +1,17 @@
-import { check, artCheck, open, settle, dialog, until, PILLS, SIDEWAYS, CARD_ART } from './helpers.mjs';
+import { expect } from 'playwright/test';
+import {
+  check,
+  artCheck,
+  open,
+  openEditor,
+  closeEditor,
+  settle,
+  dialog,
+  until,
+  PILLS,
+  SIDEWAYS,
+  CARD_ART,
+} from './helpers.mjs';
 
 export default async function phone(b) {
   const pg = await open(b, { w: 375, h: 812, mobile: true });
@@ -91,18 +104,18 @@ export default async function phone(b) {
     seen.every(Boolean),
     seen.join(','),
   );
-  check(
-    'phone: it shows the headline odds',
-    /^1 in 103 · see result/.test(await pg.locator('#run-pill').innerText()),
-    await pg.locator('#run-pill').innerText(),
-  );
+  await expect
+    .soft(pg.locator('#run-pill'), 'phone: it shows the headline odds')
+    .toHaveText(/^1 in 103 · see result/, { useInnerText: true });
   // edit a setting far down, then the button takes you back to the result
+  await openEditor(pg, 'cards');
   const ct = pg.locator('#cards .ct').nth(2);
   await ct.scrollIntoViewIfNeeded();
   await ct.click();
   await settle(pg);
   await ct.click();
   await settle(pg);
+  await closeEditor(pg, 'cards');
   await pg.click('#run-pill'); // a smooth scroll
   check(
     'phone: after editing a card, the status button scrolls back to the results',
@@ -113,15 +126,16 @@ export default async function phone(b) {
   );
   // the roster and card boxes: shorter than the screen, their bottom edge fading while there is more below
   const boxes = [];
-  for (const id of ['roster', 'cards']) {
-    await pg.editor('#' + id);
-    await pg.waitForTimeout(100);
-    boxes.push(
-      await pg.evaluate((id) => {
-        const e = document.getElementById(id);
-        return { h: e.clientHeight / innerHeight, more: e.classList.contains('more') };
-      }, id),
-    );
+  for (const [id, editor] of [
+    ['roster', 'umas'],
+    ['cards', 'cards'],
+  ]) {
+    await closeEditor(pg, 'umas');
+    await openEditor(pg, editor);
+    await expect
+      .soft(pg.locator(`#${id}`), `phone: the ${id} box shows that it scrolls (its bottom edge fades)`)
+      .toHaveClass(/\bmore\b/);
+    boxes.push(await pg.evaluate((id) => document.getElementById(id).clientHeight / innerHeight, id));
   }
   const part = await pg.evaluate(CARD_ART);
   check(
@@ -130,16 +144,12 @@ export default async function phone(b) {
     JSON.stringify(part),
   );
   check(
-    'phone: the roster and card boxes fit in their dialogs and show that they scroll',
-    boxes.every((x) => x.h <= 0.8 && x.more),
+    'phone: the roster and card boxes fit in their dialogs',
+    boxes.every((h) => h <= 0.8),
     JSON.stringify(boxes),
   );
-  await pg.evaluate(() => {
-    document.querySelectorAll('dialog[open]').forEach((d) => {
-      d.close();
-    });
-    scrollTo(0, 0);
-  });
+  await closeEditor(pg, 'cards');
+  await pg.evaluate(() => scrollTo(0, 0));
   await pg.click('#x-scen');
   check(
     'phone: the open scenario picker fits the screen',
@@ -182,10 +192,9 @@ export default async function phone(b) {
   await pg.keyboard.press('Escape');
   await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click();
   await dialog(pg, 'sched-dlg');
-  check(
-    'phone: agenda stacks without the grey Junior cells',
-    (await pg.locator('#sched-dlg .ag-slot.pre:visible').count()) === 0,
-  );
+  await expect
+    .soft(pg.locator('#sched-dlg .ag-slot.pre:visible'), 'phone: agenda stacks without the grey Junior cells')
+    .toHaveCount(0);
   await pg.evaluate(() => {
     const d = document.querySelector('#sched-dlg .dlg');
     d.scrollTo(0, d.scrollHeight);
@@ -214,10 +223,12 @@ export default async function phone(b) {
   check("phone: the affinity's Close stays on screen too", await closeVis());
   await pg.keyboard.press('Escape');
   await pg.click('#ex-open');
-  check(
-    "the export dialog's Close sits in the same header row as the others",
-    await pg.evaluate(() => document.getElementById('ex-close').parentElement.querySelector('h3') !== null),
-  );
+  await expect
+    .soft(
+      pg.locator('#ex-dlg div:has(> h3) > #ex-close'),
+      "the export dialog's Close sits in the same header row as the others",
+    )
+    .toHaveCount(1);
   await pg.keyboard.press('Escape');
   // the pill switches (Game data, lineage rank, Results): the chosen part fills its share of the track, flush
   await pg.evaluate(() => scrollTo(0, 0));
@@ -229,22 +240,20 @@ export default async function phone(b) {
   );
   // nothing scrolls sideways with the editors and the result's popups open
   const side = [];
-  for (const [sel, id, text] of [
-    ['#o-umas', 'set-umas'],
-    ['#o-cards', 'set-cards'],
-    ['.loop .lacts button', 'why-dlg', 'Affinity'],
-    ['.loop .lacts button', 'odds-dlg', 'Odds'],
+  for (const editor of ['umas', 'cards']) {
+    await openEditor(pg, editor);
+    side.push(...(await pg.evaluate(SIDEWAYS)).map((x) => editor + ': ' + x));
+    await closeEditor(pg, editor);
+  }
+  for (const [id, text] of [
+    ['why-dlg', 'Affinity'],
+    ['odds-dlg', 'Odds'],
   ]) {
-    const loc = text ? pg.locator(sel, { hasText: text }).first() : pg.locator(sel);
-    await loc.scrollIntoViewIfNeeded();
-    await loc.click();
+    await pg.locator('.loop .lacts button', { hasText: text }).first().click();
     await dialog(pg, id);
     side.push(...(await pg.evaluate(SIDEWAYS)).map((x) => id + ': ' + x));
-    await pg.evaluate(() =>
-      document.querySelectorAll('dialog[open]').forEach((d) => {
-        d.close();
-      }),
-    );
+    await pg.keyboard.press('Escape');
+    await expect(pg.locator(`#${id}`)).not.toHaveAttribute('open');
   }
   check(
     'phone: nothing scrolls sideways with Umas, Support cards, Affinity or Odds open',

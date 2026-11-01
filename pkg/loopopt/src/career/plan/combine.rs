@@ -8,7 +8,6 @@ use crate::career::plan::search::{FullLoop, alternative_careers, legal_pair, loo
 use crate::career::plan::{CandidateIndex, PlanCandidates, PlanContext, PlanSearches, found_lineage};
 use crate::career::sim::Sim;
 use crate::career::{Legacy, Lineage};
-use serde_json::Value;
 /// Fresh lineages a trio side may take per candidate unless the job says (`PlanJob::fresh_lineages`): the veteran her best
 /// career now would leave and the ones her next best careers would (other pairs ranked by her cached decks,
 /// `alternative_careers`, each searched, `exact_pair_career`), each at its own step; the trios take the cheapest choice
@@ -83,7 +82,7 @@ pub(crate) struct PlanScores {
     pub(crate) any_scored: bool,
     pub(crate) combo_ms: f64,
     pub(crate) index_ms: f64,
-    pub(crate) work: Value,
+    pub(crate) work: crate::career::plan::report::PlanWork,
 }
 
 /// A builder row's lift of one candidate.
@@ -171,7 +170,7 @@ pub(crate) fn continuation_evidence(
                     }
                 })
                 .collect();
-            lifts.sort_by(|first, second| second.efficiency.partial_cmp(&first.efficiency).unwrap());
+            lifts.sort_by(|first, second| second.efficiency.total_cmp(&first.efficiency));
             let most_efficient = *lifts.first()?;
             let second_builder = lifts
                 .iter()
