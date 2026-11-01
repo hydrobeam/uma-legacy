@@ -46,15 +46,7 @@ import { vets, plan, chosen, onVetsChange, changed, persist, clearVets, dropMiss
 import { initUmamoe, syncListings } from '../umamoesetup.js';
 import { renderResults } from './view/Sections.js';
 import { placesKey, buildJob, chosenDropped, dropStaleChosen, baseKey, refBase, shown, runJob } from './job.js';
-import {
-  outdateComparison,
-  stopComparison,
-  showAnalysis,
-  clearAnalysis,
-  keepBaseline,
-  keptPlan,
-  reviseKeptPlan,
-} from './analysis.js';
+import { outdateComparison, stopComparison, showAnalysis, clearAnalysis, keepBaseline } from './analysis.js';
 import * as answerStore from './state.ts';
 import { dropAnswer, loadFails } from './state.ts';
 import { createRun } from './run.ts';
@@ -108,8 +100,6 @@ const run = createRun({
     show: showAnalysis,
     clear: clearAnalysis,
     keepBaseline,
-    keptPlan,
-    reviseKeptPlan,
   },
   view: {
     shown,

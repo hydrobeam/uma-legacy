@@ -2,7 +2,7 @@
 // you got (she starts as a random result, drawn as Reroll draws, career/roll.mjs) and Compare runs both choices,
 // running this career again or using her in the next one, on the plan's terms (expected careers to land).
 // This module owns the analysis' state (`simulation`, the comparison under way `simulationId`, the comparisons'
-// baseline `baselineCache`, the plan Compare kept `planKept`); the run machine (main.js) changes it only through
+// baseline `baselineCache`; the plan Compare kept is the answer store's, `keepComparisonPlan`); the run machine (main.js) changes it only through
 // the transitions below. It reads the answer from the answer store (career/state.ts), the job's helpers from job.js and
 // keys.js.
 import { $, $dialog, el, fmtIn } from '../dom.js';
@@ -14,9 +14,9 @@ import { pct } from '../odds.js';
 import { vets, plan, changed, newVet, umaName, openWins } from '../vets.js';
 import { detailsEl, fitSparks } from '../details.js';
 import { scheduledRaces, rolledOutcome } from './roll.mjs';
-import { answer, runView } from './state.ts';
+import { answer, keepComparisonPlan, runView } from './state.ts';
 import { PLAN_NEXT } from './run.ts';
-import { keyOf, planKey } from './keys.js';
+import { keyOf } from './keys.js';
 import { shown, isFull, baseKey, ROLL_K, runJob } from './job.js';
 import { btn, sectionEl, deckEl, fmtN, tableRows } from './view/parts.js';
 import { openNode } from './view/NodeDialog.js';
@@ -26,14 +26,6 @@ import { must } from '../must.ts';
 /** @import { PlanDone } from './state.ts' */
 /** @import { DeepReadonly } from '../store.ts' */
 /** @typedef {{results: CareerReport[], pending: true}} PendingSearch a stand-in while the quick comparison looks for the best career with her */
-
-// the refit plan Compare ran for the pool with her, when today's plan had no V or no fit to price her under
-// (`runComparison`):
-// the same job a run sends once she is added (keys sorted, the comparison's flag aside), so Add to veterans takes it as
-// it is instead of planning again (the solver is deterministic for its job). A plan under today's fit is never kept
-// here: its job carries `next.fit`, which a run's does not
-/** @type {{key: string, r: DeepReadonly<PlanReport>, ms: number} | null} */
-let planKept = null;
 
 /**
  * The veteran analysis: the veteran this career leaves (the draft) and her comparison.
@@ -97,15 +89,6 @@ export function clearAnalysis() {
 // a run searched today's best career (no place set): the comparisons' baseline (`baselineFor`), under `key` (`baseKey`)
 export function keepBaseline(key, result) {
   baselineCache = { key, result };
-}
-// the plan Compare ran for the pool with her, when a run's plan job is the same (`key`: `planKey`), else null
-export const keptPlan = (key) => (planKept && planKept.key === key ? planKept : null);
-// the plan of job `job` (a run's) has had its check (career/run.ts) write `r`: where it is the plan kept here (the run
-// took it as it was, `keptPlan`), the two are one report, so the kept plan is `r` from now on (a run that takes it again
-// finds its check done)
-/** @type {(job: DeepReadonly<CareerJob>, r: DeepReadonly<PlanReport>) => void} */
-export function reviseKeptPlan(job, r) {
-  if (planKept && planKept.key === planKey(job)) planKept = { ...planKept, r };
 }
 
 // ---------- the analysis
@@ -484,7 +467,7 @@ async function runComparison(refine = false) {
       ma = await runJob(jobWithHer);
     if (gone()) return;
     const planWithHer = ('error' in ma.r ? null : ma.r.next) || null;
-    if (!fit && planWithHer && !planWithHer.error) planKept = { key: planKey(jobWithHer), r: planWithHer, ms: ma.ms };
+    if (!fit && planWithHer && !planWithHer.error) keepComparisonPlan(jobWithHer, planWithHer, ma.ms);
     engineSaveState();
     const careersToLoop = (next) => (next && next.v0 != null ? next.v0 : null); // careers to a fully looped parent with the pool as it is
     const careersNow = careersToLoop(planNow),

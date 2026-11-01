@@ -34,6 +34,8 @@ export type RunStore = Pick<
   | 'keepAnswer'
   | 'recallAnswer'
   | 'keepSavedAnswer'
+  | 'keptPlan'
+  | 'reviseKeptPlan'
 >;
 
 /** what the run machine needs of the page, built once by the entry (main.js) */
@@ -91,10 +93,6 @@ export interface RunDeps {
     clear: () => void;
     /** a run without places found today's best career: the comparisons' baseline */
     keepBaseline: (key: string, best: DeepReadonly<CareerReport>) => void;
-    /** the plan Compare ran for plan job key `key` (keys.js `planKey`), else null */
-    keptPlan: (key: string) => { r: DeepReadonly<PlanReport>; ms: number } | null;
-    /** plan job `job`'s plan has its check written (`r`): Compare's kept plan of the same job takes it too */
-    reviseKeptPlan: (job: DeepReadonly<CareerJob>, r: DeepReadonly<PlanReport>) => void;
   };
   /** the redraws */
   view: {
@@ -350,7 +348,7 @@ export function createRun(deps: RunDeps) {
     runCheck: (job) =>
       Promise.race([engine.run(job as CareerJob, undefined, true), engine.nextKill().then(() => null)]),
     redraw: view.drawCheck,
-    checked: (plan) => analysis.reviseKeptPlan(plan.job, plan.r),
+    checked: (plan) => store.reviseKeptPlan(plan.job, plan.r),
     store,
   });
   // an unfinished check of the plan on show, resumed where its answer is shown again (`checkPhase`; a check cut short
@@ -380,7 +378,7 @@ export function createRun(deps: RunDeps) {
     try {
       // Compare may have run this very plan job already (`keptPlan`): take its answer instead of planning again
       const jp = { ...plain, next: { ...PLAN_NEXT }, no_reports: true },
-        kept = analysis.keptPlan(planKey(jp));
+        kept = store.keptPlan(planKey(jp));
       const m2: { r: { next?: DeepReadonly<PlanReport>; error?: string }; ms: number } = kept
         ? { r: { next: kept.r }, ms: kept.ms }
         : await engine.run(jp, (p) => {

@@ -12,6 +12,8 @@ import {
   checkUnavailable,
   dropAnswer,
   keepAnswer,
+  keepComparisonPlan,
+  keptPlan,
   keepSavedAnswer,
   loadFails,
   newPlanId,
@@ -20,6 +22,7 @@ import {
   planStarts,
   recallAnswer,
   reference,
+  reviseKeptPlan,
   runEnds,
   runEndsWith,
   runView,
@@ -29,6 +32,7 @@ import {
   showAnswer,
   showKeptAnswer,
 } from '../../src/career/state.ts';
+import { planKey } from '../../src/career/keys.js';
 import { checkPhase } from '../../src/career/run.ts';
 
 const PLACES = '{"trainee":null,"parents":[null,null]}';
@@ -331,4 +335,33 @@ test('a check whose pair search brings nothing stops after one more job, not in 
   assert.equal(seen.jobs.length, 2, 'the last variant, then one step that brought no pairs');
   assert.deepEqual(answer.value.planState.r.robust, check(0));
   assert.equal(answer.value.planState.r.check_unavailable, undefined);
+});
+
+test("Compare's kept plan: found by its plan job's key, and a check of that job's plan reaches it, another job's not", () => {
+  const job = { cmd: 'career', targets: [{ group: 1 }], next: {}, no_reports: true },
+    other = { ...job, targets: [{ group: 2 }] },
+    plan = made().planState.r;
+  keepComparisonPlan({ ...job, compare: true }, plan, 12);
+  const key = planKey(job);
+  assert.equal(keptPlan(key).r, plan, "found by the run's plan job (the comparison's flag aside)");
+  assert.equal(keptPlan(planKey(other)), null);
+  const checked = { ...plan, robust: check(1) };
+  reviseKeptPlan(other, checked);
+  assert.equal(keptPlan(key).r, plan, "another job's check leaves it");
+  reviseKeptPlan(job, checked);
+  assert.equal(keptPlan(key).r, checked, "its own job's check reaches it");
+  assert.equal(keptPlan(key).ms, 12);
+});
+
+test('the answers kept: the most recent four, a recalled one counting as recent', () => {
+  const kept = (key) => {
+    showAnswer(made(key), WHERE);
+    keepAnswer(key);
+  };
+  for (const key of ['a', 'b', 'c', 'd']) kept(key);
+  assert.equal(recallAnswer('a').planState.r.outcomes.career, 'a', 'a recalled answer is the one kept under its key');
+  kept('e'); // the fifth: the least recent (b: a was recalled since) goes
+  assert.equal(recallAnswer('b'), null);
+  for (const key of ['a', 'c', 'd', 'e']) assert.notEqual(recallAnswer(key), null, `${key} is kept`);
+  assert.equal(recallAnswer('none'), null);
 });

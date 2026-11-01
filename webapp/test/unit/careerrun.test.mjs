@@ -64,8 +64,7 @@ function page({ trainee = null } = {}) {
   const clock = fakeClock(),
     engine = fakeEngine(),
     target = ++pages,
-    seen = { paints: 0, draws: 0, checkDraws: 0, stops: 0, outdates: 0, shown: [], cleared: 0, saved: [] },
-    kept = { plan: null };
+    seen = { paints: 0, draws: 0, checkDraws: 0, stops: 0, outdates: 0, shown: [], cleared: 0, saved: [] };
   const job = {
     cmd: 'career',
     targets: [{ group: target }],
@@ -96,8 +95,6 @@ function page({ trainee = null } = {}) {
       show: (r) => seen.shown.push(r),
       clear: () => seen.cleared++,
       keepBaseline: () => undefined,
-      keptPlan: (key) => (kept.plan?.key === key ? kept.plan : null),
-      reviseKeptPlan: () => undefined,
     },
     view: {
       shown: () => answerCareer.peek(),
@@ -107,7 +104,7 @@ function page({ trainee = null } = {}) {
     },
     blocked: false,
   };
-  return { run: createRun(deps), deps, clock, engine, seen, job, kept };
+  return { run: createRun(deps), deps, clock, engine, seen, job };
 }
 // an edit and its pause: the search's job is sent
 async function edited(p) {
@@ -377,13 +374,17 @@ test('a reload: the answer kept for this setup and these fingerprints is drawn a
 test("Compare's kept plan: the plan phase takes it and sends no plan job", async () => {
   const p = page();
   const jp = { ...p.job, next: {}, no_reports: true };
-  p.kept.plan = { key: planKey(jp), r: planned('kept').next, ms: 7 };
+  store.keepComparisonPlan(jp, planned('kept').next, 7);
   await edited(p);
   p.engine.answer(0, searched('best'));
   await flush();
   assert.equal(answer.peek().planState.r.choice.career, 'kept');
   assert.equal(answer.peek().planState.ms, 7);
   assert.equal(p.engine.jobs.filter((j) => !j.background).length, 1, 'only the search was sent');
+  // its check runs, and each step reaches the kept plan too: a run that takes it again finds the check as far as it ran
+  p.engine.answer(1, check(1, null, 'kept'));
+  await flush();
+  assert.deepEqual(store.keptPlan(planKey(jp)).r.robust, check(1, null, 'kept').next.robust);
 });
 
 test('a trainee chosen by hand: no plan phase, the best odds shown', async () => {

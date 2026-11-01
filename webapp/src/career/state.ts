@@ -15,6 +15,7 @@ import { deepFreeze } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';
 import type { CareerJob, CareerSearch, PlanReport } from './job.js';
 import type { LineagePlan } from '../vets.js';
+import { planKey } from './keys.js';
 
 /** what the page draws of the run under way */
 export interface RunView {
@@ -223,4 +224,24 @@ export function showKeptAnswer(hit: AnswerView) {
     shownAnswer.value = hit;
     runEnds();
   });
+}
+
+// ---------- the plan Compare kept
+// the refit plan Compare ran for the pool with her, when today's plan had no V or no fit to price her under
+// (analysis.js `runComparison`): the same job a run sends once she is added (keys sorted, the comparison's flag aside),
+// so Add to veterans takes it as it is instead of planning again (the solver is deterministic for its job). A plan
+// under today's fit is never kept here: its job carries `next.fit`, which a run's does not. (Not a signal: nothing
+// draws it.)
+let comparisonPlan: { key: string; r: DeepReadonly<PlanReport>; ms: number } | null = null;
+/** Compare's plan of plan job `job`, made in `ms` */
+export function keepComparisonPlan(job: DeepReadonly<CareerJob>, r: DeepReadonly<PlanReport>, ms: number) {
+  comparisonPlan = { key: planKey(job), r, ms };
+}
+/** the plan Compare ran for plan job key `key` (keys.js `planKey`), else null */
+export const keptPlan = (key: string) => (comparisonPlan && comparisonPlan.key === key ? comparisonPlan : null);
+/** the plan of job `job` (a run's) has had its check (career/run.ts) write `r`: where it is the plan Compare kept (the
+ *  run took it as it was, `keptPlan`), the two are one report, so the kept plan is `r` from now on (a run that takes
+ *  it again finds its check done) */
+export function reviseKeptPlan(job: DeepReadonly<CareerJob>, r: DeepReadonly<PlanReport>) {
+  if (comparisonPlan && comparisonPlan.key === planKey(job)) comparisonPlan = { ...comparisonPlan, r };
 }
