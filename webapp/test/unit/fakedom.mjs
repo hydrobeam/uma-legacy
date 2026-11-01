@@ -154,6 +154,7 @@ globalThis.document = {
   querySelectorAll: () => [],
   querySelector: () => null,
   addEventListener: () => undefined,
+  removeEventListener: () => undefined,
 };
 globalThis.Image = class extends Element {
   constructor() {

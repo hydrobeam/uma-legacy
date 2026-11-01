@@ -262,7 +262,11 @@ function RankControl() {
           aria-controls="rank-note"
           aria-label="What the assumed lineage rank means"
           title="What the assumed lineage rank means"
-          onClick={() => setNoteOpen(!noteOpen)}
+          onClick={(e) => {
+            // as before the port: the click stops here, so a menu or popup open beside it stays open
+            e.stopPropagation();
+            setNoteOpen(!noteOpen);
+          }}
         >
           <span aria-hidden="true">?</span>
         </button>

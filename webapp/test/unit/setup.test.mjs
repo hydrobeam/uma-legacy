@@ -1,6 +1,7 @@
 // The shared setup editors (ui/Presets, ui/Targets) on a fake document (fakedom.mjs), bundled with esbuild as the page
 // bundles them: what each edit stores. Presets by name: Load, Overwrite, a rename, a rename onto a taken name, Delete
-// after a rename (review-11a F1); a target's removal and where the focus goes after it.
+// after a rename (review-11a F1); a target's removal and where the focus goes after it; the rank's ? keeps its click
+// (F2).
 // node --test 'test/unit/*.test.*' (in webapp)
 import './fakepage.mjs';
 import './fakedom.mjs';
@@ -20,6 +21,7 @@ const built = await esbuild.build({
       export * as settings from './src/settings.ts';
       export { PresetDialogs, openPresets } from './src/ui/Presets.tsx';
       export { mountTargets } from './src/ui/Targets.tsx';
+      export { mountRank } from './src/ui/Scenario.tsx';
       export { h, render } from 'preact';
       export { loadData } from './src/data.js';`,
     resolveDir: WEBAPP,
@@ -38,7 +40,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llp-setup-')),
 fs.writeFileSync(file, built.outputFiles[0].text);
 const page = await import(pathToFileURL(file).href);
 fs.rmSync(dir, { recursive: true });
-const { settings: S, PresetDialogs, openPresets, mountTargets, h, render, loadData } = page;
+const { settings: S, PresetDialogs, openPresets, mountTargets, mountRank, h, render, loadData } = page;
 await loadData();
 
 const KEY = 'llp:settings';
@@ -166,5 +168,26 @@ test("a target's × removes its own place (one skill held twice too); the focus 
   await settle();
   assert.deepEqual(groups(), [20049]);
   assert.ok(document.activeElement === removes()[0], 'the focus on the last place left');
+  render(null, box);
+});
+
+test("the lineage rank's ? opens its note and stops its click there (other popups' outside-click handlers never see it)", async () => {
+  fresh({});
+  mountRank();
+  await settle();
+  const box = document.getElementById('rank-ctl'),
+    question = byId(box, 'rank-q');
+  let stopped = false;
+  const click = { type: 'click', target: question, currentTarget: question, preventDefault: () => undefined };
+  for (const f of question.listeners.click || [])
+    f.call(question, {
+      ...click,
+      stopPropagation: () => {
+        stopped = true;
+      },
+    });
+  await settle();
+  assert.equal(question.attributes['aria-expanded'], 'true', 'the note is open');
+  assert.ok(stopped, 'the click went no further than the ?');
   render(null, box);
 });
