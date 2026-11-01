@@ -50,6 +50,7 @@ export function runnerSrc() {
   if (runner == null) setRunnerFrom([...SHIPPED].filter((key) => key.startsWith('run:')).map((key) => +key.slice(4)));
   return runner != null ? srcFor('run', runner) : null;
 }
+// twin: ui/Images.tsx Runner (the same markup, as a component): an edit here goes there too, until step 8c
 export function runnerHTML(big = false) {
   const src = runnerSrc();
   if (!src) return spinHTML();
@@ -57,6 +58,7 @@ export function runnerHTML(big = false) {
   return `<span class="runner${big ? ' big' : ''}" aria-hidden="true" style="background-image:url(${src});animation-delay:-${delay}ms"></span>`;
 }
 // the UI sprites (--btn-w, --spark-white, ...) are CSS variables the build writes into the stylesheet (build.py SPRITES)
+// twin: ui/Images.tsx SkillIcon (the same markup, as a component): an edit here goes there too, until step 8c
 /** @param {number} group a skill group @param {boolean} [gold] its gold's icon @returns {HTMLImageElement|null} */
 export function skillIcon(group, gold = false) {
   const src = srcFor('skill', (gold ? SKILLICON_GOLD : SKILLICON)[group]);
@@ -77,6 +79,7 @@ export function initials(name) {
   const first = words[0] || '';
   return ((first || '?')[0] + (words[1] ? words[1][0] : first[1] || '')).toUpperCase();
 }
+// twin: ui/Images.tsx UmaAv (the same markup, as a component): an edit here goes there too, until step 8c
 // eager: an image in the first screenful (the roster's first rows): fetched at once, at high priority, not lazily
 /**
  * @param {number | null} uma her character id; null: an unknown uma (a parent nobody recorded, a damaged save), drawn as
@@ -128,6 +131,7 @@ export const KIND_ABBR = {
   other: '·',
 };
 export const RARITY_CLASS = { 3: 'ssr', 2: 'sr', 1: 'r' };
+// twin: ui/Images.tsx CardAv (the same markup, as a component): an edit here goes there too, until step 8c
 // `titled`: its own hover names (the card's name, its type); off inside a chip whose title says more
 /** @param {import('./data.js').Card|null} c @param {number} size in px @param {boolean} [titled] @returns {HTMLSpanElement} */
 export function cardAv(c, size, titled = true) {

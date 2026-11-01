@@ -5,6 +5,7 @@
 // total is the six summed.
 import { el } from './dom.js';
 import { must } from './must.ts';
+// twin: ui/AffTable.tsx AffHeart (the same markup, as a component): an edit here goes there too, until step 8c
 // her affinity as the game's heart and the number
 /** @param {number|null|undefined} affinity @param {string} [cls] @returns {HTMLSpanElement|null} */
 export function affEl(affinity, cls = 'aff') {
@@ -27,6 +28,7 @@ export function affEl(affinity, cls = 'aff') {
  * @property {number} aff  affinity
  * @property {AffinityLeg[]} [gps]  a parent's: her two parents
  */
+// twin: ui/AffTable.tsx AffTable (the same markup, as a component): an edit here goes there too, until step 8c
 /** @param {AffinityLeg[]} legs the parents, Legacy 1 first @param {string} [caption] @returns {HTMLTableElement} */
 export function affTable(legs, caption = 'Affinity') {
   const table = el('table', 'afftab'),

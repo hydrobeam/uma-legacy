@@ -1,9 +1,10 @@
 // ---------- the component twins of afftable.js: an affinity heart, and a career's affinity table legacy by legacy ----------
 // The markup afftable.js's affEl and affTable draw (it says what the table holds); afftable.js stays for the career page.
+// An edit to one goes to the other, until step 8c drops the builders.
 import type { ComponentChildren } from 'preact';
 import { must } from '../must.ts';
 
-/** her affinity as the game's heart and the number (none without one) */
+/** her affinity as the game's heart and the number (none without one); twin of afftable.js affEl */
 export function AffHeart({ affinity }: { affinity: number | null | undefined }) {
   if (affinity === null || affinity === undefined) return null;
   const shown = Math.round(affinity);
@@ -60,7 +61,7 @@ const Who = ({ legacy, legacyIndex }: { legacy: AffinityLeg; legacyIndex?: numbe
     {legacyIndex != null && <span class="afk">Legacy {legacyIndex + 1}</span>}
   </>
 );
-/** the parents' rows (Legacy 1 first), each with her parents', and the total */
+/** the parents' rows (Legacy 1 first), each with her parents', and the total; twin of afftable.js affTable */
 export function AffTable({ legs, caption = 'Affinity' }: { legs: AffinityLeg[]; caption?: string }) {
   const gps = (parent: AffinityLeg) => must(parent.gps, "a parent's row carries her parents");
   const everyone = legs.flatMap((parent) => [parent, ...gps(parent)]),

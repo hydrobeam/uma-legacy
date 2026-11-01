@@ -1,8 +1,9 @@
 // ---------- the component twins of images.js's element builders: portraits, card art, skill icons, the runner ----------
 // Each draws the markup its element builder draws (images.js says what each is), for the views that are components.
 // The builders stay for the views that are not yet: images.js is shared with the career page, whose bundle has no
-// Preact, so a builder can't render its twin. A twin that keeps state (an image that fails) is keyed by its subject at
-// the call site, so a reused one never shows the last subject's state.
+// Preact, so a builder can't render its twin. Each twin names its builder and each builder its twin: an edit to one
+// goes to the other, until step 8c drops the builders. A twin that keeps state (an image that fails) is keyed by its
+// subject at the call site, so a reused one never shows the last subject's state.
 import { useState } from 'preact/hooks';
 import { SKILLICON, SKILLICON_GOLD, gameData } from '../data.js';
 import type { Card } from '../data.js';
