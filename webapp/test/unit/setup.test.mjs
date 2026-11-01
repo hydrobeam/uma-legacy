@@ -2,7 +2,7 @@
 // bundles them: what each edit stores. Presets by name: Load, Overwrite, a rename, a rename onto a taken name, Delete
 // after a rename (review-11a F1); a target's removal and where the focus goes after it; the rank's ? keeps its click
 // (F2); a sort menu over a stored value it doesn't list (F3); two presets of one name in storage (F4); the
-// editors redraw for the settings they show only (F6).
+// editors redraw for the settings they show only (F6); their lists' keys are unique (F7, preact/debug's check).
 // node --test 'test/unit/*.test.*' (in webapp)
 import './fakepage.mjs';
 import './fakedom.mjs';
@@ -18,6 +18,7 @@ const WEBAPP = fileURLToPath(new URL('../..', import.meta.url));
 const built = await esbuild.build({
   stdin: {
     contents: `
+      import 'preact/debug';
       import '@preact/signals';
       export * as settings from './src/settings.ts';
       export * as presets from './src/presets.js';
@@ -60,6 +61,8 @@ const {
   gameData,
   loadData,
 } = page;
+// two skills of one white name (the GM era's two "Pressure" skills)
+globalThis.__LLP_DATA['data-skills'].push([20301, 'Pressure', null], [20302, 'Pressure', null]);
 // the outfits' labels the Umas panel shows (the fake page's outfits have none)
 for (const u of globalThis.__LLP_DATA['data-umas']) for (const o of u.outfits || []) o.label = `[Outfit ${o.id}]`;
 await loadData();
@@ -295,4 +298,35 @@ test('a commit of a setting the editors do not show redraws none of them and re-
   assert.equal(readsAfter, 0, "no tile's state re-read");
   render(null, document.getElementById('umas-panel'));
   render(null, document.getElementById('skills-panel'));
+});
+
+test("a list's keys are unique: a target held twice, in the list and in a preset's view; two skills of one name", async () => {
+  fresh({
+    presets: [{ name: 'Twice', groups: [20049, 20159, 20049] }],
+    targets: [{ group: 20049 }, { group: 20159 }, { group: 20049 }, { group: 20301 }, { group: 20302 }],
+  });
+  // preact/debug says so on the console
+  const said = [],
+    { error } = console;
+  console.error = (...args) => said.push(String(args[0]));
+  try {
+    mountTargets();
+    await settle();
+    const panel = document.getElementById('skills-panel');
+    type(byId(panel, 't-add'), 'pressure'); // both are targets already: a note each
+    await settle();
+    assert.equal(panel.querySelectorAll('p.snote').length, 2);
+    openPresets();
+    await settle();
+    panel.querySelector('button.pview').click();
+    await settle();
+    assert.equal(byId(panel, 'prv-tiles').childNodes.length, 3);
+    render(null, panel);
+  } finally {
+    console.error = error;
+  }
+  assert.deepEqual(
+    said.filter((s) => s.includes('same key')),
+    [],
+  );
 });

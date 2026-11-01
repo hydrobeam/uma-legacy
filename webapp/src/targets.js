@@ -14,7 +14,7 @@ const SHOWN_MAX = 30; // suggestions listed at most
  * @property {{group: number, white: string, gold: string | null, viaGold: boolean}[]} hits up to SHOWN_MAX skills to
  *   add; `viaGold`: matched on the gold's name only (the button shows the gold with its white: the target is the white,
  *   its gold comes with it)
- * @property {string[]} have up to 3 matching skills that are targets already (their white names)
+ * @property {{group: number, white: string}[]} have up to 3 matching skills that are targets already
  * @property {boolean} none no skill matches
  * @param {string} typed @param {readonly import('./settings.ts').Target[]} targets @returns {Suggestions}
  */
@@ -32,7 +32,7 @@ export function suggest(typed, targets) {
     have: match
       .filter(([group]) => have.has(group))
       .slice(0, 3)
-      .map(([, white]) => white),
+      .map(([group, white]) => ({ group, white })),
     none: !match.length,
   };
 }
