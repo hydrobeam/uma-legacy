@@ -269,6 +269,7 @@ const MOUNTS = {
       ['nodedlg', 'twho', 'vxy', 'srctag', 'simtag', 'vdel', 'tempty', 'onote', 'ctt', 'nact'],
     ],
     ['deck-root', 'src/career/view/Sections.tsx', ['deck-dlg', 'deck-title', 'tree-deck'], ['deckdlg']],
+    ['skill-root', 'src/career/view/SkillDetails.tsx', ['sk-dlg', 'sk-title'], ['gmdfaces', 'gmdcard', 'gmdcards']],
     [
       'sim-top',
       'src/career/analysis/view.tsx',
@@ -516,6 +517,7 @@ const LAYERS = [
       'career/view/parts',
       'career/view/dialogs',
       'career/view/Guard',
+      'career/view/SkillDetails',
       'career/view/RunNote',
       'career/view/Tree',
       'career/view/NodeDialog',

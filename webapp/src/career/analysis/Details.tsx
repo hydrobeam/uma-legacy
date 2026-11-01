@@ -11,10 +11,10 @@ import type { ComponentChildren } from 'preact';
 import { useRef } from 'preact/hooks';
 import { gameData } from '../../data.js';
 import { settings } from '../../settings.ts';
-import { skillIcon as skillIconEl } from '../../images.js'; // (Skill Details' icon: its dialog is el()-built)
 import { popOpener } from '../../popover.js';
 import { umaName } from '../../veterans/names.js';
-import { deckCardAt, fitSparks, openSkill } from '../../details.js';
+import { deckCardAt, fitSparks } from '../../details.js';
+import { openSkill } from '../view/SkillDetails.tsx';
 import { InspView } from '../../ui/InspView.tsx';
 import { borLast } from '../../cards.js';
 import { CardAv, Grade, SkillIcon, UmaAv } from '../../ui/Images.tsx';
@@ -226,7 +226,7 @@ function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: Compo
 
 // Skills: every target skill she could acquire this career, as the game's skill tiles (name only): acquired in this
 // result bright (gold tile for the gold version), the others greyed. A tile opens the game-style skill popup
-// (details.js openSkill): acquired or not, where it can come from, and how likely it is acquired and lands as a spark.
+// (view/SkillDetails.tsx): acquired or not, where it can come from, and how likely it is acquired and lands as a spark.
 function SkillsPane({ spec: { d, r } }: { spec: DetailsSpec }) {
   let acquired = 0;
   const tiles = r.targets.flatMap((t) => {
@@ -249,17 +249,7 @@ function SkillsPane({ spec: { d, r } }: { spec: DetailsSpec }) {
         data-k={`sim:sk${t.group}`}
         aria-haspopup="dialog"
         aria-label={`${name}: ${got ? `acquired${gold ? ' (gold)' : ''}` : 'not acquired'}. Details`}
-        onClick={(e) =>
-          openSkill(
-            {
-              b: b as Parameters<typeof openSkill>[0]['b'],
-              name,
-              got: got as 'gold' | 'white' | null,
-              icon: () => skillIconEl(t.group, goldShown),
-            },
-            e.currentTarget,
-          )
-        }
+        onClick={() => openSkill({ b, name, got: got as 'gold' | 'white' | null, group: t.group, goldIcon: goldShown })}
       >
         <SkillIcon group={t.group} gold={goldShown} />
         <span class="udskn">{name}</span>

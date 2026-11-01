@@ -87,6 +87,7 @@ import { Tree, Verdict } from './view/Tree.tsx';
 import { NodeDialog } from './view/NodeDialog.tsx';
 import { ParentPicker } from './view/ParentPicker.tsx';
 import { DeckDialog, drawnCard } from './view/Sections.tsx';
+import { SkillDetails } from './view/SkillDetails.tsx';
 import { BorrowChoice, SetupSummary, initFold } from './view/Setup.tsx';
 import { nodeOpen, openNode, pickerFor } from './view/dialogs.ts';
 import { renderResults } from './view/Results.js';
@@ -351,6 +352,7 @@ loadData().then(
     mount('v-body', <PoolBody />, 'The veterans', selected);
     mount('node-root', <NodeDialog />, 'The node popup', nodeOpen);
     mount('deck-root', <DeckDialog />, 'The deck popup');
+    mount('skill-root', <SkillDetails />, 'Skill Details');
     mount('vpick-root', <ParentPicker />, 'The parent picker', pickerFor);
     mount('sim-top', <Analysis comparison={comparison} />, 'Try a run', simulationDrawn);
     drawUnported();
