@@ -8,6 +8,13 @@
   [hidden] {
     display: none !important;
   }
+  /* the browser's own parts (scrollbars, form controls) follow the site's mode */
+  :root {
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+  }
   body {
     background-color: var(--color-bg);
     color: var(--color-ink);
