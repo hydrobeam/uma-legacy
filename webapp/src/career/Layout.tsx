@@ -96,7 +96,7 @@ export function CareerLayout({ version, note = null, views = null, state: s = {}
           <Ribbon fold>
             <button
               type="button"
-              class="inline-flex cursor-pointer items-center gap-2.5 rounded-sm focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-white"
+              class="text-shadow-ribbon inline-flex cursor-pointer items-center gap-2.5 rounded-sm focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-white"
               id="set-fold"
               aria-expanded={folded ? 'false' : 'true'}
               aria-controls="set-body"
@@ -202,10 +202,10 @@ export function CareerLayout({ version, note = null, views = null, state: s = {}
               </span>
             </div>
           </div>
-          {/* the next career as the player sets it up in the game: the trainee over her legacies, her targets beside
-              them from 760 px (one column under that) */}
+          {/* the next career as the player sets it up in the game: the trainee over her legacies (in the first column
+              with or without targets), her targets beside them from 760 px (one column under that) */}
           <div
-            class="mt-1 grid min-w-0 grid-cols-1 items-start gap-x-4.5 gap-y-4 lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.7fr)] lg:grid-rows-[auto_1fr] lg:*:nth-3:col-start-2 lg:*:nth-3:row-span-2 lg:*:nth-3:row-start-1"
+            class="mt-1 grid min-w-0 grid-cols-1 items-start gap-x-4.5 gap-y-4 lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.7fr)] lg:grid-rows-[auto_1fr] lg:*:col-start-1 lg:*:nth-3:col-start-2 lg:*:nth-3:row-span-2 lg:*:nth-3:row-start-1"
             id="tree"
             data-stale={s.treeStale ? '' : undefined}
           >

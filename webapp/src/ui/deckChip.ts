@@ -9,10 +9,10 @@ export const chip = tv({
   variants: {
     tag: {
       plain: 'not-has-data-[card=art]:border-line',
-      pal: 'not-has-data-[card=art]:border-req text-req',
+      pal: 'not-has-data-[card=art]:border-req not-has-data-[card=art]:text-req',
       // (the frame drawn over the art and 3 px round it; cqw: the card's width, the art's height)
       borrowed:
-        'not-has-data-[card=art]:border-accent text-accent after:nine-friend @container relative after:pointer-events-none after:absolute after:-top-0.75 after:-left-0.75 after:hidden after:h-[calc(100cqw+15px)] after:w-[calc(100%+6px)] has-data-[card=art]:after:block',
+        'not-has-data-[card=art]:border-accent not-has-data-[card=art]:text-accent after:nine-friend @container relative after:pointer-events-none after:absolute after:-top-0.75 after:-left-0.75 after:hidden after:h-[calc(100cqw+15px)] after:w-[calc(100%+6px)] has-data-[card=art]:after:block',
     },
     swap: { true: 'w-16 max-md:w-13' },
     friends: { true: 'not-has-data-[card=art]:ring-gm-pink2 not-has-data-[card=art]:ring-3' },

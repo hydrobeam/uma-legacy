@@ -316,7 +316,7 @@ function Decks({ members, shared }: { members: readonly Member[]; shared: Result
         }
       />
       {/* a label where the other decks start: each row below is another uma's deck, by its changes to the deck above */}
-      <GameBar as="p" class="mt-1 min-w-2/5 justify-self-start">
+      <GameBar as="p" class="mt-1 w-2/5 justify-self-start">
         Swaps
       </GameBar>
       {[...swaps].map(([key, { deck, who }]) => (
