@@ -1,0 +1,87 @@
+/* /about's stylesheet: Tailwind's Preflight, theme and utilities, the tokens (theme.css) and what every page shares
+   (site.css), with only the classes about.html and the shared header use, and the fonts they draw: the site's face at
+   regular and bold, the game's rounded face (the headings, the header's tabs and wordmark). Its prose's elements take
+   their look from one block below; the math font is the page's own (vite/mathfont.mjs). */
+@layer theme, base, components, utilities;
+@import "@fontsource/zen-kaku-gothic-new/latin-400.css";
+@import "@fontsource/zen-kaku-gothic-new/latin-700.css";
+@import "@fontsource/zen-maru-gothic/latin-700.css";
+@import "@fontsource/zen-maru-gothic/latin-900.css";
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "./theme.css";
+@import "./site.css";
+@source "../../about.html";
+@source "../../partials";
+
+/* the document's typography, in <main> (the header keeps its own): headings in the game's section-title style (the
+   rounded face in its brown with a green marker; brown on the page keeps AAA, where the game's white on green would
+   not), paragraphs and lists spaced, their markers back, links in the accent, the table's cells ruled off below (the
+   row's head at the left, the figures at the right) and the formulas in the math font, a display one scrolling on its
+   own when wider than the page */
+@layer base {
+  main :is(h2, h3) {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-game);
+    font-weight: 900;
+    color: var(--color-gm-ink);
+  }
+  main :is(h2, h3)::before {
+    content: "";
+    flex: none;
+    width: 8px;
+    height: 1.1em;
+    border-radius: var(--radius-sm);
+    background: var(--art-bright);
+    box-shadow: var(--inset-shadow-knob);
+  }
+  main h2 {
+    margin-bottom: 12px;
+    font-size: var(--text-headline);
+  }
+  main h3 {
+    margin-block: 28px 8px;
+    font-size: var(--text-title);
+  }
+  main h3::before {
+    width: 6px;
+    height: 1em;
+  }
+  main :is(p, li) {
+    margin-bottom: 10px;
+  }
+  main :is(ul, ol) {
+    padding-left: 20px;
+  }
+  main ul {
+    list-style-type: disc;
+  }
+  main ol {
+    list-style-type: decimal;
+  }
+  main a {
+    color: var(--color-accent);
+    text-decoration-line: underline;
+  }
+  main :is(th, td) {
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--color-line);
+    text-align: right;
+  }
+  main :is(th, td):first-child {
+    text-align: left;
+  }
+  math {
+    font-family: "STIX Two Math", math;
+  }
+  math[display="block"] {
+    max-width: 100%;
+    margin-block: 8px 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    font-size: 1.1em;
+  }
+}

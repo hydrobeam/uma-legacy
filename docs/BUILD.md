@@ -198,8 +198,9 @@ with a portrait in `webapp/img/`. It writes:
   component takes the page as a prop or reads its root's `data-page` through the theme's `career:`/`loop:` variants.
 - **Styles** are Tailwind v4's (`@tailwindcss/vite`): each component carries its look as utilities, so CSS exists only
   for what something names. `src/styles/app.css` is the planner pages' entry (the fonts, Preflight, the theme, the
-  utilities, `dark:` bound to the site's `data-theme` switch, and the few element rules every page shares in
-  `@layer base`); /about has its own (`src/styles/about.css`, sourcing only `about.html` and the partials). The tokens
+  utilities); /about has its own (`src/styles/about.css`, sourcing only `about.html` and the partials, its prose's
+  elements styled in one `@layer base` block); both import `src/styles/site.css` (`dark:` bound to the site's
+  `data-theme` switch, and the few element rules every page shares in `@layer base`). The tokens
   are `src/styles/theme.css`: Tailwind's own colours, fonts, type sizes, radii, shadows, breakpoints and containers
   cleared, then the site's and the game's palettes (`--color-*`), redefined for dark mode in one
   `:root[data-theme="dark"]` block (no `dark:` for the art); the type scale by role (`text-caption` … `text-display`,

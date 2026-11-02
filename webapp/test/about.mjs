@@ -15,12 +15,14 @@ export default async function about(b) {
   await nav.getByRole('link', { name: 'How this works', exact: true }).click();
   await pg.waitForLoadState(); // (the negative checks below read a page that has loaded)
   await expect.soft(pg, 'header link opens /about').toHaveURL(/\/about$/);
-  await expect.soft(pg.locator('main.about h2'), 'header link opens /about: its heading').toHaveText(/How this works/i);
+  const main = pg.getByRole('main');
+  await expect
+    .soft(main.getByRole('heading', { level: 2 }), 'header link opens /about: its heading')
+    .toHaveText(/How this works/i);
   await expect.soft(tabs, `${header}: /about`).toHaveText(PAGES);
   await expect.soft(current, `${header}: /about marked`).toHaveText('How this works');
-  const main = pg.locator('main.about'),
-    spec = pg.locator('main.about details.spec').first(),
-    cspec = pg.locator('main.about details.spec').nth(1);
+  const spec = main.locator('details').first(),
+    cspec = main.locator('details').nth(1);
   const model = '/about: the detailed model starts folded and opens to the model text; the version shows';
   await expect.soft(spec, model).not.toHaveAttribute('open');
   await expect.soft(main, `${model}: no model text folded`).not.toHaveText(/Model\./, { useInnerText: true });
@@ -33,11 +35,11 @@ export default async function about(b) {
   for (const step of [/C1\. Legal careers/, /C8b\. Which careers are searched exactly/, /The Comparison panel/])
     await expect.soft(cspec, `${steps}: ${step.source}`).toHaveText(step, { useInnerText: true });
   const toc = await pg.evaluate(() => {
-    const a = [...document.querySelectorAll('main.about nav.toc a')];
+    const a = [...document.querySelectorAll('main nav[aria-label="On this page"] a')];
     return {
       n: a.length,
-      h: document.querySelectorAll('main.about h3[id]').length,
-      all: document.querySelectorAll('main.about h3').length,
+      h: document.querySelectorAll('main h3[id]').length,
+      all: document.querySelectorAll('main h3').length,
       ok: a.every((x) => document.getElementById(x.getAttribute('href').slice(1))?.tagName === 'H3'),
     };
   });
@@ -53,7 +55,7 @@ export default async function about(b) {
   const link = '/about: a link to an "in detail" section opens its Show box';
   await expect.soft(cspec, `${link}: from another page`).toHaveAttribute('open');
   await expect.soft(spec, `${link}: … that one only`).not.toHaveAttribute('open');
-  await pg.locator('main.about nav.toc a[href="#model"]').click();
+  await pg.getByRole('navigation', { name: 'On this page' }).locator('a[href="#model"]').click();
   await expect.soft(spec, `${link}: from the contents`).toHaveAttribute('open');
   await nav.getByRole('link', { name: 'Loop planner', exact: true }).click();
   await expect.soft(pg, '/about links back to the loop planner').toHaveURL(/\/loop$/);

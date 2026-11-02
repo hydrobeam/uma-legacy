@@ -1,6 +1,6 @@
-/* The pages' stylesheet: Tailwind's Preflight, theme and utilities, the tokens (theme.css), the fonts and the few
-   element rules every page shares. Components carry their look as utilities; nothing here names a component. The
-   sprite variables (--btn-w, ...) are appended to this file by vite/images.mjs. */
+/* The planner pages' stylesheet: Tailwind's Preflight, theme and utilities, the tokens (theme.css), the fonts and what
+   every page shares (site.css). Components carry their look as utilities; nothing here names a component. The sprite
+   variables (--btn-w, ...) are appended to this file by vite/images.mjs. /about has its own entry (about.css). */
 @layer theme, base, components, utilities;
 /* Fonts: the Fontsource packages (package.json), self-hosted, each weight's Latin subset; anything else (symbols, the JP
    era's untranslated names) falls back to the system font per glyph. Zen Maru Gothic is the planner pages' game face. */
@@ -18,41 +18,9 @@
 @import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css" layer(utilities) source(none);
 @import "./theme.css";
-/* the class names Tailwind looks for: the page's code and pages, never the tests or docs */
+@import "./site.css";
+/* the class names Tailwind looks for: the page's code and the planner pages, never the tests or docs */
 @source "../";
 @source "../../index.html";
 @source "../../loop.html";
-@source "../../about.html";
 @source "../../partials";
-/* `dark:` follows the site's own switch (data-theme on <html>, set by partials/theme.hbs), not the system's setting */
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
-
-@layer base {
-  /* (layered !important inverts the layer order: hidden stays hidden whatever a utility sets) */
-  [hidden] {
-    display: none !important;
-  }
-  body {
-    background-color: var(--color-bg);
-    color: var(--color-ink);
-    font-family: var(--font-ui);
-    font-size: 15px;
-    line-height: 1.5;
-    padding-inline: 16px;
-    padding-block: 20px 48px;
-  }
-  button {
-    cursor: pointer;
-  }
-  :focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
-  }
-  /* a theme switch repaints at once: transitions wait out that frame (partials/theme.hbs's html.themeswap), so nothing
-     trails the rest of the page; the light / dark switch's knob (on its data-motion button) still slides */
-  :root.themeswap :not([data-motion]),
-  :root.themeswap :not([data-motion])::before,
-  :root.themeswap ::after {
-    transition: none !important;
-  }
-}

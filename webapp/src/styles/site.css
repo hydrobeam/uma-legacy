@@ -1,0 +1,34 @@
+/* What every page's stylesheet shares (app.css, the planner pages'; about.css, /about's): `dark:` bound to the site's
+   switch and the few element rules every page needs. Imported after the theme. */
+/* `dark:` follows the site's own switch (data-theme on <html>, set by partials/theme.hbs), not the system's setting */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@layer base {
+  /* (layered !important inverts the layer order: hidden stays hidden whatever a utility sets) */
+  [hidden] {
+    display: none !important;
+  }
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-ui);
+    font-size: 15px;
+    line-height: 1.5;
+    padding-inline: 16px;
+    padding-block: 20px 48px;
+  }
+  button {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  /* a theme switch repaints at once: transitions wait out that frame (partials/theme.hbs's html.themeswap), so nothing
+     trails the rest of the page; the light / dark switch's knob (on its data-motion button) still slides */
+  :root.themeswap :not([data-motion]),
+  :root.themeswap :not([data-motion])::before,
+  :root.themeswap ::after {
+    transition: none !important;
+  }
+}

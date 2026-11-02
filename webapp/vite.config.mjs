@@ -1,11 +1,11 @@
 // The site in dist/ (./build.sh page): index.html (the career planner, the front page), loop.html (the loop planner)
 // and about.html, from the pages here; their scripts (src/career/main.tsx, src/loop/main.tsx and the solver's worker,
-// src/worker.ts), the stylesheet (src/styles/app.css: Tailwind's utilities and the theme, the fonts), the solver
-// (loopopt.opt.wasm), the page data (vite/pagedata.mjs), the game's images (vite/images.mjs) and /about's math font
-// (vite/mathfont.mjs). Every file in assets/ carries a fingerprint of its content in its name, so it is served with a
-// one-year immutable cache and an update gets new names; the pages keep a 5-minute cache and always point at the
-// current names (public/_headers). public/ (favicons, hosting rules) is copied to the root as it is. Served over
-// http(s): the page fetches the wasm, data and images.
+// src/worker.ts), the stylesheets (src/styles/app.css, the planner pages', and about.css, /about's: Tailwind's
+// utilities and the theme, the fonts), the solver (loopopt.opt.wasm), the page data (vite/pagedata.mjs), the game's
+// images (vite/images.mjs) and /about's math font (vite/mathfont.mjs). Every file in assets/ carries a fingerprint of
+// its content in its name, so it is served with a one-year immutable cache and an update gets new names; the pages keep
+// a 5-minute cache and always point at the current names (public/_headers). public/ (favicons, hosting rules) is copied
+// to the root as it is. Served over http(s): the page fetches the wasm, data and images.
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -92,9 +92,10 @@ function site() {
           'loop.html': { module: 'src/loop/Layout.tsx', layout: 'LoopLayout' },
         },
       }),
-      // (before Tailwind: the sprites' variables are appended to the stylesheet's entry before it compiles)
+      // (before Tailwind: the sprites' variables are appended to the planner pages' stylesheet before it compiles; /about
+      // draws none)
       images(catalog, IMG, path.join(HERE, 'src', 'styles', 'app.css')),
-      // the utilities and the theme (src/styles/), compiled into the stylesheet
+      // the utilities and the theme (src/styles/), compiled into each page's stylesheet
       tailwindcss(),
       pageData({ catalog, imgDir: IMG, wasm: '/loopopt.opt.wasm', solverPages: ['index.html', 'loop.html'] }),
       mathFont('about.html'),

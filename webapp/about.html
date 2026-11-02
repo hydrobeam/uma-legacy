@@ -21,19 +21,19 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 {{> theme}}
-<link rel="stylesheet" href="/src/styles/app.css">
+<link rel="stylesheet" href="/src/styles/about.css">
 </head>
 <body>
 {{> header current="about" label="uma-legacy"}}
 
-<main class="about">
+<main class="mx-auto max-w-190 px-4 pb-12 leading-relaxed">
 <h2>How this works</h2>
 <p>The loop planner searches loops of three or four umas, outfits, race schedules and support decks from what you own, and
 ranks them by the chance that one career ends with every target skill as a spark on the veteran. The career planner
 takes your actual veterans and picks the next career: the best odds now, and the run that takes you furthest toward a
 fully looped parent (see The career planner, in detail). <strong>Independent Training only.</strong></p>
 
-<nav class="toc" aria-label="On this page"><ol>
+<nav aria-label="On this page"><ol>
 <li><a href="#acquire">Acquiring a skill</a></li>
 <li><a href="#assumptions">Assumptions</a></li>
 <li><a href="#limitations">Limitations</a></li>
@@ -116,7 +116,7 @@ points (pairs and trios) plus 3 for each G1 both won. The race schedules are cho
 wins; the Affinity button shows the totals.</p>
 <p>Example: Oguri Cap and Agnes Digital have 30 relation points, and 21 shared G1s add 63.</p>
 <p>Win chance of one race by the uma's distance and surface aptitude, for the first or second race in a row:</p>
-<div class="tablewrap"><table class="tbl wintbl"><thead><tr><th scope="col">Distance ↓ · Surface →</th><th scope="col">S/A</th><th scope="col">B</th><th scope="col">C</th><th scope="col">D</th><th scope="col">E</th><th scope="col">F</th><th scope="col">G</th></tr></thead><tbody><tr><th scope="row">S/A</th><td>100%</td><td>100%</td><td>90%</td><td>80%</td><td>70%</td><td>50%</td><td>20%</td></tr><tr><th scope="row">B</th><td>100%</td><td>90%</td><td>80%</td><td>70%</td><td>60%</td><td>40%</td><td>10%</td></tr><tr><th scope="row">C</th><td>90%</td><td>80%</td><td>70%</td><td>60%</td><td>50%</td><td>30%</td><td>0%</td></tr><tr><th scope="row">D</th><td>80%</td><td>70%</td><td>60%</td><td>50%</td><td>40%</td><td>20%</td><td>0%</td></tr><tr><th scope="row">E</th><td>70%</td><td>60%</td><td>50%</td><td>40%</td><td>30%</td><td>10%</td><td>0%</td></tr><tr><th scope="row">F</th><td>50%</td><td>40%</td><td>30%</td><td>20%</td><td>10%</td><td>0%</td><td>0%</td></tr><tr><th scope="row">G</th><td>20%</td><td>10%</td><td>0%</td><td>0%</td><td>0%</td><td>0%</td><td>0%</td></tr></tbody></table></div>
+<div class="mt-2 overflow-x-auto art-scroll-shade"><table class="w-full text-ui tabular-nums"><thead><tr><th scope="col">Distance ↓ · Surface →</th><th scope="col">S/A</th><th scope="col">B</th><th scope="col">C</th><th scope="col">D</th><th scope="col">E</th><th scope="col">F</th><th scope="col">G</th></tr></thead><tbody><tr><th scope="row">S/A</th><td>100%</td><td>100%</td><td>90%</td><td>80%</td><td>70%</td><td>50%</td><td>20%</td></tr><tr><th scope="row">B</th><td>100%</td><td>90%</td><td>80%</td><td>70%</td><td>60%</td><td>40%</td><td>10%</td></tr><tr><th scope="row">C</th><td>90%</td><td>80%</td><td>70%</td><td>60%</td><td>50%</td><td>30%</td><td>0%</td></tr><tr><th scope="row">D</th><td>80%</td><td>70%</td><td>60%</td><td>50%</td><td>40%</td><td>20%</td><td>0%</td></tr><tr><th scope="row">E</th><td>70%</td><td>60%</td><td>50%</td><td>40%</td><td>30%</td><td>10%</td><td>0%</td></tr><tr><th scope="row">F</th><td>50%</td><td>40%</td><td>30%</td><td>20%</td><td>10%</td><td>0%</td><td>0%</td></tr><tr><th scope="row">G</th><td>20%</td><td>10%</td><td>0%</td><td>0%</td><td>0%</td><td>0%</td><td>0%</td></tr></tbody></table></div>
 <p>A third race in a row costs 5 more points, a fourth 20, a fifth 30, a sixth and later 50 (any race counts; a rest
 resets the streak). A goal race (one the career requires) costs what the race before it in the streak would: nothing
 up to a third race in a row, then 5, 20, and 30 for a sixth or later; it still counts toward the races after it. A G1
@@ -173,9 +173,9 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
 87 about 9%. A skill all six legacies carry is inherited in about 78% of careers.</p>
 
 <h3 id="model">The model, in detail</h3>
-  <p class="hint">Very technical: the full model and search, written so another person or program could reimplement the
+  <p class="text-note text-muted">Very technical: the full model and search, written so another person or program could reimplement the
   planner. Nothing here is needed to use it.</p>
-  <details class="spec"><summary>Show the model</summary>
+  <details><summary class="mt-1 mb-2.5 cursor-pointer font-semibold text-accent">Show the model</summary>
   <p><strong>In short.</strong></p>
   <ol>
   <li>For a loop of three or four umas, each uma's race schedule is chosen to maximise the G1s they win together. That sets each
@@ -556,10 +556,10 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   </details>
 
 <h3 id="career-planner">The career planner, in detail</h3>
-  <p class="hint">Very technical: how the career planner chooses your next career and what its numbers mean, written so
+  <p class="text-note text-muted">Very technical: how the career planner chooses your next career and what its numbers mean, written so
   another person or program could reimplement it. It builds on the model above (steps 4–8 and 19 score a career; steps
   10–15 search decks). Nothing here is needed to use it.</p>
-  <details class="spec"><summary>Show the career planner</summary>
+  <details><summary class="mt-1 mb-2.5 cursor-pointer font-semibold text-accent">Show the career planner</summary>
   <p><strong>In short.</strong></p>
   <ol>
   <li>A career is a trainee and two of your veterans as parents; their own recorded parents are the grandparents. Every
@@ -898,7 +898,7 @@ many of the best of those made finalists likewise. Where a pick's or a scenario'
   </details>
 
 <h3 id="sources">Sources</h3>
-<ul class="srclist">
+<ul>
 <li><strong>Game data:</strong> the game's own data, Global; JP for the Grand Masters era.</li>
 <li><strong>Card events:</strong> <a href="https://gametora.com/umamusume">GameTora</a>.</li>
 <li><strong>Spark and inheritance rates:</strong> <a href="https://hakuraku.moe/notes/spark_generation">hakuraku.moe</a>'s
@@ -908,7 +908,7 @@ room-match data.</li>
 <a href="https://github.com/Acrith/uma-it-optimizer">uma-it-optimizer</a>'s measurements.</li>
 <li><strong>Art:</strong> character icons and card art from the game, © Cygames.</li>
 </ul>
-<p class="hint">Version {{version}}</p>
+<p class="text-note text-muted">Version {{version}}</p>
 </main>
 <script>
 // a link to "in detail" (the contents, or another page's #model / #career-planner) opens its "Show …" box
