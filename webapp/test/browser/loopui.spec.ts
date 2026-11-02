@@ -205,11 +205,17 @@ phone.describe('phone @both', () => {
       await card.click();
       await loopSettled(page);
       await closeEditor(page, 'cards');
+      // (the step is the button taking you back: at the foot the results must be out of view, which at 812 px tall
+      // depends on the setup's length to the pixel, so it runs on a shorter screen, then the screen goes back)
+      await page.setViewportSize({ width: 375, height: 600 });
+      await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+      await expect(page.locator('#run-pill')).toBeVisible();
       await page.click('#run-pill');
       await page.waitForFunction(() => {
         const r = document.getElementById('rcol')?.getBoundingClientRect();
         return !!r && Math.abs(r.top) < 40 && document.activeElement?.id === 'rcol';
       });
+      await page.setViewportSize({ width: 375, height: 812 });
       // the roster and card boxes: shorter than the screen, their bottom edge fading while there is more below
       for (const [id, editor] of [
         ['roster', 'umas'],
