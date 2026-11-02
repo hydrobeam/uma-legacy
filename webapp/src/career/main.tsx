@@ -24,7 +24,7 @@
 //   view/dialogs.ts    which popup is open, for what (modules that are not views open them through it)
 //   view/Options.tsx   the results column (the options table) and its Saves popup
 //   view/Pool.tsx      the veterans dialog: its tabs and order menu, lists and the pane beside them
-//   view/Umamoe.tsx    uma.moe's button and popup (umamoesetup.ts keeps its listings)
+//   view/Umamoe.tsx    uma.moe's button and popup (io/umamoesetup.ts keeps its listings)
 //   view/SkillDetails.tsx  the Skill Details popup
 //   view/Guard.tsx     the render guard each view draws inside
 //   view/parts.ts      small parts the views share
@@ -67,7 +67,7 @@ import {
 import { AddList, VetEditors } from '../veterans/Editors.tsx';
 import { ScheduleDialog } from '../ui/Schedule.tsx';
 import { setRunner } from '../model/images.ts';
-import { connectUmamoe, syncListings } from '../umamoesetup.ts';
+import { connectUmamoe, syncListings } from '../io/umamoesetup.ts';
 import { UmButton, UmamoeDialog } from './view/Umamoe.tsx';
 import { sayRenderErrors } from '../ui/RenderGuard.tsx';
 import { CareerLayout } from './Layout.tsx';
@@ -101,7 +101,7 @@ import type { Status } from './state.ts';
 import type { CareerSearch } from './job.ts';
 
 // ---------- the run ----------
-// uma.moe's sync (umamoesetup.ts): the targets it searches for, and the pool its listings join
+// uma.moe's sync (io/umamoesetup.ts): the targets it searches for, and the pool its listings join
 connectUmamoe({ targets: () => settings.peek().targets, setListings });
 // The veteran analysis' comparison (analysis/compare.ts `createComparison`): the solver, the clock, the answer store,
 // the analysis store, the career on show and her draft. The run machine below drives it through its hooks.

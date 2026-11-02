@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { CareerTables } from '../../src/model/data.ts';
-import type { UmamoeListing } from '../../src/umadump.ts';
+import type { UmamoeListing } from '../../src/io/umadump.ts';
 
 // (a path joined, not `new URL(…, import.meta.url)`, which Vite's build would take for an asset of the page)
 const repo = (relative: string) => path.join(import.meta.dirname, '../../..', relative);

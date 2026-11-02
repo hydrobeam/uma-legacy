@@ -6,7 +6,7 @@ import { ERA } from '../state/saved.ts';
 import { vets, places, importVets, isVeteran, asVeteran, addVets } from '../veterans/store.ts';
 import { umaName } from '../veterans/names.ts';
 import { unknownPinksIn, unknownPinksSaid } from '../veterans/records.ts';
-import { parseExport, parseTree } from '../umadump.ts';
+import { parseExport, parseTree } from '../io/umadump.ts';
 import { orNull } from '../must.ts';
 import { Blocked } from './job.ts';
 import { currentJob } from './current.ts';

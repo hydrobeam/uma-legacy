@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
-// uma.moe's sync (umamoesetup.ts, umamoe.ts) with uma.moe stood in for by a fetch that answers two listings made from
-// the umadump test file's first two veterans: a rejected key says so and is forgotten; a saved key sends one request
-// (the key as its header only, parents with all but one target on herself, followable trainers) and is kept under its
-// own entry; the listings join the pool as borrowed veterans; Include max borrows asks without the follower limit; a
-// kept answer is drawn with no request (a reload); Refresh asks again; a late reply for a target set left before it came
-// never lands; the Grand Masters era asks only for the sparks Global has. npx vitest run (in webapp)
+// uma.moe's sync (io/umamoesetup.ts, io/umamoe.ts) with uma.moe stood in for by a fetch that answers two listings made
+// from the umadump test file's first two veterans: a rejected key says so and is forgotten; a saved key sends one
+// request (the key as its header only, parents with all but one target on herself, followable trainers) and is kept
+// under its own entry; the listings join the pool as borrowed veterans; Include max borrows asks without the follower
+// limit; a kept answer is drawn with no request (a reload); Refresh asks again; a late reply for a target set left
+// before it came never lands; the Grand Masters era asks only for the sparks Global has. npx vitest run (in webapp)
 import { expect, test, vi } from 'vitest';
-import type { UmamoeListing } from '../../src/umadump.ts';
+import type { UmamoeListing } from '../../src/io/umadump.ts';
 import type { Veteran } from '../../src/veterans/store.ts';
 import { CAREER, RECORDS, listing } from '../browser/listings.ts';
 
@@ -41,7 +41,7 @@ let listed: readonly Veteran[] = [];
 const fresh = async () => {
   vi.resetModules();
   await (await import('../../src/model/data.ts')).loadData(CAREER);
-  const um = await import('../../src/umamoesetup.ts');
+  const um = await import('../../src/io/umamoesetup.ts');
   um.connectUmamoe({ targets: () => TARGETS, setListings: (l) => (listed = l) });
   return um;
 };
@@ -81,13 +81,13 @@ test("the listings join the pool as borrowed veterans from uma.moe, with their l
   }
   expect(listed.map((v) => v.lender?.name)).toEqual(['Trainer 1', 'Trainer 2']);
   expect(listed.map((v) => v.lender?.followers)).toEqual([13, 14]);
-  const um = await import('../../src/umamoesetup.ts');
+  const um = await import('../../src/io/umamoesetup.ts');
   const byWins = [...listed].sort((a, b) => um.SORTS.wins[2](b) - um.SORTS.wins[2](a)).map((v) => v.lender?.name);
   expect(byWins).toEqual(['Trainer 2', 'Trainer 1']);
 });
 
 test('Include max borrows asks again without the follower limit; off again, the kept answer (no request)', async () => {
-  const um = await import('../../src/umamoesetup.ts');
+  const um = await import('../../src/io/umamoesetup.ts');
   um.setUmFull(true);
   await settle();
   expect(sent).toHaveLength(3);
@@ -109,7 +109,7 @@ test('a reload draws the kept answer with no request; Refresh asks once more', a
 });
 
 test('a late reply for a target set left before it came replaces neither the listings on show nor the label', async () => {
-  const um = await import('../../src/umamoesetup.ts');
+  const um = await import('../../src/io/umamoesetup.ts');
   // (no answer kept for max borrows: its request goes out and is held)
   const kept = JSON.parse(localStorage.getItem('llp:umamoe') ?? '{}');
   for (const k of Object.keys(kept)) if (!k.includes('max_follower_num')) delete kept[k];
@@ -129,7 +129,7 @@ test('a late reply for a target set left before it came replaces neither the lis
 });
 
 test('the Grand Masters era asks uma.moe only for the sparks Global has', async () => {
-  const { targetFactors } = await import('../../src/umamoe.ts');
+  const { targetFactors } = await import('../../src/io/umamoe.ts');
   const { loadData } = await import('../../src/model/data.ts');
   const all = targetFactors(TARGETS.map((t) => t.group)).flat();
   const [kept] = all;

@@ -44,7 +44,7 @@ export interface LineageNode {
   /** her end-of-career aptitude grades (the veteran analysis' draft) */
   apt?: Grades | null;
 }
-/** The trainer who lists a veteran found on uma.moe (umadump.ts `parseListing`): kept on this device, left out of
+/** The trainer who lists a veteran found on uma.moe (io/umadump.ts `parseListing`): kept on this device, left out of
  *  Export. */
 export interface Lender {
   name: string;
@@ -56,7 +56,7 @@ export interface Lender {
   sparkStars?: number;
 }
 /** A parent place's record: her parent, or null where the record she came from lacks that parent (absent: a game
- *  export's veteran, umadump.ts), whom the solver reads as no one. A parent with no uma is one not entered yet
+ *  export's veteran, io/umadump.ts), whom the solver reads as no one. A parent with no uma is one not entered yet
  *  (complete.ts). */
 export type ParentNode = LineageNode | null;
 /** a veteran's two parents, in their places */
@@ -333,7 +333,7 @@ export function newVet(her: LineageNode & { parents: Parents }, src: 'hand' | 'e
  */
 export function importVets(list: readonly Veteran[], all = false) {
   const isImport = (v: VetRecord) => v.src === 'import';
-  // the borrow list's veterans by their id (umadump.ts: a lender's viewer id after "tr"), not by the Yours/Borrowed
+  // the borrow list's veterans by their id (io/umadump.ts: a lender's viewer id after "tr"), not by the Yours/Borrowed
   // switch, which the player may have flipped
   const lent = (v: VetRecord) => isImport(v) && v.id.startsWith('tr');
   let next = record.peek().vets.filter((v) => !all || !isImport(v));
@@ -365,7 +365,7 @@ export function importVets(list: readonly Veteran[], all = false) {
   commitList(next);
   return { added: fresh.length, updated, borrowed: borrowed.length, dropped };
 }
-/** uma.moe's listings for the targets (umadump.ts `parseListing`): borrowed veterans the planner weighs like any other,
+/** uma.moe's listings for the targets (io/umadump.ts `parseListing`): borrowed veterans the planner weighs like any other,
  *  after every other veteran. They replace the earlier listings, except one chosen as a parent (she stays while chosen,
  *  taking her new record when listed again). Not saved unless chosen. */
 export function setListings(list: readonly Veteran[]) {

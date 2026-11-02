@@ -10,9 +10,9 @@
 // have two factor groups (Racing Spirit: Stamina, 21009 and 21015), so every factor group of a target is asked for.
 // `max_follower_num` 999: trainers at 1,000 followers can't be followed (left out unless the player asks for full
 // trainers too). Pages count from 0, 100 results each.
-import { careerTables } from './model/data.ts';
-import { must } from './must.ts';
-import { read, readJson, update, updateJson } from './state/storage.ts';
+import { careerTables } from '../model/data.ts';
+import { must } from '../must.ts';
+import { read, readJson, update, updateJson } from '../state/storage.ts';
 import type { UmamoeListing } from './umadump.ts';
 
 const KEY_STORE = 'llp:umamoe-key',

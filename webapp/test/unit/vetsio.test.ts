@@ -9,7 +9,7 @@
 import { expect, test, vi } from 'vitest';
 import { loadData } from '../../src/model/data.ts';
 import { ERA, loadSaved, writeSaved } from '../../src/state/saved.ts';
-import { parseListing } from '../../src/umadump.ts';
+import { parseListing } from '../../src/io/umadump.ts';
 import * as vs from '../../src/veterans/store.ts';
 import type { LineageNode, Veteran } from '../../src/veterans/store.ts';
 import { exportText, importText } from '../../src/career/io.ts';

@@ -7,7 +7,7 @@
 // subscribe an effect. The model layer holds the rule's logic (frontend.md: the run machines, buildJob, uma.moe sync, io):
 // both run machines (their store's transitions and the settings come in their deps), career/job.ts (its buildJob takes
 // the settings and the veterans store's record as values; career/current.ts, a page module, passes the stores' own) and
-// umamoesetup.ts (uma.moe's sync: the targets and the pool's setListings come in through connectUmamoe). Outside it:
+// io/umamoesetup.ts (uma.moe's sync: the targets and the pool's setListings come in through connectUmamoe). Outside it:
 // loop/io.ts, the loop page's Export and Import, an editor that imports shared modules reading the settings.
 // Components stay views: a module that is not a component (.ts) imports no .tsx module, a type import included.
 // Swc parses (dependency-cruiser reads TypeScript through TypeScript's JavaScript API, which TypeScript 7 no longer has).
@@ -44,9 +44,9 @@ export const LAYERS = [
   ],
   [
     'model',
-    ['model/job', 'model/pink', 'model/proofs', 'umadump', 'umamoe', 'career/roll', 'career/job', 'career/reply']
+    ['model/job', 'model/pink', 'model/proofs', 'io/umadump', 'io/umamoe', 'career/roll', 'career/job', 'career/reply']
       .concat(['career/keys', 'career/run'])
-      .concat(['career/analysis/compare', 'loop/job', 'loop/keys', 'loop/members', 'loop/run', 'umamoesetup'])
+      .concat(['career/analysis/compare', 'loop/job', 'loop/keys', 'loop/members', 'loop/run', 'io/umamoesetup'])
       .concat(['veterans/names', 'veterans/records', 'veterans/complete']),
   ],
   ['stores', ['state/settings', 'loop/state', 'veterans/store', 'career/state', 'career/analysis/state']],

@@ -12,9 +12,9 @@
 // so that effect subscribes to none of them. What it reads and writes of the page, the targets and the veterans store's
 // listings, comes in through `connectUmamoe`, called once by the entry: it reads no store itself (.dependency-cruiser.mjs checks it).
 import { batch, computed, signal } from '@preact/signals';
-import { ERA } from './state/saved.ts';
-import { must } from './must.ts';
-import { read, update } from './state/storage.ts';
+import { ERA } from '../state/saved.ts';
+import { must } from '../must.ts';
+import { read, update } from '../state/storage.ts';
 import { parseListing } from './umadump.ts';
 import {
   savedKey,
@@ -28,8 +28,8 @@ import {
 } from './umamoe.ts';
 import type { ReadonlySignal } from '@preact/signals';
 import type { UmamoeListing } from './umadump.ts';
-import type { SettingsView } from './state/settings.ts';
-import type { Veteran, VetRecord } from './veterans/store.ts';
+import type { SettingsView } from '../state/settings.ts';
+import type { Veteran, VetRecord } from '../veterans/store.ts';
 
 /** what the sync reads and writes of the page (career/main.tsx) */
 export interface UmPage {
@@ -142,7 +142,7 @@ function take(
   order.clear();
   for (const [i, v] of listed.entries()) order.set(v.id, i);
   const n = a.items.length,
-    // (a pink of an aptitude the solver doesn't know is left out of her record: umadump.ts)
+    // (a pink of an aptitude the solver doesn't know is left out of her record: io/umadump.ts)
     leftOut = unknownPinks ? `, ${unknownPinks} unknown pink${unknownPinks === 1 ? '' : 's'} left out` : '';
   batch(() => {
     pageNow().setListings(listed);

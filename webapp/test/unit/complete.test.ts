@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
 import { loadData } from '../../src/model/data.ts';
-import { parseExport } from '../../src/umadump.ts';
+import { parseExport } from '../../src/io/umadump.ts';
 import { initStore, settings } from '../../src/state/settings.ts';
 import * as vs from '../../src/veterans/store.ts';
 import { isComplete, lacks, lacksSaid, notEntered } from '../../src/veterans/complete.ts';

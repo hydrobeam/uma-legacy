@@ -1,8 +1,8 @@
 // ---------- Import umadump: the file button of the Umas and the Support cards panels ----------
-// Either takes card_data.json (owned outfits) or support_card_data.json (owned support cards), or both (owned.ts);
+// Either takes card_data.json (owned outfits) or support_card_data.json (owned support cards), or both (io/owned.ts);
 // `onSaid` gets what the import says, for the panel's status (`useSaid`).
 import { useState } from 'preact/hooks';
-import { importFiles } from '../owned.ts';
+import { importFiles } from '../io/owned.ts';
 import { FileButton } from './Button.tsx';
 
 /** the two panels' shared rows: the top row (its title for the panel's name alone: the dialog's head shows it) with All /
