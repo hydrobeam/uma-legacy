@@ -1176,7 +1176,7 @@ export default async function career(b) {
         j.career.compare === true &&
         j.career.fix.length === 1 &&
         j.career.fix[0] === j.career.legacies.length - 1 &&
-        v.sparks.some(([g, s]) => g === 20159 && s === 3) &&
+        v.sparks.some(({ group, stars }) => group === 20159 && stars === 3) &&
         v.wins.every(Number.isInteger) &&
         v.parents.length === 2 &&
         v.parents.every((p) => p.chara > 0 && p.sparks.length > 0)
