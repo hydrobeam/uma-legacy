@@ -140,6 +140,7 @@ function Chip(props: ChipProps) {
     );
   return (
     <span class={SPARK_CELL.list} data-spark={spark}>
+      {/* its own <button>: a spark bar, its look sparkBar's */}
       <button
         type="button"
         class={bar}
@@ -152,6 +153,7 @@ function Chip(props: ChipProps) {
         {inner}
       </button>
       {onRemove && (
+        // its own <button>: the chip's corner ×, shown while the pointer or the focus is on the chip
         <button
           type="button"
           class={REMOVE}
@@ -203,6 +205,7 @@ function ColourBar({ nd, kind, k, at, readOnly, parent }: BarProps) {
     }
     return (
       <span class={SPARK_CELL.list} data-spark="green" data-none="">
+        {/* its own <button>: the dashed unique bar that adds her unique spark (sparkBar's look) */}
         <button
           type="button"
           class={sparkBar({ look: 'none-green', use: barUse(false, parent) })}
@@ -254,6 +257,7 @@ function ColourBar({ nd, kind, k, at, readOnly, parent }: BarProps) {
           {inner}
         </span>
       ) : (
+        // its own <button>: a spark bar opening its colour picker (sparkBar's look)
         <button
           type="button"
           class={bar}
@@ -274,6 +278,7 @@ function AddSpark({ k, at }: { k: string; at: NodeRef }) {
   const ref = useRef<HTMLButtonElement>(null),
     open = addOpener.value !== null && addOpener.value === ref.current;
   return (
+    // its own <button>: the dashed "+" cell, as tall as a bar, opening the "+" list
     <button
       ref={ref}
       type="button"

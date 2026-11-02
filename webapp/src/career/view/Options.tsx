@@ -78,6 +78,7 @@ function OptionsTable() {
             numbers (the popup behind a small (i) right after the section's title, in its header bar: white on the
             green, its tap area 44 px) */}
         {planReport && (
+          // its own <button>: the "i" on the blue info bar, white on the bar's colour
           <button
             type="button"
             class="font-glyph text-caption text-bar-info shadow-info relative ml-2 inline-grid size-4.5 cursor-pointer place-items-center rounded-full bg-white leading-none font-black italic text-shadow-none before:absolute before:-inset-3.25"

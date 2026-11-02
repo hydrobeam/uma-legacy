@@ -95,6 +95,7 @@ export function CareerLayout({ version, note = null, views = null, state: s = {}
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: the ribbon's button (#set-fold) is the keyboard's way; folded, a click anywhere on the bar is the pointer's shortcut */}
         <section class={folded ? FOLDED : SETUP} aria-labelledby="h-set" onClick={s.onBar}>
           <Ribbon fold>
+            {/* its own <button>: the ribbon's fold, its words on the pink ribbon, its focus ring white */}
             <button
               type="button"
               class="text-shadow-ribbon inline-flex cursor-pointer items-center gap-2.5 rounded-sm focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-white"

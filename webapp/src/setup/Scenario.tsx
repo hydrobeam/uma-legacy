@@ -34,6 +34,7 @@ function ScenarioTile({ sc, checked, onPick }: { sc: Scenario; checked: boolean;
   const golds = goldNames(sc),
     art = artUrl(sc);
   return (
+    // its own <button>: a scenario's tile in the picker's menu, its art the scenario's
     <button
       type="button"
       class="art-stile border-gm-edge text-gm-ink hover:border-gm-bright2 focus-visible:border-gm-bright2 on:border-gm-bright2 on:ring-gm-bright2/25 on:border-2 on:ring-2 relative flex min-h-28 min-w-0 flex-col items-start justify-start gap-1 overflow-hidden rounded-lg border px-3 py-2 text-left @max-[360px]:px-2 @max-[360px]:py-1.5"
@@ -118,6 +119,7 @@ export function ScenarioPicker({ page }: { page: Page }) {
         <span class={setLabel.beside} id="x-scen-l">
           Scenario
         </span>
+        {/* its own <button>: the scenario picker (scenButton's look), the picked scenario's art its face */}
         <button
           class={scenButton({ page })}
           id="x-scen"
@@ -298,6 +300,7 @@ export function RankControl({ page }: { page: Page }) {
     <>
       <span class={setLabel.beside}>
         <span id="rank-l">Assumed lineage rank</span>
+        {/* its own <button>: the rank note's "?", a 44 px touch area around its disc */}
         <button
           type="button"
           class="group inline-grid place-items-center rounded-full p-0 max-md:-m-3.25 max-md:min-h-11 max-md:min-w-11"

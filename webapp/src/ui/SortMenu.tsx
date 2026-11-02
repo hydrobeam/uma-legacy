@@ -78,6 +78,7 @@ export function SortMenu<K extends string>({ id, size, what, items, value, arrow
         {items.map(({ k, label, hint }) => {
           const on = k === value;
           return (
+            // its own <button>: an item of this menu (dropdown.ts moves the focus among them)
             <button
               key={k}
               type="button"

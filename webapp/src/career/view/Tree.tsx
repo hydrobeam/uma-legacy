@@ -78,6 +78,7 @@ function Place({ spec, kind, ghost = false, k, face, name, sub, label, head, chi
       }}
     >
       {head}
+      {/* its own <button>: a tree node's tile, the node itself */}
       <button
         ref={tile}
         type="button"

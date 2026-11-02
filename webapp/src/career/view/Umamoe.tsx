@@ -180,6 +180,7 @@ function UmamoePanel({ keyBox: key }: { keyBox: RefObject<HTMLInputElement | nul
             />
           ))}
         </div>
+        {/* its own <button>: Disconnect, a text link */}
         <button
           class="text-note text-gm-ink2 focus-visible:outline-accent cursor-pointer underline focus-visible:outline-3 focus-visible:outline-offset-2"
           type="button"

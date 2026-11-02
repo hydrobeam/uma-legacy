@@ -98,6 +98,7 @@ function TargetAdder({ input }: { input: RefObject<HTMLInputElement | null> }) {
         hidden={!shown}
       >
         {offer.hits.map((hit) => (
+          // its own <button>: a suggestion in the adder's list (the arrows move the focus among them)
           <button key={hit.group} class={SUGGESTION} type="button" onClick={() => add(hit.group)} onKeyDown={listKeys}>
             <SkillIcon group={hit.group} gold={hit.viaGold} />
             {hit.white}

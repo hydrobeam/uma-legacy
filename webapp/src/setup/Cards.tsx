@@ -104,6 +104,7 @@ function CardTile({ c, gifts, banNote }: Listed) {
   const pressed = useComputed(() => (fields.cardsOff.value[c.id] !== false ? 'true' : 'false')),
     hidden = useComputed(() => !matches(c, query.value));
   return (
+    // its own <button>: a card's tile in the picker, the tile the toggle
     <button
       class="group grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-0.75 rounded-md p-0 text-left focus-visible:outline-offset-3"
       type="button"

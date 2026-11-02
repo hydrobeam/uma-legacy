@@ -82,6 +82,7 @@ export function TargetTile({
       </span>
       {remove && (
         // the game's close cross, 24 px, its touch area 36 px; on the dark white tile lightened
+        // its own <button>: the tile's corner ×, part of the tile
         <button
           class={cx(
             'after:art-close relative size-6 rounded-full before:absolute before:-inset-1.5 after:absolute after:inset-0 active:translate-y-px',

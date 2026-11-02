@@ -138,6 +138,7 @@ export function VetCell({ v, name, label, onClick, tab, sub, subTitle, id, k, se
       : 0,
     badge = rankId ? srcFor('ui', `vrank_${rankId}`) : null;
   return (
+    // its own <button>: the veteran's cell itself, as the game's legacy list draws her
     <button
       type="button"
       class="hover:bg-gm-bright/16 data-sel:not-hover:bg-gm-bright/26 data-sel:inset-ring-gm-green2 focus-visible:outline-accent relative grid min-w-0 cursor-pointer justify-items-center gap-0.5 rounded-xl py-1 text-center [--p:76px] focus-visible:outline-3 focus-visible:outline-offset-2 data-sel:inset-ring-2 max-sm:[--p:54px]"

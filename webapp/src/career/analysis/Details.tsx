@@ -274,6 +274,7 @@ function SkillsPane({ spec: { d, r } }: { spec: DetailsSpec }) {
     const name = goldShown && skill.gd ? skill.gd : skill.w;
     if (got) acquired++;
     return [
+      // its own <button>: a skill's cell, a skill tile, its look career/view/skillTile.ts `skillTile`
       <button
         key={t.group}
         type="button"
@@ -315,6 +316,7 @@ function DeckCell({ slot }: { slot: DeckSlot }) {
       end: endAt || 0,
     }));
   return (
+    // its own <button>: a deck card's chip, its look results/deckChip.ts `chip`, its data marks this list's
     <button
       type="button"
       class={chip({ tag: bor ? 'borrowed' : 'plain', friends: bor })}
@@ -350,6 +352,7 @@ function Legacy({ v, label, open, j }: DetailsSpec['legacies'][number] & { j: nu
     >
       <span class="bg-legacy-blue text-ui absolute top-0 left-0 rounded-tl-sm rounded-br-lg pt-px pr-3 pb-0.5 pl-2 font-black text-white">{`Legacy ${j + 1}`}</span>
       <div class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-4.5">
+        {/* its own <button>: a legacy's portrait and name, opening her sparks */}
         <button
           type="button"
           class="focus-visible:outline-accent grid cursor-pointer justify-items-center gap-0.5 rounded-lg p-0.5 text-center focus-visible:outline-3 focus-visible:outline-offset-2"

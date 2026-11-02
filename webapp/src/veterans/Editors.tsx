@@ -120,6 +120,7 @@ export function UmaList(props: {
   return (
     <>
       {umas.map((u) => (
+        // its own <button>: an uma's row in the picker's list, the row the choice
         <button key={u.id} type="button" class={UMA} hidden={!shown(u)} onClick={() => onPick(u.id)}>
           <UmaAv uma={u.id} outfit={null} size={40} />
           <span>{u.name}</span>
@@ -254,6 +255,7 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
       <div class="grid grid-cols-2 gap-x-2 gap-y-1.5">
         {spec.groups(nd).map((g) => (
           <span key={g} class={SPARK_CELL.pick} data-spark={kind}>
+            {/* its own <button>: a spark bar as a choice in the colour picker (sparkBar's look) */}
             <button
               type="button"
               class={sparkBar({ look: kind, use: 'pick' })}
@@ -271,6 +273,7 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
       {/* biome-ignore lint/a11y/useSemanticElements: today's markup (the game's star row); a fieldset would need it restyled */}
       <div class="mt-1.5 flex justify-center gap-2" role="group" aria-label="Stars">
         {[1, 2, 3].map((k) => (
+          // its own <button>: a star of the row, the game's star sprite its face
           <button
             key={k}
             type="button"
@@ -339,6 +342,7 @@ function AddBody({ open }: { open: { btn: HTMLElement; at: NodeRef } | null }) {
       <p class="text-note text-gm-ink2">{missing.length ? 'Target skills she lacks' : 'She has every target skill.'}</p>
       <div class="grid gap-1.5">
         {missing.map((g) => (
+          // its own <button>: a skill in the "+" list, the game's add cell its face
           <button
             key={g}
             type="button"

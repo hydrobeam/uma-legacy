@@ -49,6 +49,7 @@ function VetChoice({ v, i, k }: { v: VetRecord; i: number; k: number }) {
     stars = have.reduce((a, g) => a + starsOf(v.sparks, g), 0);
   return (
     // (the chosen one ringed in the accent; a borrowed one marked by a gold bar at its left)
+    // its own <button>: a candidate's card, the card the choice
     <button
       type="button"
       class={cx(

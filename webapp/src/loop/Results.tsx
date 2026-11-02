@@ -205,6 +205,7 @@ function MemberCard({ m, pick }: { m: Member; pick: ReturnType<typeof pickOutfit
       data-outfit-label={outfit}
       data-outfit-note={outfitNote(pick)}
     >
+      {/* its own <button>: a member's row (her portrait and name), opening her panel as her face does */}
       <button
         type="button"
         class="group focus-visible:outline-accent flex cursor-pointer items-center gap-2 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-3 max-md:min-h-11"
@@ -348,6 +349,7 @@ function CardChip({
     end: endAt || 0,
   }));
   return (
+    // its own <button>: a deck card's chip, its look results/deckChip.ts `chip`, its data marks this list's
     <button
       type="button"
       class={chip({ tag: borrowed ? 'borrowed' : pal ? 'pal' : 'plain', swap })}
@@ -382,6 +384,7 @@ const chips = (deck: ResultDeck, slots: readonly DeckSlot[], side?: 'out' | 'in'
 // the (i) button by a deck's title, showing its hint odds
 function InfoButton({ open, toggle }: { open: boolean; toggle: () => void }) {
   return (
+    // its own <button>: the deck box's "i", an accent disc filled while open
     <button
       type="button"
       class="border-accent bg-panel font-glyph text-note text-accent aria-expanded:bg-accent aria-expanded:text-panel absolute top-2.5 right-2.5 inline-grid size-5.5 shrink-0 cursor-pointer place-items-center rounded-full border leading-none font-bold italic"
@@ -506,6 +509,7 @@ function SwapDeltas({ shared, deck, who }: { shared: ResultDeck; deck: ResultDec
     );
   const hidden = changes.length - 2;
   return (
+    // its own <button>: the swap's deltas, the folded list its own toggle
     <button
       type="button"
       class="group/deltas text-note text-ink hover:border-line hover:bg-bg focus-visible:outline-accent ml-auto grid min-h-0 w-[min(17rem,100%)] cursor-pointer items-center gap-1 self-center rounded-md border border-transparent px-1.5 py-1 text-left focus-visible:outline-2 focus-visible:outline-offset-2 max-md:ml-0 max-md:basis-full"

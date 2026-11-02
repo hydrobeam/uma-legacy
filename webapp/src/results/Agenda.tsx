@@ -260,6 +260,7 @@ export function WinsEditor({ races, wins, winAt, offer, info: infoOf, onWins }: 
                 />
               ))}
               {offered.length > 0 && (
+                // its own <button>: a free slot's "+", the slot's art its face
                 <button
                   type="button"
                   class="art-plus hover:art-plus-on aria-expanded:art-plus-on focus-visible:outline-accent col-start-1 row-start-1 grid min-h-0 w-full cursor-pointer place-items-center rounded-md focus-visible:outline-2 focus-visible:-outline-offset-2"
@@ -326,6 +327,7 @@ function WinButton(props: { ix: number; name: string; scheduled: WinInfo | null;
     cellRun = scheduled && scheduled.turn === turn ? must(scheduled.cell, 'a race in her schedule has its cell') : null,
     odds = cellRun ? ` · ${why(cellRun) || `${shownP(cellRun)}% win`}` : '';
   return (
+    // its own <button>: a won race in its slot, its banner the face
     <button
       type="button"
       class="text-ink hover:bg-accent-soft focus-visible:outline-accent slot-many:px-1 slot-many:py-0.5 relative col-start-1 row-start-1 block min-h-0 cursor-pointer rounded-sm px-1 pt-1 pb-1.5 focus-visible:outline-2 focus-visible:-outline-offset-2"

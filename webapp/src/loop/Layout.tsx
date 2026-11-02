@@ -194,6 +194,7 @@ export function LoopLayout({ version, note = null, act = null, views = null, sta
         {s.phone ? [results, side] : [side, results]}
         {/* phone: the status line's copy floats at the foot of the screen, a button back to the results (hidden while
             they are in view) */}
+        {/* its own <button>: the floating pill back to the results */}
         <button
           class="border-accent bg-panel text-body text-ink shadow-pop fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom,0px)+12px)] z-30 hidden min-h-11 items-center gap-2 rounded-lg border px-3.5 py-2 text-left font-semibold tabular-nums max-xl:not-in-[.rin]:flex"
           id="run-pill"

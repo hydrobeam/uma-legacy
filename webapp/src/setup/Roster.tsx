@@ -52,6 +52,7 @@ function RosterTile({ u, o, eager }: { u: Uma; o: Outfit | null; eager: boolean 
     hidden = useComputed(() => !!query.value && !name.includes(query.value) && !outfit.includes(query.value));
   return (
     <div class="grid min-w-0 gap-1" data-uma={u.id} data-s={mark} hidden={hidden}>
+      {/* its own <button>: an uma's tile in the picker, the portrait the toggle */}
       <button
         class="block rounded-xl p-0"
         type="button"

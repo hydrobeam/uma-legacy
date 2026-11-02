@@ -89,6 +89,7 @@ function DeckCard({ slot }: { slot: DeckSlot }) {
     }));
   return (
     // data-tag: borrowed or pal; data-off: greyed, marked not owned (the checks read both)
+    // its own <button>: a deck card's chip, its look results/deckChip.ts `chip`, its data marks this list's
     <button
       type="button"
       class={chip({ tag: bor ? 'borrowed' : c?.pal ? 'pal' : 'plain' })}
@@ -197,6 +198,7 @@ function TargetRow({ r, t, ico }: { r: CareerReport; t: Target; ico: string | nu
   return (
     // (its cells are the list's grid's: data-target marks the row for the checks)
     <li class="contents" data-target={t.group}>
+      {/* its own <button>: a target's row, a skill tile, its look career/view/skillTile.ts `skillTile` */}
       <button
         type="button"
         class={skillTile({ size: 'row', class: 'max-sm:col-span-full max-sm:mt-1.5' })}

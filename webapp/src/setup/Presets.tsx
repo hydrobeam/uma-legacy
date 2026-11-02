@@ -70,6 +70,7 @@ function PresetRow({ p, current, onView }: RowProps) {
       role="group"
       aria-label={p.name}
     >
+      {/* its own <button>: a preset's row in the list, opening its view */}
       <button
         class="hover:bg-gm-ink2/10 flex min-h-14 min-w-0 flex-[1_1_200px] flex-wrap items-center gap-x-2.5 gap-y-0.5 px-3 py-2.5 text-left focus-visible:-outline-offset-3"
         type="button"
