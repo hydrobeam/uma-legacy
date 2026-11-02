@@ -31,6 +31,11 @@ RAW_WASM="$C/target/wasm32-unknown-unknown/release/loopopt.wasm"
 # loopopt.js and loopopt.d.ts the wasm step copies into webapp/src/gen (tracked, so tsc and knip see them unbuilt)
 BINDGEN="$C/target/bindgen"
 BOUND_WASM="$BINDGEN/loopopt_bg.wasm"
+# the worker flow's wasm ([profile.checks], bound by wasm-bindgen, no wasm-opt: step_worker) and its own bindgen output
+CHECKS_RAW_WASM="$C/target/wasm32-unknown-unknown/checks/loopopt.wasm"
+CHECKS_BINDGEN="$C/target/bindgen-checks"
+# which build webapp/loopopt.opt.wasm is, "release" or "checks", with its SHA-256 (untracked): deploy ships release only
+WASM_KIND="$W/.loopopt.wasm.kind"
 WASM_BINDGEN="$R/cache/wasm-bindgen/bin/wasm-bindgen"
 PY=(uv run --quiet --project "$R" python)
 PYART=(uv run --quiet --project "$R" --group art python)   # the art steps: UnityPy and Pillow (group art)
@@ -60,7 +65,7 @@ STEPS=(
   "browsers|||Playwright's Chromium and Firefox at the pinned revisions into cache/ms-playwright"
   "test|||the page, then the browser flows on it (Chromium, and Firefox on @both; fixture replies, no solver build)"
   "testq|||the page, then the browser flows in Chromium: after each page change"
-  "worker|||the wasm and the page, then the one flow on the real solver: its reply against the native fixture's"
+  "worker|||the checks' wasm (no fat LTO, no wasm-opt) and the page, then the one flow on the real solver: its reply against the native fixture's"
   "serve|||webapp/dist on https://localhost:8000 over HTTP/2 (vite preview; PORT=...; a self-signed certificate)"
   "deploy|||wasm and page, then webapp/dist to Cloudflare Pages; refuses with uncommitted changes"
   "val|TAG||the solver, then every validation check against the references (about 7 CPU-min)"
@@ -216,13 +221,54 @@ step_wasm() {
   (cd "$W" && node example.mjs)
 }
 wasm_cache() { echo "$R/cache/wasm/$(inputs_key solver "${WASM_OPT_FLAGS[@]}")"; }
-take_wasm() {   # the cached wasm and glue of these inputs into webapp/, if there are some
-  local built
-  built=$(wasm_cache)
+checks_wasm_cache() { echo "$R/cache/wasm/$(inputs_key solver checks)"; }
+take_wasm() {   # take_wasm [checks]: the cached wasm and glue of these inputs (release's, or the checks') into webapp/
+  local kind=${1:-release} built
+  if [ "$kind" = checks ]; then built=$(checks_wasm_cache); else built=$(wasm_cache); fi
   [ -f "$built/loopopt.opt.wasm" ] || return 1
   cp "$built/loopopt.opt.wasm" "$W/loopopt.opt.wasm"
   cp "$built/loopopt.js" "$built/loopopt.d.ts" "$W/src/gen/"
-  echo "wasm: built before from these inputs (${built#"$R"/}), copied"
+  mark_wasm "$kind"
+  echo "wasm ($kind): built before from these inputs (${built#"$R"/}), copied"
+}
+mark_wasm() { echo "$1 $(sha256sum <"$W/loopopt.opt.wasm" | cut -d' ' -f1)" >"$WASM_KIND"; }   # mark_wasm KIND
+wasm_is() {   # wasm_is KIND: webapp/loopopt.opt.wasm is that build, as its marker says and its hash confirms
+  [ -f "$W/loopopt.opt.wasm" ] \
+    && [ "$(cat "$WASM_KIND" 2>/dev/null)" = "$1 $(sha256sum <"$W/loopopt.opt.wasm" | cut -d' ' -f1)" ]
+}
+# The worker flow's wasm: the checks profile's build (no fat LTO, incremental) bound by wasm-bindgen as build_wasm binds
+# the release one, without wasm-opt. The flow proves the worker's wiring and the solver's replies, which this build
+# answers as release does (val: the checks profile's outputs equal release's to the byte); the shipping build, fat LTO
+# and wasm-opt, is deploy's. Cached by its inputs like the release wasm (cache/wasm/KEY, its own key), and loaded by the
+# page from the same webapp/loopopt.opt.wasm, so the page has one import path.
+checks_wasm() {
+  take_wasm checks && return 0
+  wasm_bindgen_cli
+  (cd "$C" && quiet cargo build --profile checks --lib --target wasm32-unknown-unknown)
+  "$WASM_BINDGEN" --target web --omit-default-module-path --out-dir "$CHECKS_BINDGEN" --out-name loopopt \
+    "$CHECKS_RAW_WASM"
+  local built
+  built=$(checks_wasm_cache)
+  mkdir -p "$built"
+  cp "$CHECKS_BINDGEN/loopopt_bg.wasm" "$built/loopopt.opt.wasm"
+  cp "$CHECKS_BINDGEN/loopopt.js" "$CHECKS_BINDGEN/loopopt.d.ts" "$built/"
+  take_wasm checks >/dev/null
+  echo "wasm (checks): built, kept in ${built#"$R"/}"
+}
+# deploy's guard: the wasm in webapp/ is the release build (fat LTO, wasm-opt), never the checks' one the worker flow
+# leaves there; deploy runs it after its own wasm step and before the page, then confirms dist/ carries that wasm
+release_wasm() {
+  wasm_is release && return 0
+  echo "deploy: webapp/loopopt.opt.wasm is not the release build (its marker, webapp/.loopopt.wasm.kind, says" \
+    "$(cut -d' ' -f1 "$WASM_KIND" 2>/dev/null || echo nothing), and must name this file's SHA-256);" \
+    "./build.sh wasm puts the release build back" >&2
+  exit 1
+}
+release_in_dist() {
+  local f
+  for f in "$W"/dist/assets/*.wasm; do cmp -s "$f" "$W/loopopt.opt.wasm" && return 0; done
+  echo "deploy: webapp/dist carries no copy of the release wasm; ./build.sh page rebuilds it" >&2
+  exit 1
 }
 # setup: what a fresh worktree needs before any step, from what is already built: the shared cache/ (linked at every
 # start), the page's packages (npm ci only when the lockfile differs from the installed one), and the wasm and the
@@ -244,11 +290,13 @@ build_wasm() {
   # build's (webapp/.loopopt.wasm.key, untracked); the example (1.5 s, it reads the data and today's date) always runs
   local key
   key=$(wasm_opt_key)
-  if [ -f "$W/loopopt.opt.wasm" ] && [ "$(cat "$W/.loopopt.wasm.key" 2>/dev/null)" = "$key" ]; then
+  # (the skip also needs webapp/'s wasm to be the release build: the worker flow leaves its checks' build there)
+  if wasm_is release && [ "$(cat "$W/.loopopt.wasm.key" 2>/dev/null)" = "$key" ]; then
     echo "wasm-opt: the wasm, its flags and wasm-opt are unchanged, skipped"
   else
     (cd "$W" && npx wasm-opt "${WASM_OPT_FLAGS[@]}" "$BOUND_WASM" -o loopopt.opt.wasm)
     echo "$key" >"$W/.loopopt.wasm.key"
+    mark_wasm release
   fi
 }
 # everything wasm-opt's output depends on: the compiled wasm, the flags and binaryen's version
@@ -537,11 +585,12 @@ step_fixtures() {
   git -C "$R" status --porcelain -- webapp/test/fixtures/solver \
     | sed -n 's#^.. webapp/test/fixtures/solver/\(.*\)\.snap\.json$#fixtures: changed \1#p'
 }
-# The one flow on the real solver (webapp/test/browser/worker.spec.ts, in merge): the built wasm in the page's worker,
-# one small job, its reply the native fixture's
+# The one flow on the real solver (webapp/test/browser/worker.spec.ts, in merge): the checks' wasm (checks_wasm) in the
+# page's worker, one small job, its reply the native fixture's
 step_worker() {
-  need_cargo; need_node; check worker
-  step_wasm
+  need_cargo; need_cmd rustup "https://rustup.rs: adds the wasm target"; need_node; check worker
+  npm_deps
+  checks_wasm
   step_page
   step_browsers
   (cd "$W" && LLP_WORKER=1 npx --no-install playwright test --project worker)
@@ -567,7 +616,8 @@ step_deploy() {
   fi
   local dirty_flag=false
   if [ -n "$dirty" ]; then dirty_flag=true; fi
-  step_wasm; step_page   # the solver it ships is built from this tree, never one left from another
+  # the solver it ships is the release build from this tree, never one left from another or the checks' build
+  step_wasm; release_wasm; step_page; release_in_dist
   npm_ci "$W/deploy"
   (cd "$W/deploy" && npx --no-install wrangler pages deploy ../dist --project-name "${CF_PAGES_PROJECT:-uma-legacy}" \
     --branch "${CF_PAGES_BRANCH:-main}" --commit-hash "$(git -C "$R" rev-parse HEAD)" \
