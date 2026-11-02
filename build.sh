@@ -6,17 +6,21 @@ set -euo pipefail
 R="$(cd "$(dirname "$0")" && pwd)"
 C="$R/pkg/loopopt"
 W="$R/webapp"
-# A linked worktree (git worktree add) uses the main checkout's cache/: Playwright's browsers, GameTora's files,
-# wasm-bindgen, the built wasm and checks' binary by their inputs' key, and the TLS certificate, through a symlink made
-# on first use, so a new worktree downloads nothing twice
+# A linked worktree (git worktree add) uses the main checkout's untracked inputs through symlinks made on first use:
+# cache/ (Playwright's browsers, GameTora's files, wasm-bindgen, the built wasm and checks' binary by their inputs' key,
+# the TLS certificate), game/ (master.mdb, which research reads) and webapp/img/ (the art, which the browser suite's
+# layout checks measure), so a new worktree downloads nothing twice and checks what the main checkout checks
 share_cache() {
-  local common main
+  local common main dir
   common=$(git -C "$R" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 0
   main=$(dirname "$common")
-  if [ "$main" != "$R" ] && [ ! -e "$R/cache" ] && [ -d "$main/cache" ]; then
-    ln -s "$main/cache" "$R/cache"
-    echo "cache: this worktree uses the main checkout's ($main/cache)"
-  fi
+  [ "$main" != "$R" ] || return 0
+  for dir in cache game webapp/img; do
+    if [ ! -e "$R/$dir" ] && [ -d "$main/$dir" ]; then
+      ln -s "$main/$dir" "$R/$dir"
+      echo "$dir: this worktree uses the main checkout's ($main/$dir)"
+    fi
+  done
 }
 share_cache
 BIN="$C/target/release/loopopt"
@@ -353,9 +357,15 @@ lint_verdict() {   # lint_verdict NAME: fails, naming the linters that failed, i
 }
 # lint NAME COMMAND...: runs it, prints its wall time, and records a failure in LINT_FAILED
 lint() {
-  local name=$1 start=$EPOCHREALTIME
+  local name=$1 start=$EPOCHREALTIME rc
   shift
-  "$@" || LINT_FAILED+=("$name")
+  # the step in a subshell with errexit on: called left of `||` (or in an `if`), bash ignores set -e in the whole
+  # function, so a step failed only when its last command did (step_native's clippy and test count passed that way)
+  set +e
+  (set -e; "$@")
+  rc=$?
+  set -e
+  [ "$rc" -eq 0 ] || LINT_FAILED+=("$name")
   printf '  %-24s %6.1f s\n' "$name" "$(elapsed "$start")"
 }
 elapsed() { echo "$EPOCHREALTIME - $1" | bc; }   # elapsed START: seconds since START (an $EPOCHREALTIME)
@@ -538,7 +548,7 @@ step_worker() {
 }
 # The solver's replies as the fixtures hold them (web.rs `fixtures`): a solver change that moves them says so
 fixtures_current() {
-  in_dir "$C" env INSTA_UPDATE=no quiet cargo test --profile checks --offline --lib web::fixtures \
+  in_dir "$C" quiet env INSTA_UPDATE=no cargo test --profile checks --offline --lib web::fixtures \
     || { echo "the solver's replies differ from the scenarios' canned ones: ./build.sh fixtures" >&2; return 1; }
 }
 step_serve() {
@@ -669,7 +679,7 @@ check_edit() {
   fi
   if changed_in rust; then
     lint clippy in_dir "$C" cargo clippy --quiet --all-targets -- -D warnings
-    lint "unit tests" in_dir "$C" env INSTA_UPDATE=no quiet cargo test --profile checks --lib
+    lint "unit tests" in_dir "$C" quiet env INSTA_UPDATE=no cargo test --profile checks --lib
   fi
   if changed_in solver fixtures; then lint "solver fixtures" fixtures_current; fi
   py=$(changed_paths | grep '\.py$' || true)
