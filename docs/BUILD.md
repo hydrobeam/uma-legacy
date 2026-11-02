@@ -162,7 +162,7 @@ Put the new `master.mdb` files in `game/`, then `./build.sh data events pb`, val
   (`AHEAD` in `pkg/loopopt/export/era.py`; an outfit starts with its first gacha, else with its uma; content the game has
   not dated carries a 2050 placeholder and stays out). `pkg/loopopt/data/global/upcoming.json` lists what starts after the build.
   The page hides each entry until its start time and leaves it out of every search (`webapp/src/model/data.ts` `gameData().later`,
-  `engine.ts`), so a banner turns on by itself; the precomputed example leaves the same entries out
+  `solver/engine.ts`), so a banner turns on by itself; the precomputed example leaves the same entries out
   (`webapp/example.mjs`). Validation runs on everything in the data, upcoming included.
 - Manual card entries (pal and group cards; the builder decodes only SR/SSR chains): each era's
   `pkg/loopopt/data/<era>/manual.json`, which `events` merges into that era's `card_events.json`. GameTora's files are
@@ -242,9 +242,9 @@ with a portrait in `webapp/img/`. It writes:
   and `robots.txt`, from `webapp/public/` as they are, and the fonts' licences in `licenses/`.
 
 The solver runs as WebAssembly in a Web Worker (`src/solver/worker.ts`, built by Vite to `assets/worker-<hash>.js`; its messages both ways are typed in `src/solver/solver.ts`). Saved settings are one versioned object,
-`localStorage['llp:settings']`, read and written in `saved.ts`. The settings are a store (`settings.ts`, on
+`localStorage['llp:settings']`, read and written in `state/saved.ts`. The settings are a store (`state/settings.ts`, on
 @preact/signals): one record in a signal, handed out read-only; named setters copy it on write, save it, then assign
-it. Each page's entry reacts to a change of setup with one effect (`store.ts` `on`, the only place an effect is made);
+it. Each page's entry reacts to a change of setup with one effect (`state/store.ts` `on`, the only place an effect is made);
 the loop page's run state (the search as the status line draws it, the status and the result on show) is a store too
 (`loop/state.ts`), changed only by the transitions its run machine (`loop/run.ts`, `createRun(deps)`: the engine, clock,
 timers, storage and settings passed in) makes. The career page's run and answer are a third store (`career/state.ts`):
@@ -262,29 +262,45 @@ store's `draft`, edited by path through `draftRef`), changed by its own run mach
 `createComparison(deps)`), which the career run machine drives through its hooks. Views are Preact components that read the stores through @preact/signals: the loop
 page's, and the career page's status line, tree, node popup, parent picker, deck popup, veterans dialog (its two tab
 lists both kept mounted, a card drawn again only when her record changes), setup summary and Try a run, and the setup
-editors both pages share (`ui/`: the scenario picker, the lineage rank, the Umas and Support cards panels, the target
+editors both pages share (`setup/`: the scenario picker, the lineage rank, the Umas and Support cards panels, the target
 skills and their presets, listed by `setup/Setup.tsx`'s `setupViews`), and the career page's results column, popups and
 veteran editors, each drawn in its place in its page's one root (the layout; the entry makes the views once and hands
 them in after the game data loads); the deck card panel too (`results/CardPop.tsx`, opened by its openers' own clicks,
 `usePopOpener`: a slot in the results column and in every dialog, since a popover over a modal dialog is inert in both
 engines). Every modal dialog is `ui/Dialog.tsx`'s, which alone calls `showModal`/`close`. Measured placement and the
-spark names' fit (`details.ts`, from the layout effect of the component it measures), the game tooltip (`gmtip.ts`)
-and the run machines stay imperative by design. Logic modules (`.ts`) take values and import no component
-(`.dependency-cruiser.mjs`), and a component reaches its DOM by refs: no lookup in the document outside the entries
+spark names' fit (`results/details.ts`, from the layout effect of the component it measures), the game tooltip
+(`dom/gmtip.ts`) and the run machines stay imperative by design. Logic modules (`.ts`) take values and import no
+component (`.dependency-cruiser.mjs`), and a component reaches its DOM by refs: no lookup in the document outside the entries
 (Biome, `lint/dom-lookup.grit`).
 
-In `src/`, `loop/main.tsx` and `career/main.tsx` are the two pages' entries (each page's own modules are in its folder,
-`loop/` and `career/`; `career/main.tsx`'s header maps its folder: the job, the run, the views in `career/view/`);
-`engine.ts` talks to the worker (the messages both ways typed in `solver.ts`), `job.ts` holds the job fields both pages
-send (from the settings it is given; `loop/job.ts` and `career/job.ts` build their jobs from them), and `statestore.ts`
-keeps the solver's work in IndexedDB.
+In `src/`, each folder holds one kind of module, and `.dependency-cruiser.mjs` holds each folder to what it may import:
+- `model/`: the game and planner logic, with no DOM and no storage: the game data (`data.ts`), the job fields both
+  pages send (`job.ts`, from the settings it is given; `loop/job.ts` and `career/job.ts` build their jobs from them),
+  grades, pink sparks, the race calendar's logic (`agenda.ts`), the odds and proofs as the pages print them, the
+  images' paths.
+- `state/`: saved state and settings: the stores' one primitive (`store.ts`), the saved object (`saved.ts`, over
+  `storage.ts`), the settings store and the edits that write it (the roster, cards, targets, scenario and presets),
+  and the solver's work kept in IndexedDB (`statestore.ts`).
+- `solver/`: the worker (`worker.ts`), the page's side of it (`engine.ts`) and the messages both ways (`solver.ts`).
+- `io/`: the import readers: umadump's files (`umadump.ts`, `owned.ts`) and uma.moe's listings (`umamoe.ts`,
+  `umamoesetup.ts`).
+- `ui/`: the primitives (*Styles*), which read no store and import no feature.
+- `setup/`: the setup both pages share (`Setup.tsx`'s `setupViews`) and the pages' shell (`Shell.tsx`).
+- `results/`: the result views both pages share: the race schedule and calendar, the deck card panel, the affinity
+  table, the deck's chips and slots.
+- `dom/`: the page-wide listeners only the entries install (the game tooltip, the error log).
+- `loop/`, `career/`: each page's own modules and its entry, `main.tsx` (`career/main.tsx`'s header maps its folder:
+  the job, the run, the views in `career/view/`); `veterans/`: the career page's veterans, their store, editors and
+  views.
+- `gen/`: the generated types and the wasm's glue (*Generated types*); `must.ts` and the declarations (`*.d.ts`) at
+  the root.
 
 Every page module is `.ts` or `.tsx`, checked strict with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`
 and the four flags that cost nothing (`webapp/tsconfig.json`, the worker's too); none carries `@ts-expect-error` or
 `@ts-ignore` (Biome's `noTsIgnore` fails one; `lint` and the hook grep for `@ts-expect-error`, which no linter sees). An index read is avoided where the data can take the shape it is read in
 (records in place of parallel lists: `loop/members.ts`; a veteran by her id: `career/current.ts` `legacyVet`); a key
-from data (a grade, a race's track, a sort) gets its type where it is first read, checked there (`grades.ts`
-`gradeAt`, `data.ts`). What is left is `must(value, reason)` for a value provably there, `assert(cond, reason)` for a
+from data (a grade, a race's track, a sort) gets its type where it is first read, checked there (`model/grades.ts`
+`gradeAt`, `model/data.ts`). What is left is `must(value, reason)` for a value provably there, `assert(cond, reason)` for a
 fact such as two lists being as long, and a guard only where the missing case is a real state, named beside it.
 Never `x!` (Biome bans it), an `as` cast past the check, or `?? 0` on what must not be missing.
 

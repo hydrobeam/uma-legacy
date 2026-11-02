@@ -13,8 +13,8 @@
 // editor that imports shared modules reading the settings; io/owned.ts, which saves the owned marks it reads. A page's
 // layer is its folder, less the modules named below it (veterans/ is the career page's).
 // Folders (`FOLDERS`): what each of src/'s folders imports nothing from, on top of the layers' rule, by what it is:
-// model/ pure logic, ui/ the primitives, state/ the saved state and settings, solver/ the worker and its engine, io/ the import
-// readers, each page its own; dom/'s listeners only the entries install.
+// model/ pure logic, ui/ the primitives, state/ the saved state and settings, solver/ the worker and its engine, io/
+// the import readers, each page its own; dom/'s listeners only the entries install.
 // Components stay views: a module that is not a component (.ts) imports no .tsx module, a type import included.
 // Swc parses (dependency-cruiser reads TypeScript through TypeScript's JavaScript API, which TypeScript 7 no longer has).
 // (biome.json's overrides name the stores layer's modules: they make their records with state/store.ts's store())

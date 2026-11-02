@@ -38,11 +38,11 @@ class StarMixes(NamedTuple):
     """the star mixes a job's rank class sets, and the band the page puts each scenario at"""
 
     page: dict[str, Mix]  # by band: 'below' (rank class below_ss) and 'ss' (ss_and_up), as the solver has them
-    scenario_ss: dict[int, bool]  # scenario id -> the page puts its careers at 17,500 and up (data.ts `ss`)
+    scenario_ss: dict[int, bool]  # scenario id -> the page puts its careers at 17,500 and up (model/data.ts `ss`)
 
 
 def mixes() -> StarMixes:
-    src = open(os.path.join(common.ROOT, "webapp", "src", "data.ts")).read()
+    src = open(os.path.join(common.ROOT, "webapp", "src", "model", "data.ts")).read()
     star_mix = common.solver_constants()["star_mix"]  # RankClass::star_mix (skills.rs), `loopopt constants`
     page = {"below": tuple(star_mix["below_ss"]), "ss": tuple(star_mix["ss_and_up"])}
     scenario_ss = {int(i): b == "true" for i, b in re.findall(r"id: (\d+),[^}]*?ss: (true|false)", src)}

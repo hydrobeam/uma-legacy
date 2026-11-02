@@ -193,7 +193,7 @@ def main():
         )
 
     # every gold a card gives (an event's skill at rarity 2, a chain end's on either choice) has a gold name in the skill
-    # list: the page names it by that (cards.ts `skillName`, a must()), so a gap fails here and not in the card list
+    # list: the page names it by that (state/cards.ts `skillName`, a must()), so a gap fails here and not in the card list
     gold_names = {group_id: gold for group_id, _, gold in skills["skills"]}
     for page_card in page_cards:
         golds = [group_id for group_id, rarity, *_ in page_card["ev"] if rarity == 2] + [

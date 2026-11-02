@@ -933,7 +933,7 @@ does not read it). The plan job again with `next.robust: "next"` (the page, once
 variant on that state, no search and no plan (a reply of kind "check": its `robust`, of kind "unavailable" where the worker keeps none); `"all"` runs every
 variant left, the plan run first where none is kept (the CLI). With `next.oracle` too, `"next"` is refused and `"all"`
 runs the plan (the kept state has no oracle). After the last variant the state keeps its report alone (the rows, fit,
-candidates and cache go). So the pick's wait does not grow. The page sends these as background jobs (`engine.ts`): an
+candidates and cache go). So the pick's wait does not grow. The page sends these as background jobs (`solver/engine.ts`): an
 edit lets the variant under way finish, its job waiting behind it, so the worker and what it keeps stay; a check cut
 short is resumed when its answer is shown again, and one whose state is gone (a stopped comparison, a solver error, a
 reload) is shown as not finished. Each variant scores the kept rows again, exactly, and applies the pick rule (`PickRows`, in the plan's
