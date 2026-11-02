@@ -208,6 +208,10 @@ def main() -> None:
     n = collections.Counter(f.verdict() for f in fs)
     print("findings: " + ", ".join(f"{v}: {k}" for k, v in n.most_common()))
     unused(vals)
+    # a section that raised or a finding that fails fails the run (and build.sh's research step), the results written
+    errors = sorted({c.section for c in vals if c.status == "error"})
+    if errors or n["FAILS"]:
+        sys.exit(f"research: {n['FAILS']} findings fail; sections with errors: {', '.join(errors) or 'none'}")
 
 
 def write_results(items: list[Value | Finding], fresh: bool) -> None:
