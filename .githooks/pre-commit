@@ -1,14 +1,13 @@
 #!/bin/sh
-# Checks what a commit stages, by kind (enabled by ./build.sh hooks: git config core.hooksPath .githooks):
+# Checks the formatting and types of the languages a commit stages, nothing else (enabled by ./build.sh hooks: git
+# config core.hooksPath .githooks; budget 30 s, docs/BUILD.md, Tests):
 #   Rust under pkg/loopopt: cargo fmt --check and clippy, warnings denied (native, dev profile: about 5 s after a change,
 #     a minute the first time in a new worktree); clippy on the wasm lib stays in ./build.sh lint and CI
 #   Python: ruff check and ruff format --check on the staged files (well under a second)
-#   the page's JS: Biome (lint and formatting) on the staged files, the Tailwind class gate (oxlint with
-#     eslint-plugin-better-tailwindcss: an unknown class fails) over src, then tsc over the page and the worker (seconds)
-#   the page's JS, CSS, pages, tests or build: knip (dead exports, files, dependencies), dependency-cruiser (the module
-#     layers) and no `@ts-expect-error` in src/ (a grep: no linter sees a comment); about 4 s
-#   the page's sources or tests: the node tests, webapp/test/unit/ (Vitest; about 2 s)
-# A commit staging none of these (docs, data) checks nothing. ./build.sh lint runs every check on the whole repo.
+#   the page's JS: Biome (lint and formatting) on the staged files, then tsc over the page and the worker (about 10 s)
+# The cross-cutting page checks (the Tailwind class gate, knip, dependency-cruiser, no `@ts-expect-error`) and the node
+# tests run in `./build.sh check handback` and `lint` (about 50 s together, which the hook had spent on every page
+# commit). A commit staging none of these (docs, data) checks nothing.
 root=$(git rev-parse --show-toplevel) || exit 1
 staged() { git diff --cached --name-only --diff-filter=ACMR -- "$@"; }
 fail() { printf 'pre-commit: %s\n' "$1" >&2; exit 1; }
@@ -28,19 +27,7 @@ js=$(staged 'webapp/*.js' 'webapp/*.mjs' 'webapp/*.ts' 'webapp/*.tsx' | sed 's#^
 if [ -n "$js" ]; then
   # shellcheck disable=SC2086 # as above
   (cd "$root/webapp" && npx --no-install biome check --error-on-warnings --diagnostic-level=warn --no-errors-on-unmatched $js \
-    && npx --no-install oxlint -c .oxlintrc.json src \
     && npx --no-install tsc -p . && npx --no-install tsc -p tsconfig.worker.json) \
-    || fail 'Biome, the Tailwind class gate (oxlint) or tsc (above; npx biome format --write in webapp fixes formatting)'
-fi
-
-if [ -n "$(staged 'webapp/src/*' 'webapp/test/*' 'webapp/*.html' 'webapp/partials/*' 'webapp/vite/*' 'webapp/*.mjs' 'webapp/*.json' 'webapp/*.jsonc')" ]; then
-  (cd "$root/webapp" && npx --no-install knip >&2 && npx --no-install depcruise --config .dependency-cruiser.mjs src >&2 \
-    && ! grep -rn --include='*.ts' --include='*.tsx' '@ts-expect-error' src >&2) \
-    || fail 'knip, dependency-cruiser, dead CSS or a @ts-expect-error (above)'
-fi
-
-if [ -n "$(staged 'webapp/src/*' 'webapp/test/*')" ]; then
-  (cd "$root/webapp" && NODE_OPTIONS=--max-old-space-size=1024 timeout 300 npx --no-install vitest run --reporter=dot >&2) \
-    || fail 'node tests (above)'
+    || fail 'Biome or tsc (above; npx biome format --write in webapp fixes formatting)'
 fi
 exit 0

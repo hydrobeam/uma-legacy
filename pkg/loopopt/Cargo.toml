@@ -46,13 +46,18 @@ codegen-units = 1
 # The checks' build (`cargo test`, val, valq, mono, lint; docs/BUILD.md, *Tests*): release's opt-level 3 without fat
 # LTO and one codegen unit, which made each of the 21 test binaries a fat-LTO link of the whole crate (a cold release
 # test build: 250 s and 1,470 CPU-s, against 55-94 s and 485-550 here; a rebuild after a one-line edit 31 s).
-# Its outputs equal release's to the byte on valq; the solver runs 1-3% more instructions. The wasm and the release
-# binary keep [profile.release].
+# Its outputs equal release's to the byte on val. debug_assert! and overflow checks are on, which release hides from
+# the tests (valq identical with them; the solver runs 8-12% more instructions than release). The unit tests build here
+# too: the dev profile (opt-level 1, dependencies 3) rebuilt them no faster after an edit (31 s against 34) and ran
+# them slower (31 s against 25), and a second profile would compile the crate twice. The wasm and the release binary
+# keep [profile.release].
 [profile.checks]
 inherits = "release"
 lto = false
 codegen-units = 16
 incremental = true
+debug-assertions = true
+overflow-checks = true
 
 # Clippy's default groups apply (no pedantic group); `./build.sh lint` denies every warning. Allowed here, crate-wide:
 [lints.clippy]

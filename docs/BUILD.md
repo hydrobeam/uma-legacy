@@ -126,7 +126,8 @@ it stops; the `art` step instead says what it skipped.
 | `gametora` | GameTora's pinned data files into `cache/gametora/`; `GAMETORA_LATEST=1` moves the pins to the newest versions first; it also rewrites `pkg/loopopt/data/gametora_slugs.json`, the page's links to GameTora (tracked, so `page` downloads nothing), then the page's lists. Run by `events` |
 | `events` | each era's card event file from GameTora's files plus the hand-entered entries (pal first-year dates left out, as IT never fires them), then the page's lists |
 | `native` | clippy (as `lint` runs it), then `cargo test --profile checks` (*Tests*) |
-| `lint` | every check below runs whatever the others found, and the step ends by naming the ones that failed: `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); the generated TypeScript current (`cargo test --lib ts_gen`, *Generated types*); shellcheck on `build.sh` and the hook (`shellcheck-py`, dev group); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); `val/test_validation.py` (planval's and the comparisons' gates on a fake solver, 3 s; it had gone four days failing unnoticed when nothing ran it); `research/test_s08_likelihood.py` (§8's chain likelihood on synthetic cases, research group, about 5 s; it reads the chain count from `loopopt constants`, so the checks' binary is built first); `biome check` on the page's JS (lint and formatting in one pass: 2-space indent, single quotes, 120 columns) with warnings as errors (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line); TypeScript's checker, twice: the page's TypeScript, strict (`webapp/tsconfig.json`; every module is `.ts` or `.tsx`, and with `allowJs` off an import of a stray `.js` fails), and the solver's worker with a worker's globals (`webapp/tsconfig.worker.json`, strict); what the browser suite can't see going stale, by standard tools first: knip (`webapp/knip.jsonc`: files no entry reaches, exports no other file imports, dependencies nothing uses, imports of a package not listed or a file that does not exist), dependency-cruiser (`webapp/.dependency-cruiser.mjs`: a value import points to its own layer of `LAYERS` or one below, nothing outside a page imports into it, so no logic module (types, io, model) reaches a store; a `.ts` module imports no `.tsx` one, a type import included), the Tailwind class gate (oxlint running eslint-plugin-better-tailwindcss's `no-unknown-classes` over `webapp/src`, `webapp/.oxlintrc.json`: a class in a `class` attribute or a `cx()`/`tv()` argument that the theme and Tailwind don't define, a typo or a name nothing styles; class lists in plain constants are not checked), and Biome's rules (its Tailwind rules among them: classes sorted, shorthands, whole static class strings, no raw palette colour, no arbitrary value but layout, no legacy utility, no restyling of a component through its `class`) (`webapp/biome.json`; each allowance an override or a plugin's `includes`, its reason in the rule's message or the plugin's header): import cycles (`noImportCycles`); effects (`effect` imported anywhere but `store.ts`: `noRestrictedImports`; a `.subscribe()` or a namespace's `.effect()`: `lint/effects.grit`); exported mutable bindings (`lint/mutable-export.grit`); `@ts-ignore` (`noTsIgnore`); storage, written only by `storage.ts`'s read-modify-write `update` (the `localStorage` global by `noRestrictedGlobals`, a `.setItem`/`.removeItem` by `lint/storage-write.grit`); a store module's state made by `store.ts`'s `store()`, which hands it out `DeepReadonly` (`signal` banned there); signals from `@preact/signals` alone; `render`/`hydrate` in the two entries alone (each page is one root); a lookup in the document outside the entries (`lint/dom-lookup.grit`); a `<dialog>` or `showModal()` outside `ui/Dialog.tsx` (`lint/dialogs.grit`); a `requestAnimationFrame` outside `veterans/store.ts` (`noRestrictedGlobals`); a listener added at a module's top level outside the entries, `errorlog.ts` and `gmtip.ts` (`lint/load-listener.grit`); a view built from a markup string (`lint/markup-string.grit`); then a grep for `@ts-expect-error` in `webapp/src` (tsc accepts it and no linter sees a comment); the page's node tests (`webapp/test/unit/`, Vitest) |
+| `check [TIER]` | the checks a change needs, by what differs from main and what already passed: `edit`, `handback` (the default), `merge` or `full` (*Tests*, *Tiers*) |
+| `lint` | every check below runs whatever the others found, and the step ends by naming the ones that failed, each with its wall time; Rust's (formatting, clippy, the generated types) only when a Rust input differs from main's: `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); the generated TypeScript current (`cargo test --lib ts_gen`, *Generated types*); shellcheck on `build.sh` and the hook (`shellcheck-py`, dev group); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); `val/test_validation.py` (planval's and the comparisons' gates on a fake solver, 3 s; it had gone four days failing unnoticed when nothing ran it); `research/test_s08_likelihood.py` (§8's chain likelihood on synthetic cases, research group, about 5 s; it reads the chain count from `loopopt constants`, so the checks' binary is built first); `biome check` on the page's JS (lint and formatting in one pass: 2-space indent, single quotes, 120 columns) with warnings as errors (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line); TypeScript's checker, twice: the page's TypeScript, strict (`webapp/tsconfig.json`; every module is `.ts` or `.tsx`, and with `allowJs` off an import of a stray `.js` fails), and the solver's worker with a worker's globals (`webapp/tsconfig.worker.json`, strict); what the browser suite can't see going stale, by standard tools first: knip (`webapp/knip.jsonc`: files no entry reaches, exports no other file imports, dependencies nothing uses, imports of a package not listed or a file that does not exist), dependency-cruiser (`webapp/.dependency-cruiser.mjs`: a value import points to its own layer of `LAYERS` or one below, nothing outside a page imports into it, so no logic module (types, io, model) reaches a store; a `.ts` module imports no `.tsx` one, a type import included), the Tailwind class gate (oxlint running eslint-plugin-better-tailwindcss's `no-unknown-classes` over `webapp/src`, `webapp/.oxlintrc.json`: a class in a `class` attribute or a `cx()`/`tv()` argument that the theme and Tailwind don't define, a typo or a name nothing styles; class lists in plain constants are not checked), and Biome's rules (its Tailwind rules among them: classes sorted, shorthands, whole static class strings, no raw palette colour, no arbitrary value but layout, no legacy utility, no restyling of a component through its `class`) (`webapp/biome.json`; each allowance an override or a plugin's `includes`, its reason in the rule's message or the plugin's header): import cycles (`noImportCycles`); effects (`effect` imported anywhere but `store.ts`: `noRestrictedImports`; a `.subscribe()` or a namespace's `.effect()`: `lint/effects.grit`); exported mutable bindings (`lint/mutable-export.grit`); `@ts-ignore` (`noTsIgnore`); storage, written only by `storage.ts`'s read-modify-write `update` (the `localStorage` global by `noRestrictedGlobals`, a `.setItem`/`.removeItem` by `lint/storage-write.grit`); a store module's state made by `store.ts`'s `store()`, which hands it out `DeepReadonly` (`signal` banned there); signals from `@preact/signals` alone; `render`/`hydrate` in the two entries alone (each page is one root); a lookup in the document outside the entries (`lint/dom-lookup.grit`); a `<dialog>` or `showModal()` outside `ui/Dialog.tsx` (`lint/dialogs.grit`); a `requestAnimationFrame` outside `veterans/store.ts` (`noRestrictedGlobals`); a listener added at a module's top level outside the entries, `errorlog.ts` and `gmtip.ts` (`lint/load-listener.grit`); a view built from a markup string (`lint/markup-string.grit`); then a grep for `@ts-expect-error` in `webapp/src` (tsc accepts it and no linter sees a comment); the page's node tests (`webapp/test/unit/`, Vitest) |
 | `hooks` | `git config core.hooksPath .githooks`: the tracked pre-commit hook (see *Rust style*); once per clone |
 | `pb` | the release solver (cargo's build, a no-op on an unchanged tree), then each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files, then the page's lists (`data.json` is one of their inputs); it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
 | `wasm` | the wasm32 build (stable; rebuilding std with `-Z build-std` was measured on 2026-10-31 to change neither the output nor the speed, and under 2 KB of size), `wasm-bindgen --target web --omit-default-module-path` (into `pkg/loopopt/target/bindgen/`: the wasm with the glue's exports, and the glue, `loopopt.js` and `loopopt.d.ts`, copied to `webapp/src/gen/`: an ES module the worker imports, instantiated from the page's compiled module by `initSync`, with no fallback fetch of the wasm by URL), `wasm-opt -O3 -ocimfs=0` (no inlining of single-caller functions, so long loops stay in functions V8 optimises: `docs/PERF.md`, *In the page*), then `webapp/example.json` (the result shown before the first search). `wasm-opt` (about a minute) is skipped when the bound wasm, its flags (`WASM_OPT_FLAGS`, the one list the command also reads) and wasm-opt's version match its last run (`webapp/.loopopt.wasm.key`); the example always runs |
@@ -293,7 +294,7 @@ one file, `webapp/src/gen/solver.ts`, beside the model constants the solver uses
 `SOLVER`, serialised from the consts themselves, with its type). Both are committed and never edited by hand, nor
 formatted (Biome leaves `src/gen` alone): a test, `pkg/loopopt/src/ts_gen.rs` (in `cargo test`, and so in `./build.sh
 lint`), generates them and fails while a committed file differs; change the struct or constant, then run `BLESS=1
-cargo test --lib ts_gen` in `pkg/loopopt` to write them (as `tests/plan_roll.rs` re-takes its fixture). The page
+cargo test --lib ts_gen` in `pkg/loopopt` to write them (as `tests/it/plan_roll.rs` re-takes its fixture). The page
 imports the generated types, adding only the fields it sets itself (a type like `CareerReport & { anyOutfit?: boolean
 }`).
 
@@ -315,14 +316,46 @@ integer).
 
 ## Tests
 
+**Tiers.** `./build.sh check [TIER]` runs the checks a change needs: it reads what differs from main (the commits
+since the branch left it, staged, unstaged and untracked files; on main, from its upstream) and runs each area's
+checks only when one of its inputs changed. Each check prints its wall time, and the tier its total against its
+budget: an overrun is reported, never a failure.
+
+| tier | when | budget | runs |
+|---|---|---|---|
+| `edit` | every edit | 10 s | the page's two `tsc` passes and the node tests of the changed files (`vitest related`); clippy and `cargo test --lib` (checks profile); ruff on the changed Python |
+| hook | every commit | 30 s | formatting and types of the staged languages (*Pre-commit hook*) |
+| `handback` (default) | a piece of work handed back | 5 min | `edit`'s, then every linter of each changed area; the Rust tests and `valq` (checks profile) when the solver, its tests, data or `val/` changed; `research` when its inputs changed (each section recomputes on its own inputs); the browser suite's fast tier when the page or the solver changed |
+| `merge` | before a merge to main | 10 min | every area, changed or not: `lint`'s linters, `native`, full `val`, the full browser suite, and `mono` after a change under `src/career/` |
+| `full` | by hand | none | `merge`'s, then `mono` and `research --force` whatever changed |
+
+Nothing runs twice on the same inputs: `native`, `val`, `valq` and `mono` record a pass under the key of their inputs
+(`cache/passed/NAME-KEY`: the SHA-256 of the files they read, tracked and untracked, and `build.sh`), shared by every
+worktree, and on the same key say so and return; a page-only change never runs them. `lint` runs Rust's linters only
+when a Rust input differs from main's. The wasm is shared the same way (`cache/wasm/KEY`): a worktree whose solver
+inputs were built before copies it instead of four minutes of fat-LTO build and `wasm-opt`.
+
+**Profiles.** Every test, `val`, `valq`, `mono` and lint's generated-types and section-8 tests build in
+`[profile.checks]`, with `debug-assertions` and `overflow-checks` on (release hides both from the tests); the wasm and
+`pb`'s and research's binary in `[profile.release]`; clippy checks without code generation. valq is byte-identical
+with the assertions on (2026-11-01), which cost the solver 8-12% more instructions. The unit tests stay in the checks
+profile: the dev profile (`opt-level` 1, dependencies 3) rebuilt them no faster after a one-line edit (31 s against
+34) and ran them slower (31 s against 25), and a second profile compiles the crate twice. Neither meets the edit
+tier's 10 s: one unit test, `deck::tests::chain_marginals_dense_matches_ref`, is most of their run.
+
+**Type-only changes.** A change the type checker fully explains (a rename, a type in place of a bare number, moved
+code; no change to arithmetic, control flow or data) runs the unit tests and clippy per commit and one `valq` at the
+merge, not a `valq` per commit. A change to arithmetic, control flow or data follows AGENTS.md's pinned procedure.
+
 - **Solver:** `cargo test --profile checks` in `pkg/loopopt` (part of `native`); `./build.sh lint` for formatting and
   clippy. The checks' profile (`[profile.checks]` in `pkg/loopopt/Cargo.toml`) is release's opt-level 3 without fat
   LTO and one codegen unit, which had made every test binary a minute or two of single-threaded linking; val, valq,
   mono and lint run its binary, `target/checks/loopopt`, too. Its outputs are byte-identical to the release binary's on
   every valq job (checked 2026-11-01); the wasm, `pb` and `research` keep `[profile.release]`.
-  The integration tests (`pkg/loopopt/tests/`) run the solver binary through one harness, `tests/common/mod.rs`,
+  The integration tests are one crate, `pkg/loopopt/tests/it/` (a module per file, `main.rs` lists them: the
+  crate links once and libtest runs all of them in parallel), and run the solver binary through one harness, `tests/it/common.rs`,
   which clears the kept-state variables (`LOOPOPT_STATE_IN`, `LOOPOPT_STATE_OUT`) of the shell running them. When
-  results move on purpose, `BLESS=1 cargo test --profile checks --test plan_roll rolls_equal` re-takes the roll fixture
+  results move on purpose, `BLESS=1 cargo test --profile checks --test it plan_roll::rolls_equal` re-takes the roll fixture
   (`tests/fixtures/plan_roll.json`) from the solver's own rolls, naming each roll that changed and any sample whose y
   crossed 0.5 (the fixture keeps samples on both sides; pick another there); check the diff and commit it.
 - **Page logic in node:** `npx vitest run` in `webapp` (part of `lint` and the pre-commit hook; about 2 s) runs the
@@ -450,13 +483,13 @@ uv run shellcheck build.sh .githooks/pre-commit   # (from the repo root)
   longer-lived owner) and it is off the hot path; say so in a comment where that is not obvious. A change that adds
   clones lists each in its description with its reason.
 - **Pre-commit hook:** `./build.sh hooks` (once per clone; it sets `core.hooksPath`, so it applies in every worktree)
-  turns on `.githooks/pre-commit`, which checks what the commit stages, by kind: Rust, `cargo fmt --check` and native
-  clippy with warnings denied (about 5 s after a change; a minute the first time in a new worktree); Python, ruff check
-  and format on the staged files; the page's JS, Biome (lint and formatting) on the staged files, the Tailwind class
-  gate over `webapp/src` and `tsc`, and for any
-  page source, test or build file, knip, dependency-cruiser and a grep for
-  `@ts-expect-error` (about 4 s together), and for any page source or test the node tests (about 2 s). It checks
-  the working tree's files, not only the staged parts. The wasm clippy and the whole-repo checks are left to `lint`.
+  turns on `.githooks/pre-commit`, which checks the formatting and types of the languages the commit stages, nothing
+  else (budget 30 s, *Tests*): Rust, `cargo fmt --check` and native clippy with warnings denied (about 5 s after a
+  change; a minute the first time in a new worktree); Python, ruff check and format on the staged files; the page's
+  JS, Biome (lint and formatting) on the staged files and both `tsc` passes (about 10 s). It checks the working tree's
+  files, not only the staged parts. The Tailwind class gate, knip, dependency-cruiser, the `@ts-expect-error` grep
+  and the node tests (about 50 s together, which the hook had spent on every page commit) run in `check handback` and
+  `lint`; the wasm clippy in `lint`.
 - **Blame:** commits that only reformat, move or rename code are listed in `.git-blame-ignore-revs`; to have `git blame` skip them, once
   per clone: `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
 
