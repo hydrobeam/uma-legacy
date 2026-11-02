@@ -81,7 +81,7 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 | `src/career/reply.rs` | A career job's answer (`CareerReply`: its search with the career reports and certificates, a kept plan's roll or check, the simulator's report, the kept state, a refusal) |
 | `src/career/search.rs` | Career candidates (`gen_cands`), ceilings and the best careers (`Env::solve`) |
 | `src/career/decks.rs` | Exact career deck searches (`Env::best_deck`, `best_deck_run`, `best_deck_cf`) and their kept memos |
-| `src/career/inherit.rs` | Legacy slots, affinity, inheritance chances, their folding (`set_ews`) and `rise`; a lineage's slots taken in one order wherever the veterans stand (`Pool::product_order`, `Pool::grandparent_order`: the lower character id first, indices kept), in `walk_slots` and `gen_cands` alike, so a pair's f64s do not depend on the pool's order (tests/plan_order.rs). Ties: the main career search's candidate order, the planner's ranked pairs (`ranked_pairs`, and the careers kept from them in arrival order) and a scoring's partners break equal ceilings and values by a veteran's content rank (`Pool::content_ranks`: her character, stars, star mix, wins, pinks, borrowed, then her recorded parents', compared in full, no hash) before the indices, so the legacy index only orders veterans equal in all of it, which are interchangeable (tests/career_order.rs: val career_U2 reversed gives the same careers, its fifth result's exact tie between legacies 9 and 10 included) |
+| `src/career/inherit.rs` | Legacy slots, affinity, inheritance chances, their folding (`set_ews`) and `rise`; a lineage's slots taken in one order wherever the veterans stand (`Pool::product_order`, `Pool::grandparent_order`: the lower character id first, indices kept), in `walk_slots` and `gen_cands` alike, so a pair's f64s do not depend on the pool's order (tests/it/plan_order.rs). Ties: the main career search's candidate order, the planner's ranked pairs (`ranked_pairs`, and the careers kept from them in arrival order) and a scoring's partners break equal ceilings and values by a veteran's content rank (`Pool::content_ranks`: her character, stars, star mix, wins, pinks, borrowed, then her recorded parents', compared in full, no hash) before the indices, so the legacy index only orders veterans equal in all of it, which are interchangeable (tests/it/career_order.rs: val career_U2 reversed gives the same careers, its fifth result's exact tie between legacies 9 and 10 included) |
 | `src/career/pool.rs` | Veteran pools and legal parent pairs |
 | `src/career/imagined.rs` | The veterans the planner imagines (a career's before her result is known, the synthetic full veterans of a ceiling or a hint ranking, an audit's at one outcome): what the pool reads of her and her parents as the pool holds them; a real veteran is a record (`Legacy`) |
 | `src/career/outcomes.rs` | Career reports, outcome sets, corner tables and the veteran a career leaves |
@@ -380,7 +380,7 @@ Exact odds. Targets do not land independently: chain cards share one run's chain
   (`DeckSearchAudit::nested_past_cap`; no val pool has such a deck, `nested_max_ratio`). With Mejiro Palmer [Go Ahead
   and Laugh] allowed in the nested_nopal fixture, beside Seiun Sky [Paint the Sky Red], the two-card deck's exact /
   product is 2.71: before both changes the capped search answered Seiun Sky alone (P(all) 0.005472) and reported it
-  proven, against the cap-free 0.005884 (`tests/cap_shapes.rs`).
+  proven, against the cap-free 0.005884 (`tests/it/cap_shapes.rs`).
 - **What "proven" rests on** (career searches: `complete`, `proven_top`, a plan row's `proven`). Derived and exact,
   given the dependence checks (relative 1e-12): the per-career odds, the rise bound, the ceilings of trainees whose
   every legal entry is certified (ρ = 1), the nested-chain bound for a nested card alone feeding every chain-varying
@@ -547,7 +547,7 @@ field sent at its default is the field left out. The simulator's seed search dis
 and work counts depend on reuse.
 The page runs a career as two jobs: the search, then the same job with `next`, which reuses the
 search the worker keeps (`KeptState::searches`, the last three, keyed by the whole job without `next` and `no_reports`: `CareerRequest::search_key`) together with what its
-product searches proved (`SearchState::ruled` as the search left it). `tests/plan_state.rs` compares separate
+product searches proved (`SearchState::ruled` as the search left it). `tests/it/plan_state.rs` compares separate
 search/plan jobs with a combined job, and a job after a job on another pool with the job alone. The product-search
 proofs go no further than their own search, and the fully checked decks no further than their pool: `certified` takes a
 proxy career a proof certifies in place of an exact search, which may name another pair or deck of equal value, so
@@ -559,7 +559,7 @@ the career named at a tie from depending on what the worker ran before on anothe
 | `legacies` | veterans: `{chara, borrowed, sparks: [{group, stars}, ...], pink: {aptitude, stars}, wins: [race index], parents: [parent or null, parent or null]}`, a parent `{chara, sparks, pink, wins}`; race index = position in data.json `races`; every veteran and parent has her pink (a trained uma has one): its aptitude the game's factor group (11 turf, 12 dirt, 21-24 front runner to end closer, 31-34 sprint to long; another does not parse) and its stars 1 to 3; a parent place null is one the record doesn't have (it counts for nothing) | required |
 | `trainees` | chara ids to consider (empty: every owned uma) | `[]` |
 | `fix` | legacy indices that must be among the two parents (0, 1 or 2) | `[]` |
-| `borrowed_parent` | `"allow"`: at most one borrowed parent per career, now and in the plan's look-ahead. `"later"`: the career picked has none (the search's `results`, the plan's rows and the check's pair search and recommendation, a check answered from the worker's kept state included: `tests/plan_borrowed.rs`), while the plan's V and V' allow later careers to borrow; a `next` job searches without and with borrowing, reusing kept searches when available. `"never"`: `Pool::max_borrowed` is 0 in every pool the job builds (`tests/plan_borrowed.rs`). This pair rule is excluded from the setup key, so kept proofs and decks are shared across settings; it is included in the kept main search's key and the kept plans' (`bests_key`). Simulator policies `greedy`, `loop` and `trace` take "later" as "allow"; `greedy_exact` and `index` pass it through to their career jobs | `"allow"` |
+| `borrowed_parent` | `"allow"`: at most one borrowed parent per career, now and in the plan's look-ahead. `"later"`: the career picked has none (the search's `results`, the plan's rows and the check's pair search and recommendation, a check answered from the worker's kept state included: `tests/it/plan_borrowed.rs`), while the plan's V and V' allow later careers to borrow; a `next` job searches without and with borrowing, reusing kept searches when available. `"never"`: `Pool::max_borrowed` is 0 in every pool the job builds (`tests/it/plan_borrowed.rs`). This pair rule is excluded from the setup key, so kept proofs and decks are shared across settings; it is included in the kept main search's key and the kept plans' (`bests_key`). Simulator policies `greedy`, `loop` and `trace` take "later" as "allow"; `greedy_exact` and `index` pass it through to their career jobs | `"allow"` |
 | `per_trainee` | one result per trainee (each with her best parents and deck); false: the best careers whoever trains (with one trainee: her best parent pairs) | `true` |
 | `top` | careers returned | 5 |
 | `next` | the page's next-career plan, section *Next career (`next`)* below | none |
@@ -687,7 +687,7 @@ evidence: `docs/MODEL.md`, *Next career*. The planner is in `src/career/plan/` (
 | `sur`, `sur_margin` | `"surrogate"`: each uma's best career from the simulator's surrogate (`best_sur`: every legal pair by ceiling, her cached decks, an exact deck search where the bound beats the table by more than `sur_margin`) in place of the career search; `"both"`: both, the differences listed in `sur_diff` (`SurrogateMode`) | `"search"`, 0 |
 | `exact_all` | every uma's best career searched exactly (no proxies) | `false` |
 | `proxy_check` | disable proxies for the main plan and report each builder's proxy beside her exact career (`proxy_check` in the output, each row with its `origin`, base / looped / nb / alternative, and `looped`: a looped row's proxy is her unconstrained career, so only base rows compare like for like); also evaluate looped rows' lift statistics | `false` |
-| `proxy_eff` | test knob replacing `PROXY_EFF`; `tests/plan_memo.rs` sets -1 (pass 1's builders left to their proxies, so the pass-2 searches refit Cont) | 0.06 |
+| `proxy_eff` | test knob replacing `PROXY_EFF`; `tests/it/plan_memo.rs` sets -1 (pass 1's builders left to their proxies, so the pass-2 searches refit Cont) | 0.06 |
 | `fit` | `[[chara, lam, phi, pinf, p0], ...]` (a plan's own `fit` output): the stage candidates and their continuations taken as given instead of fitted to this pool, each anchored at the odds p0 it was fitted at (a 4-element entry, written before p0 was, is anchored at the candidate's odds now, so it re-anchors). The page's Compare prices the pool with her under the plan's own `fit`, passed on unchanged, where today's plan has a V and a fit (else it refits; Add to veterans always refits) | none |
 | `partners` | partners kept per candidate where a scored career's veteran is a parent (1 to 8) | 2 |
 | `fresh_lineages` | fresh lineages a trio side may take per candidate: her best career now and her next `fresh_lineages` - 1 by her cached decks (1 to 64) | 3 |
@@ -1175,7 +1175,7 @@ of the other 12 val/plan pools sequencing lowers V by 8.7-11.9% (boot_mob 40.9%,
   only the prefixes of the outcome's representative and runs the outcome loop at it and the outcome), so the f64 the
   plan's full table held (checked bit for bit against the plan's full table in one process,
   `score::build::tests::a_roll_is_the_full_tables_value_at_its_outcome`, and pinned against frozen fixtures by
-  `tests/plan_roll.rs`). It is no verdict: a replan can take routes the scoring has not (a partner or deck it did not
+  `tests/it/plan_roll.rs`). It is no verdict: a replan can take routes the scoring has not (a partner or deck it did not
   keep, another C, or a candidate's other lineage whose C her veteran improves as a grandparent through relation points
   or shared wins without lifting the candidate's odds), and the replan's other careers with her as a parent, its
   candidates and Cont refitted, are outside it. So the page shows a roll's figure as provisional and confirms every
@@ -1311,7 +1311,7 @@ counts careers to the first full veteran. Goal "looped" measures it on its own g
 
 `act_on` "pair_search": each step's plan job also asks `robust` "all" and `pair_search`, so the page's whole check
 (every variant, then the pair search) runs on the plan's kept state in the same job, as the page's follow-up jobs run
-it one at a time (the same report: `tests/sim_pair_search.rs`). The per-uma scenarios must run: the trainees they pick
+it one at a time (the same report: `tests/it/sim_pair_search.rs`). The per-uma scenarios must run: the trainees they pick
 ("scenario") are searched in phase 1, so the recommendation depends on them; the other variants do not feed the pair search
 but run too, so the check is the page's to the variant. The step runs `pairs.recommendation`: the plan's pick where it
 names it (or where the plan kept no check), else the career it names, as a `career` job (one trainee, both parents
@@ -1320,7 +1320,7 @@ is never searched again. Per run `index` also has `acted_on` (plans by the recom
 the plan kept no check), `careers` (the career asked for after each plan, recorded before it runs), `executed` (per
 plan, what ran: the `career` id of the report its career was built from, the plan's `choice` or the `career` job's
 result, and the `p_all` and `outcome_sets` it ran with), `check_s` (each plan's check seconds, inside its `plan_s`) and
-`career_job_s`. `tests/sim_pair_search.rs` checks the first career's executed lineage (`segs`), that report's id and
+`career_job_s`. `tests/it/sim_pair_search.rs` checks the first career's executed lineage (`segs`), that report's id and
 its landed sets against the page's career (the `career` job its Use this sends, or the plan's pick), to the bit. The check runs in the run's kept state, as the page's check jobs run in its worker;
 whether what its exact pair searches leave there changes a later plan's pick is not measured.
 

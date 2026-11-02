@@ -4,7 +4,7 @@
 //! by a plan whose fixed parent was another veteran at the same position is not read (the same review: p10 with legacies
 //! 1 and 6 swapped and fix [6], then in order keeping fix [6], read five caps fitted with another mandatory parent and V
 //! fell 2447.02 -> 2345.70).
-mod common;
+use crate::common;
 use common::{run_jobs, val_job};
 use serde_json::Value;
 

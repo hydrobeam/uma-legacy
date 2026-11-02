@@ -1,4 +1,4 @@
-mod common;
+use crate::common;
 use common::{run_job, val_job};
 use serde_json::json;
 

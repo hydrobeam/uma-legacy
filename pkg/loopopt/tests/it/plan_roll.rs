@@ -2,13 +2,13 @@
 //! worked out from the plan's kept roll state. This is a self-pin, not a check of the values: the full outcome table it
 //! was first compared with is gone from the output, and `fixtures/plan_roll.json` (the val/plan jobs' rolls at the
 //! all-zero and all-max outcomes and at samples of y >= 0.5 and y < 0.5, as her stars per job target, each with its y)
-//! is re-taken from the solver's own rolls whenever results move on purpose: `BLESS=1 cargo test --release --test
-//! plan_roll rolls_equal` writes each roll's new y in place and names every one that changed (docs/BUILD.md, *Tests*;
+//! is re-taken from the solver's own rolls whenever results move on purpose: `BLESS=1 cargo test --profile checks
+//! --test it plan_roll::rolls_equal` writes each roll's new y in place and names every one that changed (docs/BUILD.md, *Tests*;
 //! the other test reads the fixture, so it runs after). It detects
 //! a roll that moves, and keeps the samples in their y bands. Also: a roll carried by another job (`roll`, as the
 //! page's Reroll sends it), a roll with no plan kept (the plan runs first), and a roll in a new process after
 //! `state_out` / `state_in` (the stored roll state, no plan).
-mod common;
+use crate::common;
 use common::{State, TempFile, loopopt, roll_of, run_with, val_job};
 use serde_json::{Value, json};
 

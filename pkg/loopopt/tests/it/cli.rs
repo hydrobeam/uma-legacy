@@ -1,6 +1,6 @@
 //! The command line's errors and its `constants` subcommand: a file it cannot read, a job file that is not one or a
 //! missing argument exits 2 with a message (no panic), and `constants` prints the model constants as one JSON object.
-mod common;
+use crate::common;
 use common::State;
 use std::process::Output;
 

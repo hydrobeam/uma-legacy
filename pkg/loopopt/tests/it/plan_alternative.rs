@@ -5,7 +5,7 @@
 //! that bound and prune its routes (`lift_reads`), and its routes. It saves about one career, as V's route promises
 //! (planval's first-step tripwire, -0.1); with no lift of an Alternative side it scored -0.585 (c89918a's admission
 //! with no lift), so a broken own-parent construction, or reads that prune its routes, fail it.
-mod common;
+use crate::common;
 use common::{run_job, val_job};
 
 #[test]

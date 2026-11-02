@@ -15,7 +15,7 @@ use crate::deck::space::SelectedDeck;
 /// and the work spent before the call. (The budget test alone would make the work redundant for the answer, but a hit
 /// counts its nodes only on its first use in a job: keyed without the work, a plan's calls would hit its own main
 /// search's entries in a combined job and an earlier job's in a split one, and the two plans' work counts would differ,
-/// `tests/plan_state.rs`.)
+/// `tests/it/plan_state.rs`.)
 #[derive(PartialEq, Eq, Hash)]
 pub(crate) struct DeckSearchKey {
     /// `CareerSetup::deck_class` of the trainee.

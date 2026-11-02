@@ -6,7 +6,7 @@
 //! again and compared bit for bit (the plan panics on a stale value; a memo carried across the refit fails here, while
 //! the output alone need not show it), with the cap lifted (`PLAN_MEMO_CAP`) so clearing cannot hide stale entries.
 //! The output with the memos on must equal the output with them off (`PLAN_MEMO_OFF`) but for timings.
-mod common;
+use crate::common;
 use common::{State, loopopt, run_with, val_job, without_clocks};
 use serde_json::{Value, json};
 

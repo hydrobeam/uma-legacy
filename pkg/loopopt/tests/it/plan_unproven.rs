@@ -3,7 +3,7 @@
 //! notes under its table. The val/plan p16 regression checks that a cap of 1 unit leaves unproven rows and searches,
 //! while the default cap leaves none. (An alternative row from her cached decks, never searched on its pair, is
 //! `proven: false` with `searched: false`: no search behind it ran out, so it is not counted here.)
-mod common;
+use crate::common;
 use common::{run_job, val_job};
 use serde_json::{Value, json};
 
