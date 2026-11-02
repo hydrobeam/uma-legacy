@@ -1,16 +1,17 @@
 //! Deck mode with three-uma rotations next to four-uma loops (`sizes`), on the shipped Global data.
-mod common;
-use common::{loopopt_bounded, run_job, run_with, val_job};
+use crate::common;
+use common::{State, loopopt, run_job, run_with, val_job};
 use serde_json::{Value, json};
 
-/// `job`'s output, its process killed after 10 s instead of leaving the test suite in an hours-long schedule search.
+/// `job`'s output. No wall-clock bound (it failed under load): the multi-result regression it guarded, an hours-long
+/// schedule search, shows in the work count `fixed_pals_distinct_decks_finish` asserts (`foursomes_solved`).
 fn run_bounded(job: &Value) -> Value {
-    let outputs = run_with(loopopt_bounded(10, "global"), "rotations-bounded", &[job]).outputs;
+    let outputs = run_with(loopopt("global", State::NONE), "rotations-bounded", &[job]).outputs;
     outputs.into_iter().next().expect("one output")
 }
 
 /// The runner-up is much weaker than the best deck. A bound against only the runner-up used to schedule thousands
-/// of loops that merely rediscovered the best deck; both multi-result jobs exceeded the timeout.
+/// of loops that merely rediscovered the best deck: thousands of foursomes solved.
 #[test]
 fn fixed_pals_distinct_decks_finish() {
     let mut j = job(false, json!([3, 4]), json!([]));

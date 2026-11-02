@@ -3,7 +3,7 @@
 //! at 1 star: two real 8/8s, so the cheapest trio has both sides real and its last step (Agnes Digital on those two) is a
 //! career you can run now. Its full result alone saves one career per run in V's own units (V = 1/p of it), so the pick
 //! saves at least one.
-mod common;
+use crate::common;
 use common::{run_job, val_job};
 
 #[test]

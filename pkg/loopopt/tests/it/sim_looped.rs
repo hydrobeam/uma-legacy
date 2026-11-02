@@ -6,7 +6,7 @@
 //! career (on her and Oguri Cap), with no higher odds than the pick it replaces, and those careers finish: S falls, and the run stops on
 //! the tail S / p. Under goal "first" the same pool runs its first pick to the end. Stopped while its career still
 //! does not finish (before the switch), the looped run has run no finishing career and is censored.
-mod common;
+use crate::common;
 use common::{run_job, val_job};
 use serde_json::{Value, json};
 

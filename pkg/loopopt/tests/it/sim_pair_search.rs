@@ -9,7 +9,7 @@
 //! career, its deck as named, no deck search; the plan's `choice` otherwise), and that career's landed-set chances and
 //! P(all), each equal to the page's career's to the bit (the `career` job the page's Use this sends for it, or the plan's
 //! pick).
-mod common;
+use crate::common;
 use common::{check_of, run_jobs, val_job};
 use serde_json::{Value, json};
 

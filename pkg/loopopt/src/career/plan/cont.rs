@@ -322,7 +322,7 @@ impl<K: std::hash::Hash + Eq, V: Copy + SameBits + std::fmt::Debug> Memo<K, V> {
         let key = key();
         if let Some(&value) = self.map.get(&key) {
             self.hits += 1;
-            // (`PLAN_MEMO_CHECK`: every hit computed again and compared bit for bit; tests/plan_memo.rs)
+            // (`PLAN_MEMO_CHECK`: every hit computed again and compared bit for bit; tests/it/plan_memo.rs)
             if self.check_hits {
                 let computed = compute();
                 assert!(

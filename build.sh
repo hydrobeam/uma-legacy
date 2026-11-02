@@ -49,7 +49,8 @@ STEPS=(
   "page||all default|webapp/dist (Vite): the pages, webapp/src bundled, both eras' data, the wasm, img/"
   "images|||icons and card art from the game's decrypted bundles into webapp/img (IMAGES_FORCE=1 redoes all)"
   "runners|||each uma's running mini model as a sprite strip into webapp/img/run (webapp/chibi/chibi.py)"
-  "lint|||every formatter and linter, warnings denied: Rust, shell, Python, the page's JS; the generated TypeScript current"
+  "lint|||every formatter and linter, warnings denied: Rust, shell, Python, the page's JS; the generated TypeScript current (Rust only when its inputs differ from main's)"
+  "check|[TIER]||the checks a change needs, by what differs from main: edit, handback (the default), merge or full (docs/BUILD.md, Tests)"
   "hooks|||use the tracked git hooks (.githooks: the pre-commit check); once per clone"
   "browsers|||Playwright's Chromium and Firefox at the pinned revisions into cache/ms-playwright"
   "test|||the page, then the browser suite on it (Chromium, and Firefox on the @both groups): releases"
@@ -146,8 +147,10 @@ step_pb() {
 # ---- the solver ----
 step_native() {
   need_cargo; check native
+  if passed native; then return 0; fi
   (cd "$C" && clippy_all)
   cargo_test
+  mark_passed native
 }
 # The release binary (fat LTO, as the wasm): pb and research build it first, so they never run a binary left from
 # before a change (cargo's own check makes this a no-op on an unchanged tree).
@@ -160,16 +163,45 @@ clippy_all() {
   cargo clippy --quiet --all-targets -- -D warnings \
     && cargo clippy --quiet --target wasm32-unknown-unknown --lib -- -D warnings
 }
-# cargo test in the checks profile: every test binary's result line and any failure, with the tests' exit status
+# cargo test in the checks profile: every test binary's result line and any failure, with the tests' exit status; and
+# the number of tests (passed, failed and ignored) against the pinned count, pkg/loopopt/tests/count.txt, so a test
+# that stops running (a file no crate compiles, a module left out) fails here. A change that adds or removes tests
+# writes the new count there (TESTS_BLESS=1 ./build.sh native), and one that removes any says why in its message.
 cargo_test() {
-  local out rc=0
-  out=$(cd "$C" && cargo test --profile checks 2>&1) || rc=$?
+  local out rc=0 count pinned
+  out=$(cd "$C" && cargo test --profile checks --no-fail-fast 2>&1) || rc=$?
   printf '%s\n' "$out" | grep -E '^test result|FAILED|panicked|^error' || true
+  count=$(printf '%s\n' "$out" | sed -n 's/^test result: [a-zA-Z]*\. \([0-9]*\) passed; \([0-9]*\) failed; \([0-9]*\) ignored.*/\1 \2 \3/p' \
+    | awk '{n += $1 + $2 + $3} END {print n + 0}')
+  pinned=$(cat "$C/tests/count.txt")
+  if [ -n "${TESTS_BLESS:-}" ]; then
+    echo "$count" >"$C/tests/count.txt"
+    echo "tests: $count, pinned (was $pinned)"
+  elif [ "$count" != "$pinned" ]; then
+    echo "tests: $count ran, $pinned pinned (pkg/loopopt/tests/count.txt): a test file no crate compiles, or tests added or removed (TESTS_BLESS=1 ./build.sh native re-pins; say why in the commit)" >&2
+    rc=1
+  fi
   return "$rc"
 }
 step_wasm() {
   need_cargo; need_cmd rustup "https://rustup.rs: adds the wasm target"; need_node; check wasm
   npm_deps
+  # an optimised wasm and its glue built from these exact inputs, by this tree or another worktree, are copied, not
+  # built again (cache/wasm/KEY: about 4 minutes of fat-LTO build and wasm-opt saved per worktree)
+  local built
+  built="$R/cache/wasm/$(inputs_key solver "${WASM_OPT_FLAGS[@]}")"
+  if [ -f "$built/loopopt.opt.wasm" ]; then
+    cp "$built/loopopt.opt.wasm" "$W/loopopt.opt.wasm"
+    cp "$built/loopopt.js" "$built/loopopt.d.ts" "$W/src/gen/"
+    echo "wasm: built before from these inputs (${built#"$R"/}), copied"
+  else
+    build_wasm
+    mkdir -p "$built"
+    cp "$W/loopopt.opt.wasm" "$BINDGEN/loopopt.js" "$BINDGEN/loopopt.d.ts" "$built/"
+  fi
+  (cd "$W" && node example.mjs)
+}
+build_wasm() {
   wasm_bindgen_cli
   (cd "$C" && quiet cargo build --release --lib --target wasm32-unknown-unknown)
   # --target web: an ES module the worker imports (Vite bundles it), instantiated from the page's compiled module by
@@ -186,7 +218,6 @@ step_wasm() {
     (cd "$W" && npx wasm-opt "${WASM_OPT_FLAGS[@]}" "$BOUND_WASM" -o loopopt.opt.wasm)
     echo "$key" >"$W/.loopopt.wasm.key"
   fi
-  (cd "$W" && node example.mjs)
 }
 # everything wasm-opt's output depends on: the compiled wasm, the flags and binaryen's version
 wasm_opt_key() {
@@ -208,40 +239,74 @@ wasm_bindgen_cli() {
 
 # ---- checks ----
 # every linter runs, whatever the others found; the step lists the ones that failed
+# Every linter of every area, whatever the others found; the step ends by naming the ones that failed. Rust's
+# (rustfmt, clippy, the generated types) run only when a Rust input differs from main's (changed_in rust), which passed
+# them at its merge: a page or Python change compiles no Rust.
 step_lint() {
   need_cargo; need_uv; need_node; check lint
   npm_deps
   LINT_FAILED=()
+  CHANGED=$(changed_paths)
+  if changed_in rust; then rust_lints; else echo "  rust: inputs as on main, not linted"; fi
+  shell_lints
+  python_lints
+  if changed_in rust research; then research_lints; fi
+  page_lints
+  lint_verdict lint
+}
+rust_lints() {
   lint rustfmt in_dir "$C" cargo fmt --check
   lint clippy in_dir "$C" clippy_all
   # (the page's generated TypeScript, webapp/src/gen: the test fails when it is stale; docs/BUILD.md, *Generated types*)
-  lint "generated types" in_dir "$C" cargo test --quiet --lib ts_gen
-  lint shellcheck uv run --quiet --project "$R" shellcheck "$R/build.sh" "$R/.githooks/pre-commit"
+  lint "generated types" in_dir "$C" cargo test --quiet --profile checks --lib ts_gen
+}
+shell_lints() { lint shellcheck uv run --quiet --project "$R" shellcheck "$R/build.sh" "$R/.githooks/pre-commit"; }
+python_lints() {
   lint "ruff check" in_dir "$R" uv run --quiet ruff check
   lint "ruff format" in_dir "$R" uv run --quiet ruff format --check
   lint test_validation in_dir "$R" quiet "${PY[@]}" val/test_validation.py
-  # (section 8 reads CHAIN_N from the solver, `loopopt constants`: the checks' binary, built first, a no-op when current)
+}
+# (section 8 reads CHAIN_N from the solver, `loopopt constants`: the checks' binary, built first, a no-op when current)
+research_lints() {
   lint test_s08_likelihood build_and_run env LOOPOPT_SOLVER="$CHECK_BIN" uv run --quiet --project "$R" --group research python "$R/research/test_s08_likelihood.py"
-  lint biome in_dir "$W" npx --no-install biome check --error-on-warnings --diagnostic-level=warn
+}
+page_types() {
   lint tsc in_dir "$W" npx --no-install tsc -p .
   lint "tsc (worker)" in_dir "$W" npx --no-install tsc -p tsconfig.worker.json
   lint "tsc (tests)" in_dir "$W" npx --no-install tsc -p tsconfig.test.json
+}
+page_lints() {
+  lint biome in_dir "$W" npx --no-install biome check --error-on-warnings --diagnostic-level=warn
+  page_types
   lint "Tailwind classes" in_dir "$W" npx --no-install oxlint -c .oxlintrc.json src
   lint knip in_dir "$W" npx --no-install knip
   lint dependency-cruiser in_dir "$W" npx --no-install depcruise --config .dependency-cruiser.mjs src
   lint "@ts-expect-error" no_ts_expect_error
-  # capped: a runaway test (assert.equal on two fake-DOM nodes formats all of Preact's objects) dies at 1 GB, not the
-  # terminal, and a hung one at 5 minutes (each test's own limit, 60 s: vite.config.mjs)
-  lint "node tests" in_dir "$W" env NODE_OPTIONS=--max-old-space-size=1024 timeout 300 npx --no-install vitest run --reporter=dot
+  node_tests run
+}
+# the page's node tests: `node_tests run` all of them, `node_tests related FILE...` those that import the files.
+# Capped: a runaway test (assert.equal on two fake-DOM nodes formats all of Preact's objects) dies at 1 GB, not the
+# terminal, and a hung one at 5 minutes (each test's own limit, 60 s: vite.config.mjs)
+node_tests() {
+  lint "node tests" in_dir "$W" env NODE_OPTIONS=--max-old-space-size=1024 timeout 300 npx --no-install vitest "$@" --run --reporter=dot
+}
+lint_verdict() {   # lint_verdict NAME: fails, naming the linters that failed, if any did
   if [ ${#LINT_FAILED[@]} -gt 0 ]; then
     local list
     list=$(printf '%s, ' "${LINT_FAILED[@]}")
-    echo "lint: failed: ${list%, }" >&2
+    echo "$1: failed: ${list%, }" >&2
     return 1
   fi
-  echo "lint: clean"
+  echo "$1: clean"
 }
-lint() { local name=$1; shift; "$@" || LINT_FAILED+=("$name"); }   # lint NAME COMMAND...
+# lint NAME COMMAND...: runs it, prints its wall time, and records a failure in LINT_FAILED
+lint() {
+  local name=$1 start=$EPOCHREALTIME
+  shift
+  "$@" || LINT_FAILED+=("$name")
+  printf '  %-24s %6.1f s\n' "$name" "$(elapsed "$start")"
+}
+elapsed() { echo "$EPOCHREALTIME - $1" | bc; }   # elapsed START: seconds since START (an $EPOCHREALTIME)
 # tsc accepts a `@ts-expect-error` and no Biome rule sees a comment: one in the page's source fails lint (and the hook)
 no_ts_expect_error() { ! grep -rn --include='*.ts' --include='*.tsx' '@ts-expect-error' "$W/src"; }
 in_dir() { (cd "$1" && shift && "$@"); }   # in_dir DIR COMMAND...
@@ -257,6 +322,14 @@ step_val() {
   local tag="${1:?val needs a tag}" quick=() rc=0
   [ "${2:-}" = --quick ] && quick=(--quick)
   need_uv; need_cargo; check val
+  local mode=full
+  [ ${#quick[@]} -gt 0 ] && mode=quick
+  if passed val "$mode" || { [ "$mode" = quick ] && passed val full; }; then return 0; fi
+  if ! val_checks "$tag" "${quick[@]}"; then return 1; fi
+  mark_passed val "$mode"
+}
+val_checks() {   # val_checks TAG [--quick]
+  local tag=$1 quick=("${@:2}") rc=0
   build_checked
   "${PY[@]}" "$R/val/runval.py" "$CHECK_BIN" "$tag" "${quick[@]}" || return 1
   "${PY[@]}" "$R/val/cmp2.py" "$tag" ref || rc=1
@@ -271,14 +344,16 @@ step_val() {
 step_valq() { step_val "$1" --quick; }
 step_mono() {
   need_uv; need_cargo; check mono
+  if passed mono; then return 0; fi
   build_checked
   "${PY[@]}" "$R/val/mono.py" "$CHECK_BIN"
+  mark_passed mono
 }
 step_research() {
   local py=(uv run --quiet --project "$R" --group research python)
   need_cargo; check research
   build_solver   # section 13 runs the release binary (research/common.py SOLVER)
-  "${py[@]}" "$R/research/run_all.py"
+  "${py[@]}" "$R/research/run_all.py" "$@"
   "${py[@]}" "$R/research/render.py"
 }
 
@@ -382,6 +457,145 @@ step_deploy() {
     --commit-message "$(git -C "$R" describe --tags --always)" --commit-dirty="$dirty_flag")
 }
 
+# ---- what can't have changed ----
+# The inputs of each kind of check, as paths (git pathspecs) from the repository's root. A check that passed records
+# its inputs' key (cache/passed/NAME-KEY, shared by every worktree through cache/), and runs again only when one of
+# them changes: a page-only change never runs native, val or mono. build.sh is in every key (it holds the flags).
+declare -A INPUTS=(
+  [solver]="pkg/loopopt/src pkg/loopopt/build.rs pkg/loopopt/Cargo.toml pkg/loopopt/Cargo.lock rust-toolchain.toml research/results.json"
+  [rust]="pkg/loopopt/src pkg/loopopt/tests pkg/loopopt/build.rs pkg/loopopt/Cargo.toml pkg/loopopt/Cargo.lock rust-toolchain.toml research/results.json webapp/src/gen"
+  [native]="pkg/loopopt/src pkg/loopopt/tests pkg/loopopt/build.rs pkg/loopopt/Cargo.toml pkg/loopopt/Cargo.lock rust-toolchain.toml research/results.json pkg/loopopt/data val/jobs val/plan val/sim"
+  [val]="pkg/loopopt/src pkg/loopopt/build.rs pkg/loopopt/Cargo.toml pkg/loopopt/Cargo.lock rust-toolchain.toml research/results.json pkg/loopopt/data val"
+  [mono]="pkg/loopopt/src pkg/loopopt/build.rs pkg/loopopt/Cargo.toml pkg/loopopt/Cargo.lock rust-toolchain.toml research/results.json pkg/loopopt/data val/mono.py val/solver.py val/plan"
+  [research]="research pkg/loopopt/src pkg/loopopt/data val/jobs val/jobs.json"
+  [python]=":(glob)**/*.py pyproject.toml uv.lock"
+  [shell]="build.sh .githooks"
+  [page]="webapp"
+)
+# inputs_key AREA [EXTRA...]: 16 hex digits of the SHA-256 of the area's files (tracked and untracked, ignored ones
+# left out: names and contents as they are on disk), build.sh, and EXTRA words
+inputs_key() {
+  local area=$1
+  shift
+  # shellcheck disable=SC2086 # the pathspecs are words
+  { (cd "$R" && git ls-files -co --exclude-standard -- ${INPUTS[$area]} build.sh | LC_ALL=C sort -u \
+      | while IFS= read -r f; do if [ -f "$f" ]; then printf '%s\0' "$f"; fi; done | xargs -0 -r sha256sum)
+    printf '%s\n' "$@"; } | sha256sum | cut -c1-16
+}
+passed() {   # passed AREA [MODE]: this area's checks passed on its current inputs (says so)
+  local stamp
+  stamp="$R/cache/passed/$1${2:+-$2}-$(inputs_key "$1")"
+  [ -e "$stamp" ] || return 1
+  echo "$1${2:+ $2}: passed before on these inputs (${stamp#"$R"/}), not run again"
+}
+mark_passed() { mkdir -p "$R/cache/passed" && touch "$R/cache/passed/$1${2:+-$2}-$(inputs_key "$1")"; }
+
+# The scope: what differs from main (the commits since this branch left it, staged, unstaged and untracked files; on
+# main itself, from its upstream). changed_in AREA...: one of those paths is an input of one of the areas.
+changed_paths() {
+  if [ -z "${CHANGED+set}" ]; then
+    local base
+    base=$(git -C "$R" merge-base HEAD main 2>/dev/null || git -C "$R" rev-parse HEAD)
+    if [ "$base" = "$(git -C "$R" rev-parse HEAD)" ]; then
+      base=$(git -C "$R" rev-parse -q --verify '@{upstream}' 2>/dev/null || echo "$base")
+    fi
+    CHANGED=$({ git -C "$R" diff --name-only "$base"; git -C "$R" ls-files -o --exclude-standard; } | sort -u)
+  fi
+  printf '%s\n' "$CHANGED"
+}
+changed_in() {
+  local area spec
+  for area in "$@"; do
+    for spec in ${INPUTS[$area]}; do
+      case $spec in
+        ':(glob)**/*.py') if changed_paths | grep -q '\.py$'; then return 0; fi ;;
+        *) if changed_paths | grep -q -e "^$spec\$" -e "^$spec/"; then return 0; fi ;;
+      esac
+    done
+  done
+  return 1
+}
+
+# check [TIER]: the checks a change needs, chosen by what differs from main (changed_in) and skipped where their
+# inputs already passed (passed); each prints its wall time, and the tier its total against its budget, which is
+# reported, never enforced (docs/BUILD.md, Tests):
+#   edit      every edit, 10 s: the page's types and the node tests of the changed files; clippy and the unit tests;
+#             ruff on the changed Python
+#   handback  hand-back of a piece of work, 5 min: edit's, then every linter of each changed area, the Rust tests
+#             (checks profile), valq, research (its sections recompute only on their own inputs), the browser
+#             suite's fast tier
+#   merge     before a merge to main, 10 min: every area, changed or not (each skipped where it already passed):
+#             lint, native, val, the full browser suite, and mono after a change to the career planner
+#   full      by hand: merge's, then mono and research on every section (--force), whatever changed
+TIERS=(edit handback merge full)
+declare -A BUDGET=([edit]=10 [handback]=300 [merge]=600 [full]=0)
+step_check() {
+  local tier=${1:-handback} start=$EPOCHREALTIME rc=0
+  [[ " ${TIERS[*]} " == *" $tier "* ]] || { echo "check: no tier $tier (${TIERS[*]})" >&2; exit 1; }
+  need_cargo; need_uv; need_node; check check
+  LINT_FAILED=()
+  CHANGED=$(changed_paths)
+  echo "check $tier: changed from main: $(changed_paths | sed 's#/.*##' | sort -u | xargs)"
+  "check_$tier" || rc=1
+  lint_verdict "check $tier" || rc=1
+  local took
+  took=$(elapsed "$start")
+  if [ "${BUDGET[$tier]}" -gt 0 ] && [ "${took%.*}" -gt "${BUDGET[$tier]}" ]; then
+    echo "check $tier: ${took%.*} s, over its ${BUDGET[$tier]} s budget"
+  else
+    echo "check $tier: ${took%.*} s"
+  fi
+  return "$rc"
+}
+with_wasm() { step_wasm && "$@"; }   # with_wasm STEP: the wasm first (copied when its inputs were built before)
+check_edit() {
+  local py
+  if changed_in page; then
+    npm_deps
+    page_types
+    local files
+    mapfile -t files < <(changed_paths | sed -n 's#^webapp/##p' | grep -E '^(src|test)/.*\.(ts|tsx|mjs)$' || true)
+    if [ ${#files[@]} -gt 0 ]; then node_tests related "${files[@]}"; fi
+  fi
+  if changed_in rust; then
+    lint clippy in_dir "$C" cargo clippy --quiet --all-targets -- -D warnings
+    lint "unit tests" in_dir "$C" quiet cargo test --profile checks --lib
+  fi
+  py=$(changed_paths | grep '\.py$' || true)
+  if [ -n "$py" ]; then
+    # shellcheck disable=SC2086 # one path per word: the repo's paths have no spaces
+    lint ruff in_dir "$R" uv run --quiet ruff check $py
+  fi
+}
+check_handback() {
+  check_edit
+  if changed_in shell; then shell_lints; fi
+  if changed_in python; then python_lints; fi
+  if changed_in rust; then rust_lints; fi
+  if changed_in rust research; then research_lints; fi
+  if changed_in page; then page_lints; fi
+  if changed_in native; then lint "rust tests (checks)" step_native; fi
+  if changed_in val; then lint valq step_valq check; fi
+  if changed_in research; then lint research step_research; fi
+  if changed_in page solver; then lint "browser, fast tier" with_wasm step_testq; fi
+}
+check_merge() {
+  shell_lints
+  python_lints
+  research_lints
+  rust_lints
+  page_lints
+  lint "rust tests (checks)" step_native
+  lint val step_val check
+  lint "browser suite" with_wasm step_test
+  if changed_paths | grep -q '^pkg/loopopt/src/career/'; then lint mono step_mono; fi
+}
+check_full() {
+  check_merge
+  lint mono step_mono
+  lint "research (every section)" step_research --force
+}
+
 # ---- the table ----
 steps_in() {   # steps_in SET: the steps of a set (all, default), in the table's order
   local row name sets
@@ -416,7 +630,9 @@ if [ $# -eq 0 ]; then mapfile -t defaults < <(steps_in default); set -- "${defau
 while [ $# -gt 0 ]; do
   step=$1; shift
   if ! arg=$(step_arg "$step"); then echo "unknown step $step (./build.sh help)" >&2; exit 1; fi
-  if [ -n "$arg" ]; then
+  if [[ $arg == "[TIER]" ]]; then
+    if [ $# -gt 0 ] && [[ " ${TIERS[*]} " == *" $1 "* ]]; then "step_${step//-/_}" "$1"; shift; else "step_${step//-/_}"; fi
+  elif [ -n "$arg" ]; then
     "step_${step//-/_}" "${1:-}"
     shift
   else

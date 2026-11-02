@@ -218,7 +218,7 @@ pub(crate) struct PlanJob {
     #[ts(as = "Option<_>", optional)]
     audit_lifts: bool,
     /// `index_rule` test knob: PROXY_EFF in place of 0.06 (-1 leaves pass 1's builders to their proxies, so the pass-2
-    /// searches refit Cont: tests/plan_memo.rs runs that path)
+    /// searches refit Cont: tests/it/plan_memo.rs runs that path)
     #[ts(optional)]
     proxy_eff: Option<f64>,
     /// a roll of the plan's pick (her stars per job target, 0 where it did not land): answered from the plan's kept roll
