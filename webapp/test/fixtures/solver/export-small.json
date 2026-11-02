@@ -1,0 +1,283 @@
+[
+ {
+  "card_id": 100101,
+  "factor_info_array": [
+   {
+    "factor_id": 2015902
+   },
+   {
+    "factor_id": 2004901
+   },
+   {
+    "factor_id": 3202
+   },
+   {
+    "factor_id": 103
+   },
+   {
+    "factor_id": 10010102
+   }
+  ],
+  "win_saddle_id_array": [
+   30,
+   17,
+   155,
+   27
+  ],
+  "trained_chara_id": 900,
+  "rank_score": 12500,
+  "succession_chara_array": [
+   {
+    "card_id": 100401,
+    "factor_info_array": [
+     {
+      "factor_id": 2015902
+     },
+     {
+      "factor_id": 3302
+     },
+     {
+      "factor_id": 203
+     },
+     {
+      "factor_id": 10040102
+     }
+    ],
+    "win_saddle_id_array": [
+     30,
+     155
+    ],
+    "position_id": 10
+   },
+   {
+    "card_id": 100501,
+    "factor_info_array": [
+     {
+      "factor_id": 2004901
+     },
+     {
+      "factor_id": 3202
+     },
+     {
+      "factor_id": 303
+     },
+     {
+      "factor_id": 10050102
+     }
+    ],
+    "win_saddle_id_array": [
+     17
+    ],
+    "position_id": 20
+   }
+  ]
+ },
+ {
+  "card_id": 100201,
+  "factor_info_array": [
+   {
+    "factor_id": 2015901
+   },
+   {
+    "factor_id": 3202
+   },
+   {
+    "factor_id": 203
+   },
+   {
+    "factor_id": 10020102
+   }
+  ],
+  "win_saddle_id_array": [
+   30,
+   17,
+   155,
+   27
+  ],
+  "trained_chara_id": 901,
+  "rank_score": 12500,
+  "succession_chara_array": [
+   {
+    "card_id": 100601,
+    "factor_info_array": [
+     {
+      "factor_id": 2004902
+     },
+     {
+      "factor_id": 1202
+     },
+     {
+      "factor_id": 103
+     },
+     {
+      "factor_id": 10060102
+     }
+    ],
+    "win_saddle_id_array": [
+     27
+    ],
+    "position_id": 10
+   },
+   {
+    "card_id": 100701,
+    "factor_info_array": [
+     {
+      "factor_id": 2015901
+     },
+     {
+      "factor_id": 3302
+     },
+     {
+      "factor_id": 403
+     },
+     {
+      "factor_id": 10070102
+     }
+    ],
+    "win_saddle_id_array": [
+     30
+    ],
+    "position_id": 20
+   }
+  ]
+ },
+ {
+  "card_id": 100301,
+  "factor_info_array": [
+   {
+    "factor_id": 2004902
+   },
+   {
+    "factor_id": 3202
+   },
+   {
+    "factor_id": 303
+   },
+   {
+    "factor_id": 10030102
+   }
+  ],
+  "win_saddle_id_array": [
+   30,
+   17,
+   155,
+   27
+  ],
+  "trained_chara_id": 902,
+  "rank_score": 12500,
+  "succession_chara_array": [
+   {
+    "card_id": 100801,
+    "factor_info_array": [
+     {
+      "factor_id": 2015903
+     },
+     {
+      "factor_id": 3202
+     },
+     {
+      "factor_id": 503
+     },
+     {
+      "factor_id": 10080102
+     }
+    ],
+    "win_saddle_id_array": [
+     155
+    ],
+    "position_id": 10
+   },
+   {
+    "card_id": 100901,
+    "factor_info_array": [
+     {
+      "factor_id": 3302
+     },
+     {
+      "factor_id": 203
+     },
+     {
+      "factor_id": 10090102
+     }
+    ],
+    "win_saddle_id_array": [
+     17,
+     27
+    ],
+    "position_id": 20
+   }
+  ]
+ },
+ {
+  "card_id": 101001,
+  "factor_info_array": [
+   {
+    "factor_id": 2015901
+   },
+   {
+    "factor_id": 2004901
+   },
+   {
+    "factor_id": 3202
+   },
+   {
+    "factor_id": 403
+   },
+   {
+    "factor_id": 10100102
+   }
+  ],
+  "win_saddle_id_array": [
+   30,
+   17,
+   155,
+   27
+  ],
+  "trained_chara_id": 903,
+  "rank_score": 12500,
+  "succession_chara_array": [
+   {
+    "card_id": 101101,
+    "factor_info_array": [
+     {
+      "factor_id": 2004901
+     },
+     {
+      "factor_id": 3202
+     },
+     {
+      "factor_id": 103
+     },
+     {
+      "factor_id": 10110102
+     }
+    ],
+    "win_saddle_id_array": [
+     30
+    ],
+    "position_id": 10
+   },
+   {
+    "card_id": 101201,
+    "factor_info_array": [
+     {
+      "factor_id": 2015902
+     },
+     {
+      "factor_id": 1202
+     },
+     {
+      "factor_id": 303
+     },
+     {
+      "factor_id": 10120102
+     }
+    ],
+    "win_saddle_id_array": [
+     155
+    ],
+    "position_id": 20
+   }
+  ]
+ }
+]

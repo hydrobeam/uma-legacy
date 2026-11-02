@@ -1,6 +1,7 @@
 //! WebAssembly entry point, through wasm-bindgen's generated glue (`./build.sh wasm` writes it to
 //! webapp/src/gen/loopopt.js, with its types in loopopt.d.ts). The page's worker makes one `Solver` from the era's data,
-//! then sends it jobs; each answer is the reply's JSON text:
+//! then sends it jobs; each answer is the reply's JSON text. In the native tests the same struct answers through
+//! `open` and `reply` (`fixtures`, below, runs the flows' captured jobs through it, as the worker would):
 //!   `new Solver(init)`: {"data":<data.json>,"skills":<web_skills.json>,"cards":<web_cards.json>,"events":<card_events.json>}
 //!     (throws, saying why, on a request that does not parse)
 //!   `solver.call(job)`: a `Request`: {"cmd":"deck","skills":SkillJob,"deck":DeckJob}  (needs "cards" and "events")
@@ -16,11 +17,12 @@ use crate::refusal::Refusal;
 use crate::request::Request;
 use crate::skills::SkillsRaw;
 use serde::{Deserialize, Serialize};
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
 /// The worker's solver: the era's data its jobs run on, the career planner's work kept between them, and the buffer
 /// each reply is written into.
-#[wasm_bindgen]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct Solver {
     data: Data,
     skills: SkillsRaw,
@@ -51,14 +53,27 @@ struct InitReq {
     events: serde_json::Value,
 }
 
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 impl Solver {
     /// The era's data, from the init request's JSON text, kept for the jobs.
     #[wasm_bindgen(constructor)]
     pub fn new(init: &str) -> Result<Self, JsError> {
         console_error_panic_hook::set_once();
-        let request =
-            serde_json::from_str::<InitReq>(init).map_err(|e| JsError::new(&format!("bad init request: {e}")))?;
+        Self::open(init).map_err(|e| JsError::new(&e))
+    }
+
+    /// One job (a `Request`'s JSON text) run on the data and the kept work; its reply's JSON text.
+    #[wasm_bindgen(unchecked_return_type = "string")]
+    pub fn call(&mut self, job: &str) -> JsValue {
+        JsValue::from_str(self.reply(job))
+    }
+}
+
+impl Solver {
+    /// The era's data, from the init request's JSON text, kept for the jobs; why the request does not parse otherwise.
+    pub fn open(init: &str) -> Result<Self, String> {
+        let request = serde_json::from_str::<InitReq>(init).map_err(|e| format!("bad init request: {e}"))?;
         // (no event cache: no event lists)
         let event_cache = Option::<CardEventCache>::deserialize(&request.events);
         let deck = match (CardsRaw::deserialize(&request.cards), event_cache) {
@@ -77,15 +92,12 @@ impl Solver {
     }
 
     /// One job (a `Request`'s JSON text) run on the data and the kept work; its reply's JSON text.
-    #[wasm_bindgen(unchecked_return_type = "string")]
-    pub fn call(&mut self, job: &str) -> JsValue {
+    pub fn reply(&mut self, job: &str) -> &str {
         self.answer(job);
-        JsValue::from_str(&self.out)
+        &self.out
     }
-}
 
-impl Solver {
-    /// `call`'s work: the job's reply written into `out` (a reply may borrow the data, so it is written where the data
+    /// `reply`'s work: the job's reply written into `out` (a reply may borrow the data, so it is written where the data
     /// is borrowed).
     fn answer(&mut self, job: &str) {
         let Self { data, skills, deck, kept, out } = self;
@@ -127,4 +139,132 @@ fn write_json(out: &mut String, value: &impl Serialize) {
     bytes.clear();
     serde_json::to_writer(&mut bytes, value).expect("the solver's replies serialise");
     *out = String::from_utf8(bytes).expect("serde_json writes UTF-8");
+}
+
+#[cfg(test)]
+mod fixtures {
+    // The browser flows' canned solver replies (webapp/test/fixtures/solver/, docs/BUILD.md, *Tests*): for each
+    // scenario, one job of each kind its flows send (`<scenario>.jobs.json`: a deck search, a career search and plan,
+    // a robustness-check step, a comparison and its plan, a roll, the kept work out and in), run in that order through
+    // one worker's `Solver`, so a check, a comparison and a roll find the plan kept, and a `state_in` restores what the
+    // `state_out` before it gave, as the page stores it; a deck job runs twice, as the worker runs it (src/worker.ts:
+    // its fast pass, then the exact one). The replies are an insta binary snapshot beside the jobs
+    // (`<scenario>.snap.json`, one kind a line), which the flows' stand-in for the worker answers each job of that kind
+    // with. A reply's wall clocks (`timing_s`, `ms`, `*_ms`) are written as 0, so it is the same on every run and every
+    // machine. `INSTA_UPDATE=always` rewrites them (./build.sh fixtures); one that changed otherwise fails.
+    use super::Solver;
+    use serde_json::{Map, Value};
+    use std::path::{Path, PathBuf};
+
+    /// The fixtures' folder.
+    const DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../webapp/test/fixtures/solver");
+
+    /// The solver's data for the page's era ("global", "gm"), as the page build writes it (vite/pagedata.mjs `era`).
+    fn era_data(era: &str) -> String {
+        let dir = match era {
+            "global" => "global",
+            "gm" => "jp",
+            other => panic!("an era of the page: {other}"),
+        };
+        let read = |name: &str| {
+            let path = format!("{}/data/{dir}/{name}", env!("CARGO_MANIFEST_DIR"));
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"))
+        };
+        format!(
+            r#"{{"data":{},"skills":{},"cards":{},"events":{}}}"#,
+            read("data.json"),
+            read("web_skills.json"),
+            read("web_cards.json"),
+            read("card_events.json")
+        )
+    }
+
+    /// `value` with every wall clock (`timing_s`, `ms`, a key ending in `_ms`) at 0.
+    fn clocks_zeroed(value: Value) -> Value {
+        match value {
+            Value::Object(fields) => Value::Object(
+                fields
+                    .into_iter()
+                    .map(|(key, field)| {
+                        let clock = (key == "timing_s" || key == "ms" || key.ends_with("_ms")) && field.is_number();
+                        (key, if clock { Value::from(0) } else { clocks_zeroed(field) })
+                    })
+                    .collect(),
+            ),
+            Value::Array(items) => Value::Array(items.into_iter().map(clocks_zeroed).collect()),
+            other => other,
+        }
+    }
+
+    /// One job's answer, as the worker posts it: a deck job's fast pass (`interim`), then its `result`.
+    fn answer(solver: &mut Solver, job: &Value) -> Value {
+        let reply = |solver: &mut Solver, job: &Value| -> Value {
+            let text = solver.reply(&job.to_string());
+            clocks_zeroed(serde_json::from_str(text).expect("a reply is JSON"))
+        };
+        let mut answer = Map::new();
+        if job["cmd"] == "deck" && job["deck"]["exact"] != false {
+            let mut quick = job.clone();
+            quick["deck"]["exact"] = Value::Bool(false);
+            let interim = reply(solver, &quick);
+            if interim["kind"] == "refusal" {
+                answer.insert("result".to_owned(), interim.clone());
+                answer.insert("interim".to_owned(), interim);
+                return Value::Object(answer);
+            }
+            answer.insert("interim".to_owned(), interim);
+        }
+        answer.insert("result".to_owned(), reply(solver, job));
+        Value::Object(answer)
+    }
+
+    /// The scenarios with jobs (`<scenario>.jobs.json`), by name, sorted.
+    fn scenarios() -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(DIR)
+            .expect("webapp/test/fixtures/solver reads")
+            .map(|entry| entry.expect("an entry").file_name().into_string().expect("a UTF-8 name"))
+            .filter_map(|name| name.strip_suffix(".jobs.json").map(str::to_owned))
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// Each scenario's canned replies, one per job kind: the solver's answers now, as its snapshot holds them.
+    #[test]
+    fn replies() {
+        let mut settings = insta::Settings::clone_current();
+        settings.set_snapshot_path(PathBuf::from(DIR));
+        settings.set_prepend_module_to_snapshot(false);
+        settings.set_omit_expression(true);
+        settings.set_description("the scenario's canned replies: ./build.sh fixtures writes them from its jobs");
+        let scenarios = scenarios();
+        assert!(!scenarios.is_empty(), "scenarios with jobs in {DIR}");
+        settings.bind(|| {
+            for scenario in &scenarios {
+                let path = Path::new(DIR).join(format!("{scenario}.jobs.json"));
+                let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+                let fixture: Value = serde_json::from_str(&text).expect("a jobs file is JSON");
+                let mut solver =
+                    Solver::open(&era_data(fixture["era"].as_str().expect("the era"))).expect("the era's data loads");
+                // (the kept work the last `state_out` gave: what the page stores and a `state_in` sends back)
+                let mut stored = Value::Null;
+                let mut lines = Vec::new();
+                for entry in fixture["jobs"].as_array().expect("the jobs, by kind") {
+                    let kind = entry["kind"].as_str().expect("a job's kind");
+                    let mut job = entry["job"].clone();
+                    if job["cmd"] == "state_in" {
+                        job["state"] = stored.clone();
+                    }
+                    let reply = answer(&mut solver, &job);
+                    assert_ne!(reply["result"]["kind"], "refusal", "{scenario} {kind}: {}", reply["result"]);
+                    if reply["result"]["kind"] == "state_out" {
+                        stored = reply["result"]["state"].clone();
+                    }
+                    lines.push(format!("{}:{reply}", Value::from(kind)));
+                }
+                let bytes = format!("{{\n{}\n}}\n", lines.join(",\n")).into_bytes();
+                insta::assert_binary_snapshot!(&format!("{scenario}.json"), bytes);
+            }
+        });
+    }
 }

@@ -1,4 +1,4 @@
-// The career planner in a real browser, from the sample veterans' plan: the worker's kept work stored in IndexedDB once
+// The career planner in a real browser, from career-small's plan (test/fixtures/solver: four made-up veterans): the worker's kept work stored in IndexedDB once
 // the plan is in and restored into the next page's worker before its first job, the last answer drawn at once by a
 // reload with nothing changed (career/run.ts and the run on the page are node-tested: careerplanrun.test.ts); and the
 // page on a 375 px phone (iPhone 13 mini): nothing scrolls sideways, page or dialogs, the setup's rows in their panel,
@@ -6,17 +6,14 @@
 import type { Page } from 'playwright/test';
 import { expect, test } from './fixtures.ts';
 import { SIDEWAYS, SOLVER_WAIT, careerDone } from './pages.ts';
-import { SOLVER_MODE, quiet } from './solver.ts';
+import { quiet } from './solver.ts';
 
-// (a recording runs the real solver: its plans take tens of seconds)
-test.describe.configure({ timeout: SOLVER_MODE === 'live' ? 600_000 : 60_000 });
+test.describe.configure({ timeout: 60_000 });
 
-// the sample veterans (the status line's button on an empty page), planned
-async function samplePlan(page: Page) {
+test.use({ scenario: 'career-small' });
+// the scenario's veterans, planned
+async function seededPlan(page: Page) {
   await page.goto('/');
-  const act = page.locator('#run-act');
-  await expect(act).toHaveText(/Try sample veterans/, { timeout: SOLVER_WAIT });
-  await act.click();
   await expect(page.locator('#run-note')).toHaveText(/Planned in/, { timeout: SOLVER_WAIT });
 }
 // what the page's IndexedDB holds of the worker's kept work: each stored state's length (the solver's own string, which
@@ -66,7 +63,7 @@ const trainee = (page: Page) => page.locator('#tree [data-node="trainee"] [data-
 test('the kept work is stored after a plan and restored first by the next worker; a reload with nothing changed draws the answer at once @both', async ({
   page,
 }) => {
-  await samplePlan(page);
+  await seededPlan(page);
   // stored promptly once the worker is idle (engine.ts engineSaveState: 100 ms, behind the plan)
   await expect
     .poll(() => page.evaluate(() => window.__runs.filter((j) => j.cmd === 'state_out').length), { timeout: 1300 })
@@ -143,7 +140,7 @@ test.describe('on a 375 px phone @both', () => {
   test('nothing scrolls sideways; the setup, the pills, Try a run, the pick and the tree fit the phone', async ({
     page,
   }) => {
-    await samplePlan(page);
+    await seededPlan(page);
     // the first veterans fold the setup: the tree starts on the first screen
     await expect(page.locator('#set-fold')).toHaveAttribute('aria-expanded', 'false');
     await expect(page.locator('#set-sum')).toBeVisible();

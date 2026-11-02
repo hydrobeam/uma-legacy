@@ -4,6 +4,8 @@ import { expect, test } from './fixtures.ts';
 import { loopSettled, openLoop } from './pages.ts';
 
 const PAGES = ['Career planner', 'Loop planner', 'How this works'];
+// (the planner pages on loop-small: three umas, two targets, fourteen cards, so their searches are small)
+test.use({ scenario: 'loop-small' });
 
 test('header tabs lead to /about and back, the current page marked', async ({ page }) => {
   await openLoop(page);

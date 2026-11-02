@@ -119,7 +119,9 @@ pub(crate) fn memoised<K: Eq + std::hash::Hash, V: Clone>(
 mod career;
 mod deck;
 mod skills;
-#[cfg(target_arch = "wasm32")]
+// the page worker's solver; natively only in the tests, which run the flows' captured jobs through it (web.rs
+// `fixtures`)
+#[cfg(any(target_arch = "wasm32", test))]
 mod web;
 
 mod chart;

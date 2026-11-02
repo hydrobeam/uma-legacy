@@ -1,0 +1,6 @@
+---
+source: src/web.rs
+description: "the scenario's canned replies: ./build.sh fixtures writes them from its jobs"
+extension: json
+snapshot_kind: binary
+---

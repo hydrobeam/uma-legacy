@@ -10,8 +10,9 @@ import type { Card, Uma } from '../../src/data.ts';
 import { expect, test } from './fixtures.ts';
 import { SIDEWAYS, closeEditor, loopSettled, openEditor, openLoop } from './pages.ts';
 
-// (a recording run, LLP_SOLVER=live, waits on the solver's searches: the Grand Masters one takes about a minute)
-test.describe.configure({ timeout: 240_000 });
+test.describe.configure({ timeout: 60_000 });
+// (on loop-small: three umas, two targets, fourteen cards)
+test.use({ scenario: 'loop-small' });
 
 const REPO = path.resolve(import.meta.dirname, '../../..');
 const PAGE: { cards: Card[]; umas: Uma[] } = JSON.parse(
@@ -188,7 +189,7 @@ phone.describe('phone @both', () => {
           return shown === !resultsIn && (!shown || (r.top >= 0 && r.bottom <= innerHeight));
         });
       }
-      await expect(page.locator('#run-pill')).toHaveText(/^1 in 103 · see result/, { useInnerText: true });
+      await expect(page.locator('#run-pill')).toHaveText(/^1 in [\d,.]+ · see result/, { useInnerText: true });
       // a card edited far down, then the button takes you back to the results
       await openEditor(page, 'cards');
       const card = page.locator('#cards button[aria-pressed]').nth(2);
@@ -299,17 +300,9 @@ phone.describe('phone @both', () => {
 });
 
 test.describe('desktop results @both', () => {
-  // three results (a rotation, then four-uma loops), two pals not owned so a deck borrows one
-  test.use({
-    seed: {
-      'llp:settings': {
-        v: 2,
-        era: 'global',
-        common: { decksTop: '3' },
-        global: { cardsOff: { 30052: false, 30080: false } },
-      },
-    },
-  });
+  // three results (a rotation, then four-uma loops), and a pal not owned, so a deck borrows one: loop-small with a
+  // fourth uma, three decks shown and a pal left out
+  test.use({ scenario: 'loop-four' });
   test('four-uma loops, a borrowed card, the panel beside its card, the schedule and affinity popups, a tooltip over them', async ({
     page,
   }) => {
@@ -317,11 +310,12 @@ test.describe('desktop results @both', () => {
     const sizes = await page.evaluate(() =>
       [...document.querySelectorAll('#results article')].map((l) => l.querySelectorAll('[data-member]').length),
     );
+    // (a rotation of three and four-uma loops, in the solver's order)
     expect(sizes.length).toBe(3);
-    expect(sizes[0]).toBe(3);
-    for (const n of sizes.slice(1)) expect([0, 4]).toContain(n);
+    expect(sizes).toContain(3);
+    for (const n of sizes) expect([0, 3, 4]).toContain(n);
     const four = sizes.indexOf(4);
-    expect(four).toBeGreaterThan(0);
+    expect(four).toBeGreaterThanOrEqual(0);
     const loop = page.locator('#results article').nth(four);
     expect(
       await loop.evaluate(

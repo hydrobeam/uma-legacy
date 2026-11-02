@@ -32,8 +32,8 @@ declare global {
     /** while set, the workers' messages wait until `__release()` */
     __hold: boolean;
     __release: () => void;
-    /** the node side of the replay (solver.ts `installSolver`) */
-    __llpSolver: (op: 'get' | 'put' | 'missing', assets: string, key: string, text: string) => Promise<string | null>;
+    /** the node side of the stand-in (solver.ts `installSolver`): a job's canned answer (JSON), or null */
+    __llpSolver: (job: string) => Promise<string | null>;
     /** resolves once no state store is open and no foreground job ended in the last 300 ms */
     __llpSolverQuiet: () => Promise<void>;
     /** workers made and terminated, jobs sent (in order) and their results */
@@ -41,5 +41,7 @@ declare global {
     __killed: number;
     __runs: Request[];
     __results: Reply[];
+    /** the worker flow's record of its real worker: each job sent and its answer (worker.spec.ts) */
+    __real: { job: unknown; answer: { interim?: unknown; result?: unknown } }[];
   }
 }
