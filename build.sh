@@ -65,7 +65,7 @@ STEPS=(
   "deploy|||wasm and page, then webapp/dist to Cloudflare Pages; refuses with uncommitted changes"
   "val|TAG||the solver, then every validation check against the references (about 7 CPU-min)"
   "valq|TAG||val without the slow jobs, joint_check and planval's proxy gate (about 2.5 CPU-min)"
-  "mono|||the solver, then the planner's monotonicity check (val/mono.py, 10-20 CPU-min: in the background)"
+  "mono|||the solver, then the planner's monotonicity check (val/mono.py, about 5 CPU-min: in the background)"
   "research|||research/run_all.py into research/results.json, then docs/RESEARCH.md from its template"
   "fixtures|||the browser flows' canned solver replies, regenerated natively from each scenario's jobs"
   "all|||the steps marked all, in the table's order"

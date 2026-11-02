@@ -165,7 +165,7 @@ it stops; the `art` step instead says what it skipped.
 | `worker` | the wasm (cached when built before) and the page, then the one flow on the real solver: its answer against its fixture's |
 | `serve` | `webapp/dist` on https://localhost:8000 (`PORT=…`) over HTTP/2 with TLS, as the host serves it (`vite preview`): the certificate is self-signed (`cache/tls/`), so a browser warns once. Unlike the host, it revalidates `assets/` on each load (ETags) rather than caching them a year |
 | `val TAG` / `valq TAG` | the release solver, then validation: in full before landing a change that can move results, quick while iterating (see *Tests*) |
-| `mono` | the release solver, then the career planner's monotonicity check (`val/mono.py`, 10-20 CPU-min: in the background; see *Tests*) |
+| `mono` | the release solver, then the career planner's monotonicity check (`val/mono.py`, about 5 CPU-min: in the background; see *Tests*) |
 | `deploy` | builds the solver (`wasm`) and the page, and uploads `webapp/dist` to Cloudflare Pages (see *Releases*) |
 | `research` | `research/run_all.py` into `research/results.json`, then renders `docs/RESEARCH.md` from `docs/RESEARCH.template.md` (`research/README.md`) |
 | `help` | the steps, from `build.sh`'s table |
@@ -494,7 +494,9 @@ merge, not a `valq` per commit. A change to arithmetic, control flow or data fol
   still building, as on a real roster; 10.6 s alone, so `valq` runs it too).
   An output without a reference fails (planval and `cmp2.py`) until its reference is taken. `val/mono.py BIN`
   checks that adding a veteran never raises the planner's estimate (on every plan job but the check's, whose plan
-  `p16_borrow` already is; `./build.sh mono` runs it, about 10-20 CPU-min, estimated from the plan jobs' times);
+  `p16_borrow` already is, and `p16_t10`, a third of its cost, which naming runs; one rolled veteran per pool, `-n`
+  for more; the refitted plans, reported but never failed on, only with `--refit`; `./build.sh mono` runs it, about
+  5 CPU-min, estimated from a run on `boot_mob` and `p16`);
   `val/capaudit.py BIN` checks the exact caps.
 - **Policy simulator:** `uv run val/simval.py pkg/loopopt/target/checks/loopopt TAG` runs the five short simulator
   jobs in `val/sim/jobs.json` (each policy on `val/sim/pools/pool4.json`, about 6 s) and compares each whole output,
