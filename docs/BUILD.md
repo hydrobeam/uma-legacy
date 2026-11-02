@@ -331,16 +331,20 @@ budget: an overrun is reported, never a failure.
 | `merge` | before a merge to main | 10 min | every area, changed or not: `lint`'s linters, `native`, full `val`, the full browser suite, and `mono` after a change under `src/career/` |
 | `full` | by hand | none | `merge`'s, then `mono` and `research --force` whatever changed |
 
-A test that stops running fails `native`: it counts the tests run (passed, failed and ignored) against
+A test that stops running fails loudly: the integration tests' crate (`tests/it/main.rs`) fails on a file there that
+is not one of its modules, and `native` counts the tests run (passed, failed and ignored) against
 `pkg/loopopt/tests/count.txt`, which a change that adds or removes tests re-pins (`TESTS_BLESS=1 ./build.sh native`),
-saying why in its message when it removes any. Nothing runs twice on the same inputs: `native`, `val`, `valq` and `mono` record a pass under the key of their inputs
-(`cache/passed/NAME-KEY`: the SHA-256 of the files they read, tracked and untracked, and `build.sh`), shared by every
-worktree, and on the same key say so and return; a page-only change never runs them. `lint` runs Rust's linters only
-when a Rust input differs from main's. The wasm and the checks' binary are kept the same way (`cache/wasm/KEY`,
-`cache/bin/KEY`): a worktree whose solver inputs were built before copies them instead of compiling, so one that
-changed no Rust runs no cargo for val, valq, mono or research. `./build.sh setup` brings a new worktree to ready from
-these caches (the shared `cache/`, `npm ci` only when `webapp/package-lock.json` differs from the installed one, the
-wasm and the binary when built before) and compiles nothing; the steps call the same pieces themselves.
+saying why in its message when it removes any.
+
+**Caches.** Nothing runs twice on the same inputs: `native`, `val`, `valq` and `mono` record a pass under the key of
+their inputs (`cache/passed/NAME-KEY`: the SHA-256 of the files they read, tracked and untracked, and `build.sh`),
+shared by every worktree, and on the same key say so and return; a page-only change never runs them. `lint` runs
+Rust's linters only when a Rust input differs from main's. The wasm and the checks' binary are kept the same way
+(`cache/wasm/KEY`, `cache/bin/KEY`): a worktree whose solver inputs were built before copies them instead of
+compiling, so one that changed no Rust runs no cargo for val, valq or mono. `./build.sh setup` brings a new worktree
+to ready from these caches (the shared `cache/`, `npm ci` only when `webapp/package-lock.json` differs from the
+installed one, the wasm and the binary when built before) and compiles nothing; the steps call the same pieces
+themselves, so it is a head start, and running it again does nothing.
 
 `val` and `valq` start their three solver phases at once (the deck and career jobs, the simulator's, and the
 planner's plan jobs with their proxy runs in one queue), each longest first by the reference times and at the CPU
@@ -362,7 +366,7 @@ merge, not a `valq` per commit. A change to arithmetic, control flow or data fol
   clippy. The checks' profile (`[profile.checks]` in `pkg/loopopt/Cargo.toml`) is release's opt-level 3 without fat
   LTO and one codegen unit, which had made every test binary a minute or two of single-threaded linking; val, valq,
   mono and lint run its binary, `target/checks/loopopt`, too. Its outputs are byte-identical to the release binary's on
-  every valq job (checked 2026-11-01); the wasm, `pb` and `research` keep `[profile.release]`.
+  every val job (full val and valq, 2026-11-01); the wasm, `pb` and `research` keep `[profile.release]`.
   The integration tests are one crate, `pkg/loopopt/tests/it/` (a module per file, `main.rs` lists them: the
   crate links once and libtest runs all of them in parallel; its own test fails on a file there that is not one of
   its modules), and run the solver binary through one harness, `tests/it/common.rs`,
