@@ -23,7 +23,7 @@ extracts the art too; without them it says so and the page shows initials. To ch
 | a new worktree or clone | `./build.sh setup` (links the main checkout's `cache/`, takes the wasm and the checks binary from their input-keyed caches, `npm ci` only when the lockfile changed; never compiles) |
 | while editing | `./build.sh check edit` (about 10 s: the changed files' types, related node tests, clippy and unit tests if Rust changed) |
 | handing a piece of work back | `./build.sh check` (the `handback` tier: every linter of each changed area, the Rust tests, `valq` if the solver or `val/` changed, the browser fast tier if the page changed) |
-| before a merge to main | `./build.sh check merge` (adds wasm clippy, full `val`, `research` if its inputs changed, the full browser suite, the real-wasm `worker` flow, `mono` after a planner change) |
+| before a merge to main | `./build.sh check merge` (adds wasm clippy, full `val`, `research` if its inputs changed, the full browser suite, the `worker` flow on the checks profile's wasm, `mono` after a planner change) |
 
 A check that already passed on the same inputs is skipped (`cache/passed/`). A page-only change never compiles Rust.
 
@@ -162,11 +162,11 @@ it stops; the `art` step instead says what it skipped.
 | `browsers` | Playwright's browsers at the revisions the pinned `playwright` package wants into `cache/ms-playwright` (`playwright install`: a download after a Playwright bump, a 0.6 s no-op when they are there) |
 | `test` / `testq` | the page (`page`), then the browser flows on it, in Chromium (and Firefox for the flows titled `@both`) or Chromium alone; they answer with each scenario's canned solver replies and need no built solver (see *Tests*) |
 | `fixtures` | the browser flows' canned solver replies, regenerated natively from each scenario's jobs (see *Tests*, *Solver fixtures*) |
-| `worker` | the wasm (cached when built before) and the page, then the one flow on the real solver: its answer against its fixture's |
+| `worker` | the checks' wasm and the page, then the one flow on the real solver: its answer against its fixture's. The wasm is `[profile.checks]`'s build (no fat LTO, incremental) bound by wasm-bindgen as `wasm` binds it, without `wasm-opt`, cached by its inputs (`cache/wasm/KEY`, its own key) and written to the same `webapp/loopopt.opt.wasm`, so the page loads it by its one import; the flow tests the worker's wiring and the solver's replies, which this build gives as release does, and the shipping build (fat LTO, `wasm-opt`) is `deploy`'s |
 | `serve` | `webapp/dist` on https://localhost:8000 (`PORT=…`) over HTTP/2 with TLS, as the host serves it (`vite preview`): the certificate is self-signed (`cache/tls/`), so a browser warns once. Unlike the host, it revalidates `assets/` on each load (ETags) rather than caching them a year |
 | `val TAG` / `valq TAG` | the release solver, then validation: in full before landing a change that can move results, quick while iterating (see *Tests*) |
 | `mono` | the release solver, then the career planner's monotonicity check (`val/mono.py`, about 5 CPU-min: in the background; see *Tests*) |
-| `deploy` | builds the solver (`wasm`) and the page, and uploads `webapp/dist` to Cloudflare Pages (see *Releases*) |
+| `deploy` | builds the solver (`wasm`) and the page, and uploads `webapp/dist` to Cloudflare Pages (see *Releases*). It refuses unless `webapp/loopopt.opt.wasm` is the release build (`webapp/.loopopt.wasm.kind`, untracked, written by `wasm` and `worker`: `release` or `checks` with the file's SHA-256) and `dist/` carries that file |
 | `research` | `research/run_all.py` into `research/results.json`, then renders `docs/RESEARCH.md` from `docs/RESEARCH.template.md` (`research/README.md`) |
 | `help` | the steps, from `build.sh`'s table |
 
