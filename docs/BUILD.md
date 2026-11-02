@@ -328,8 +328,8 @@ budget: an overrun is reported, never a failure.
 |---|---|---|---|
 | `edit` | every edit | 10 s | the page's two `tsc` passes and the node tests of the changed files (`vitest related`); clippy and `cargo test --lib` (checks profile); ruff on the changed Python |
 | hook | every commit | 30 s | formatting and types of the staged languages (*Pre-commit hook*) |
-| `handback` (default) | a piece of work handed back | 5 min | `edit`'s, then every linter of each changed area; the Rust tests and `valq` (checks profile) when the solver, its tests, data or `val/` changed; `research` when its inputs changed (each section recomputes on its own inputs); the browser suite's fast tier when the page or the solver changed |
-| `merge` | before a merge to main | 10 min | every area, changed or not: `lint`'s linters, `native`, full `val`, the full browser suite, and `mono` after a change under `src/career/` |
+| `handback` (default) | a piece of work handed back | 5 min | `edit`'s, then every linter of each changed area (clippy for the native targets only); the Rust tests and `valq` (checks profile) when the solver, its tests, data or `val/` changed; the browser suite's fast tier when the page changed. No research run and no wasm compile: both are `merge`'s |
+| `merge` | before a merge to main | 10 min | every area, changed or not: `lint`'s linters with clippy for the wasm target, `native`, full `val`, `research` when its inputs changed (each section recomputes on its own inputs), the full browser suite, and `mono` after a change under `src/career/` |
 | `full` | by hand | none | `merge`'s, then `mono` and `research --force` whatever changed |
 
 A test that stops running fails loudly: the integration tests' crate (`tests/it/main.rs`) fails on a file there that
