@@ -239,7 +239,7 @@ def check_buying(where, findings, target, reported, exact, scale):
     buy, name = reported["buy"], target["group"]
     if not close(reported["p"], exact.p):
         findings.fail(where, f"target {name}: p {exact.p} jointly, reported {reported['p']}")
-    if buy.get("scenario"):
+    if buy["kind"] == "scenario":
         if not close(buy["land_gold"], exact.p):
             findings.fail(where, f"target {name}: scenario landing {exact.p}, reported {buy['land_gold']}")
         return
