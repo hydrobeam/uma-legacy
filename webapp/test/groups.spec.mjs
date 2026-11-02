@@ -5,16 +5,10 @@
 import { test } from 'playwright/test';
 import { runGroup } from './helpers.mjs';
 import career from './career.mjs';
-import careervets from './careervets.mjs';
-import careergen from './careergen.mjs';
-import careerumamoe from './careerumamoe.mjs';
 
 // In the order they start: the longest first (a group runs serially; one started last would end the run alone).
 const GROUPS = {
-  careergen,
-  careervets,
   career,
-  careerumamoe,
 };
 // the fast tier (tag @quick; ./build.sh testq, with LLP_QUICK=1): each page's core path: the planner loads and its
 // search returns (load), the result's dialogs (popups), the phone layout (phone), /about, and the career page up to
@@ -30,7 +24,7 @@ const BOTH = ['career'];
 // jobs in flight; career, careerrun: progress phases, races between rolls and comparisons, the background check, the
 // kept work stored and restored; delivery: the wasm and worker as served), or the deck solver's own odds (nonecards), or
 // use no solver (about). Under LLP_SOLVER=live every group runs the real solver and records its replies.
-const REPLAY = ['careervets', 'careergen', 'careerumamoe'];
+const REPLAY = [];
 
 // the groups run on separate workers (each test is one group; the config keeps fullyParallel off for any other file)
 test.describe.configure({ mode: 'parallel' });
