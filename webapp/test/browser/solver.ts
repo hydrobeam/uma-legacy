@@ -38,7 +38,9 @@ export function jobKind(job: Request): string {
   // (a deck search by its rank class too: a flow that changes it sees another answer)
   if (job.cmd === 'deck') return `deck@${job.skills.rank_class}`;
   if (job.cmd !== 'career') return job.cmd;
-  const { next, compare, legacies, fix, trainees } = job.career;
+  // (every place chosen, Use this: the trainee and both parents fixed, one career asked, as career/job.ts buildJob
+  // writes it; `trainees` alone cannot tell, since a job with no trainee placed lists every owned uma)
+  const { next, compare, legacies, fix, top } = job.career;
   const kind = next
     ? next.robust
       ? 'check'
@@ -49,7 +51,7 @@ export function jobKind(job: Request): string {
           : 'plan'
     : compare
       ? 'compare'
-      : trainees?.length && fix?.length === 2
+      : fix?.length === 2 && top === 1
         ? 'scored'
         : fix?.length
           ? 'fixed'
