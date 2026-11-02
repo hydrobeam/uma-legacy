@@ -60,6 +60,15 @@ const test = {
   maxWorkers: 2, // at most two test files at once: the laptop's thermal limit, as the browser suite's two workers
 };
 
+// the solver the page ships (./build.sh wasm), or, in a tree that has not built it (a page-only change), an empty
+// module, vite/stub.wasm: the page's browser flows replay recorded replies and never run the solver (test/browser),
+// and ./build.sh deploy builds the solver first, so a stub never ships
+function solverWasm() {
+  if (fs.existsSync(path.join(HERE, 'loopopt.opt.wasm'))) return '/loopopt.opt.wasm';
+  console.log('page: no loopopt.opt.wasm (./build.sh wasm): this build carries an empty solver, for the browser flows');
+  return '/vite/stub.wasm';
+}
+
 export default defineConfig(({ mode }) => (mode === 'test' ? { ...shared, plugins: [pageDataIds()], test } : site()));
 
 function site() {
@@ -99,7 +108,7 @@ function site() {
       images(catalog, IMG, path.join(HERE, 'src', 'styles', 'app.css')),
       // the utilities and the theme (src/styles/), compiled into each page's stylesheet
       tailwindcss(),
-      pageData({ catalog, imgDir: IMG, wasm: '/loopopt.opt.wasm', solverPages: ['index.html', 'loop.html'] }),
+      pageData({ catalog, imgDir: IMG, wasm: solverWasm(), solverPages: ['index.html', 'loop.html'] }),
       mathFont('about.html'),
       // `vite preview` (./build.sh serve, the browser suite) over HTTP/2 with TLS, as the host serves the site:
       // browsers speak HTTP/2 only over TLS, and over HTTP/1.1 a page's requests queue for six connections. The

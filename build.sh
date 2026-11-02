@@ -53,8 +53,8 @@ STEPS=(
   "check|[TIER]||the checks a change needs, by what differs from main: edit, handback (the default), merge or full (docs/BUILD.md, Tests)"
   "hooks|||use the tracked git hooks (.githooks: the pre-commit check); once per clone"
   "browsers|||Playwright's Chromium and Firefox at the pinned revisions into cache/ms-playwright"
-  "test|||the page, then the browser suite on it (Chromium, and Firefox on the @both groups): releases"
-  "testq|||the page, then the suite's fast tier (Chromium, the @quick tests, about 30 s): after each page change"
+  "test|||the page, then the browser flows on it (Chromium and Firefox; recorded solver replies, no solver build)"
+  "testq|||the page, then the browser flows in Chromium: after each page change"
   "serve|||webapp/dist on https://localhost:8000 over HTTP/2 (vite preview; PORT=...; a self-signed certificate)"
   "deploy|||wasm and page, then webapp/dist to Cloudflare Pages; refuses with uncommitted changes"
   "val|TAG||the solver, then every validation check against the references (about 7 CPU-min)"
@@ -70,7 +70,6 @@ STEPS=(
 GLOBAL_MDB="game/global/master.mdb: the Global client's game database"
 JP_MDB="game/jp/master.mdb: the JP client's game database (Grand Masters era)"
 NEED_DIST="webapp/dist/index.html: the built page (./build.sh page)"
-NEED_OPT_WASM="webapp/loopopt.opt.wasm: the solver (./build.sh wasm)"
 DECRYPTED="game/global/decrypted: the Global client's asset bundles, decrypted, by asset path"
 IMAGE_FILES=("$DECRYPTED")
 RUNNER_FILES=("$DECRYPTED" "game/global/meta.db: the Global client's asset index as plain SQLite" "$GLOBAL_MDB")
@@ -372,7 +371,7 @@ npm_ci() {   # npm_ci DIR
 }
 # Vite (webapp/vite.config.mjs)
 step_page() {
-  need_uv; need_node; need "$NEED_OPT_WASM"; check page
+  need_uv; need_node; check page   # (without a built solver, the page carries an empty one: vite.config.mjs)
   npm_deps
   (cd "$W" && npx --no-install vite build --logLevel warn)
 }
@@ -409,30 +408,21 @@ step_browsers() {
   npm_deps
   (cd "$W" && npx --no-install playwright install chromium firefox)
 }
-step_test() { browser_suite full; }
-step_testq() { LLP_QUICK=1 browser_suite quick --project chromium --grep @quick; }
-# The browser suite on the page this tree builds (1.4 s first), never a dist left from before. Its replaying groups
-# answer from the solver replies recorded for this solver and data (webapp/test/replaystore.mjs); when this tier has
-# none, the run is live (LLP_SOLVER=live), which records them, and a passing live run marks them recorded.
-browser_suite() {   # browser_suite quick|full PLAYWRIGHT_ARGS...
-  local tier=$1 store solver=${LLP_SOLVER:-replay}
-  shift
+step_test() { browser_suite; }
+step_testq() { browser_suite --project chromium; }
+# The browser flows (webapp/test/browser) on the page this tree builds, never a dist left from before. They replay the
+# solver replies recorded for this solver and data (webapp/test/browser/store.ts), so they need no built solver (the
+# page then carries an empty one); a job without a reply fails its flow. LLP_SOLVER=live records the replies, with the
+# built solver (./build.sh wasm first): a solver lane's step after a solver or data change.
+browser_suite() {   # browser_suite PLAYWRIGHT_ARGS...
   step_page
   step_browsers
-  store=$(cd "$W" && node test/replaystore.mjs)
-  if [ "$solver" = replay ] && ! replies_recorded "$store" "$tier"; then
-    echo "solver replies: none recorded for this solver and data (${store#"$R"/}): this run is live and records them"
-    solver=live
-  fi
-  (cd "$W" && LLP_SOLVER=$solver npx --no-install playwright test "$@")
-  if [ "$solver" = live ]; then mkdir -p "$store"; touch "$store/.recorded-$tier"; fi
+  (cd "$W" && npx --no-install playwright test "$@")
 }
-# replies_recorded STORE quick|full: a passing live run of this tier, or of the full suite, recorded into STORE
-replies_recorded() { [ -e "$1/.recorded-full" ] || { [ "$2" = quick ] && [ -e "$1/.recorded-quick" ]; }; }
 step_prune_replies() {
   need_uv; check prune-replies
   step_page   # the current solver and data are this tree's
-  "${PY[@]}" "$W/test/prune_replies.py" "$(cd "$W" && node test/replaystore.mjs)"
+  "${PY[@]}" "$W/test/prune_replies.py" "$(cd "$W" && node test/browser/store.ts)"
 }
 step_serve() {
   need_node; need "$NEED_DIST"; check serve
@@ -547,7 +537,6 @@ step_check() {
   fi
   return "$rc"
 }
-with_wasm() { step_wasm && "$@"; }   # with_wasm STEP: the wasm first (copied when its inputs were built before)
 check_edit() {
   local py
   if changed_in page; then
@@ -577,7 +566,7 @@ check_handback() {
   if changed_in native; then lint "rust tests (checks)" step_native; fi
   if changed_in val; then lint valq step_valq check; fi
   if changed_in research; then lint research step_research; fi
-  if changed_in page solver; then lint "browser, fast tier" with_wasm step_testq; fi
+  if changed_in page solver; then lint "browser, Chromium" step_testq; fi
 }
 check_merge() {
   shell_lints
@@ -587,7 +576,7 @@ check_merge() {
   page_lints
   lint "rust tests (checks)" step_native
   lint val step_val check
-  lint "browser suite" with_wasm step_test
+  lint "browser suite" step_test
   if changed_paths | grep -q '^pkg/loopopt/src/career/'; then lint mono step_mono; fi
 }
 check_full() {
