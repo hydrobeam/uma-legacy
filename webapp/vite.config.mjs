@@ -50,9 +50,11 @@ const shared = {
 };
 // the node tests (test/unit; ./build.sh lint, the pre-commit hook): the page's modules as the build compiles them, none
 // of the build's plugins (its page data is each test's own, by vi.mock of '#page-data'); a test file that draws views
-// asks for happy-dom's document (`@vitest-environment happy-dom`), at a desktop's size
+// asks for happy-dom's document (`@vitest-environment happy-dom`), at a desktop's size, and draws with
+// @testing-library/preact's render, whose trees test/unit/setup.ts unmounts after each test
 const test = {
-  include: ['test/unit/*.test.mjs'],
+  include: ['test/unit/*.test.{ts,tsx,mjs}'],
+  setupFiles: ['test/unit/setup.ts'],
   environmentOptions: { happyDOM: { width: 1440, height: 900 } },
   testTimeout: 60_000,
   maxWorkers: 2, // at most two test files at once: the laptop's thermal limit, as the browser suite's two workers

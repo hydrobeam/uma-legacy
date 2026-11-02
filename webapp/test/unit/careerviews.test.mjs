@@ -18,10 +18,10 @@ import { choose, openPool, poolClosed } from '../../src/career/view/poolState.ts
 import { OddsDialog, openOdds } from '../../src/ui/OddsDialog.tsx';
 import { ScheduleDialog, openSched } from '../../src/ui/Schedule.tsx';
 import { loadData } from '../../src/data.ts';
-import { memory } from './fakes.mjs';
+import { memory } from './fakes.ts';
 import { within } from '@testing-library/dom';
 
-vi.mock('#page-data', () => import('./fakepage.mjs'));
+vi.mock('#page-data', () => import('./fakepage.ts'));
 
 document.documentElement.className = 'game'; // (the planner pages' class)
 await loadData({ blues: {}, pinks: {}, uniques: {}, races: [] });

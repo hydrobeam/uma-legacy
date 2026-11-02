@@ -19,9 +19,9 @@ import { legaciesOf } from '../../src/career/analysis/Details.tsx';
 import { legacyNumber, legacyVet } from '../../src/career/current.ts';
 import { Targets } from '../../src/career/view/Sections.tsx';
 import { loadData } from '../../src/data.ts';
-import { memory } from './fakes.mjs';
+import { memory } from './fakes.ts';
 
-vi.mock('#page-data', () => import('./fakepage.mjs'));
+vi.mock('#page-data', () => import('./fakepage.ts'));
 
 document.documentElement.className = 'game'; // (the planner pages' class)
 await loadData({ blues: {}, pinks: {}, uniques: {}, races: [], mobs: [], sourced: [] });

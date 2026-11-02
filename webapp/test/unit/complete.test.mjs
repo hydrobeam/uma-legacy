@@ -18,9 +18,9 @@ import { colourClosed, colourEditing } from '../../src/veterans/sparks.ts';
 import { skillsAsked, skillsChosen, umaPicked, umaPicking } from '../../src/veterans/pickers.ts';
 import { Blocked, buildJob } from '../../src/career/job.ts';
 import { ERA } from '../../src/saved.ts';
-import { memory } from './fakes.mjs';
+import { memory } from './fakes.ts';
 
-vi.mock('#page-data', () => import('./fakepage.mjs'));
+vi.mock('#page-data', () => import('./fakepage.ts'));
 await loadData({ blues: {}, pinks: {}, uniques: {}, races: [], mobs: [], sourced: [], factors: {}, saddles: {} });
 initStore(() => memory());
 

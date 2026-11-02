@@ -4,7 +4,8 @@
 #     a minute the first time in a new worktree); clippy on the wasm lib stays in ./build.sh lint and CI
 #   Python: ruff check and ruff format --check on the staged files (well under a second)
 #   the page's JS: Biome (lint and formatting) on the staged files, the Tailwind class gate (oxlint with
-#     eslint-plugin-better-tailwindcss: an unknown class fails) over src, then tsc over the page and the worker (seconds)
+#     eslint-plugin-better-tailwindcss: an unknown class fails) over src, then tsc over the page, the worker and the tests
+#     (seconds)
 #   the page's JS, CSS, pages, tests or build: knip (dead exports, files, dependencies), dependency-cruiser (the module
 #     layers) and no `@ts-expect-error` in src/ (a grep: no linter sees a comment); about 4 s
 #   the page's sources or tests: the node tests, webapp/test/unit/ (Vitest; about 2 s)
@@ -29,7 +30,7 @@ if [ -n "$js" ]; then
   # shellcheck disable=SC2086 # as above
   (cd "$root/webapp" && npx --no-install biome check --error-on-warnings --diagnostic-level=warn --no-errors-on-unmatched $js \
     && npx --no-install oxlint -c .oxlintrc.json src \
-    && npx --no-install tsc -p . && npx --no-install tsc -p tsconfig.worker.json) \
+    && npx --no-install tsc -p . && npx --no-install tsc -p tsconfig.worker.json && npx --no-install tsc -p tsconfig.test.json) \
     || fail 'Biome, the Tailwind class gate (oxlint) or tsc (above; npx biome format --write in webapp fixes formatting)'
 fi
 

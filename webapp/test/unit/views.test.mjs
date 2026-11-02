@@ -28,11 +28,11 @@ import { openColour } from '../../src/veterans/sparks.ts';
 import { InspView } from '../../src/ui/InspView.tsx';
 import { Details, legaciesOf } from '../../src/career/analysis/Details.tsx';
 import { loadData } from '../../src/data.ts';
-import { memory } from './fakes.mjs';
+import { memory } from './fakes.ts';
 import { within } from '@testing-library/dom';
 import { SegmentedControl } from '../../src/ui/SegmentedControl.tsx';
 
-vi.mock('#page-data', () => import('./fakepage.mjs'));
+vi.mock('#page-data', () => import('./fakepage.ts'));
 
 document.documentElement.className = 'game'; // (the planner pages' class)
 // the career tables the spark bars read (blue, pink and unique names; no races)

@@ -11,7 +11,7 @@ import { jobLegacy, knownPinks, unknownPinksIn } from '../../src/veterans/record
 import { asVeteran } from '../../src/veterans/store.ts';
 import { Aptitude } from '../../src/gen/solver.ts';
 
-vi.mock('#page-data', () => import('./fakepage.mjs'));
+vi.mock('#page-data', () => import('./fakepage.ts'));
 await loadData({ blues: {}, pinks: {}, uniques: {}, races: [], mobs: [], sourced: [], factors: {}, saddles: {} });
 
 // factor_id = factor group x 100 + stars: 3202 a mile pink at 2 stars, 1503 a pink of group 15 (no such aptitude)

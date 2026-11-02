@@ -36,7 +36,7 @@ import {
 import { planKey } from '../../src/career/keys.ts';
 import { checkPhase } from '../../src/career/run.ts';
 
-vi.mock('#page-data', () => import('./fakepage.mjs')); // run.ts reads the solver's fingerprints from it (engine.ts stateKey)
+vi.mock('#page-data', () => import('./fakepage.ts')); // run.ts reads the solver's fingerprints from it (engine.ts stateKey)
 
 const PLACES = '{"trainee":null,"parents":[null,null]}';
 const career = (name) => ({ trainee: { id: 1001, name }, parents: [0, 1], career: name, p_all: 0.01 });

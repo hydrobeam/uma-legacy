@@ -9,9 +9,9 @@ import * as vs from '../../src/veterans/store.ts';
 import { askClosed, askSkills, openWins, winsClosed } from '../../src/veterans/pickers.ts';
 import { followPool } from '../../src/career/current.ts';
 import { answerPool, showAnswer } from '../../src/career/state.ts';
-import { memory } from './fakes.mjs';
+import { memory } from './fakes.ts';
 
-vi.mock('#page-data', () => import('./fakepage.mjs'));
+vi.mock('#page-data', () => import('./fakepage.ts'));
 
 await loadData();
 

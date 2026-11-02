@@ -10,9 +10,9 @@ import { PAUSE_MS, createRun } from '../../src/career/run.ts';
 import { jobKey, planKey } from '../../src/career/keys.ts';
 import { stateKey } from '../../src/engine.ts';
 import * as store from '../../src/career/state.ts';
-import { fakeClock, flush } from './fakes.mjs';
+import { fakeClock, flush } from './fakes.ts';
 
-vi.mock('#page-data', () => import('./fakepage.mjs')); // run.ts reads the solver's fingerprints from it (engine.ts stateKey)
+vi.mock('#page-data', () => import('./fakepage.ts')); // run.ts reads the solver's fingerprints from it (engine.ts stateKey)
 
 const { answer, answerCareer, runView } = store;
 

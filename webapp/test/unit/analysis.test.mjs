@@ -12,9 +12,9 @@ import { STAND_MS, createComparison, savedWhere } from '../../src/career/analysi
 import * as store from '../../src/career/analysis/state.ts';
 import * as vs from '../../src/veterans/store.ts';
 import { on } from '../../src/store.ts';
-import { fakeClock, flush, memory } from './fakes.mjs';
+import { fakeClock, flush, memory } from './fakes.ts';
 
-vi.mock('#page-data', () => import('./fakepage.mjs')); // run.ts reads the solver's fingerprints from it (engine.ts stateKey)
+vi.mock('#page-data', () => import('./fakepage.ts')); // run.ts reads the solver's fingerprints from it (engine.ts stateKey)
 
 // the veterans store on a Map (Add writes into it)
 vs.initVets({ storage: () => memory(), hidden: () => true, afterFrame: (f) => f() });

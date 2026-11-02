@@ -329,7 +329,7 @@ integer).
   page's node tests, `webapp/test/unit/`, with the modules compiled as `vite.config.mjs` compiles them (its `test`
   branch: none of the build's plugins). A test file that draws views or runs editors asks for happy-dom's document
   (`// @vitest-environment happy-dom`) and mounts them in it as the page does; one that reads the game data mocks the
-  build's page data with a small made-up game's (`vi.mock('#page-data', () => import('./fakepage.mjs'))`). happy-dom
+  build's page data with a small made-up game's (`vi.mock('#page-data', () => import('./fakepage.ts'))`). happy-dom
   fires a dialog's `close` at once where a browser queues it, so a test lets tasks run after a close before it reads
   what the close did.
 - **Browser suite:** `./build.sh test` builds the page and runs Playwright Test (`webapp/playwright.config.mjs`, from the pinned

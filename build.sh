@@ -225,6 +225,7 @@ step_lint() {
   lint biome in_dir "$W" npx --no-install biome check --error-on-warnings --diagnostic-level=warn
   lint tsc in_dir "$W" npx --no-install tsc -p .
   lint "tsc (worker)" in_dir "$W" npx --no-install tsc -p tsconfig.worker.json
+  lint "tsc (tests)" in_dir "$W" npx --no-install tsc -p tsconfig.test.json
   lint "Tailwind classes" in_dir "$W" npx --no-install oxlint -c .oxlintrc.json src
   lint knip in_dir "$W" npx --no-install knip
   lint dependency-cruiser in_dir "$W" npx --no-install depcruise --config .dependency-cruiser.mjs src

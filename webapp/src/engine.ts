@@ -218,7 +218,7 @@ async function restore() {
 export function engineSaveState() {
   if (!persistOn) return;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
+  saveTimer = window.setTimeout(async () => {
     if (!worker || !ready) return; // the worker went: nothing to save
     if (engineBusy()) {
       engineSaveState();

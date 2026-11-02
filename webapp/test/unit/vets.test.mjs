@@ -9,7 +9,7 @@ import { batch } from '@preact/signals';
 import { ERA } from '../../src/saved.ts';
 import { on } from '../../src/store.ts';
 import * as vs from '../../src/veterans/store.ts';
-import { memory } from './fakes.mjs';
+import { memory } from './fakes.ts';
 
 const KEY = 'llp:career',
   OTHER = ERA === 'gm' ? 'global' : 'gm';

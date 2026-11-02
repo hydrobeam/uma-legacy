@@ -18,9 +18,9 @@ import { PresetDialogs, openPresets } from '../../src/ui/Presets.tsx';
 import { setupViews } from '../../src/ui/Setup.tsx';
 import { SettingsSort, SortMenu } from '../../src/ui/SortMenu.tsx';
 import { gameData, loadData } from '../../src/data.ts';
-import { SKILLS, UMAS } from './fakepage.mjs';
+import { SKILLS, UMAS } from './fakepage.ts';
 
-vi.mock('#page-data', () => import('./fakepage.mjs'));
+vi.mock('#page-data', () => import('./fakepage.ts'));
 
 document.documentElement.className = 'game'; // (the planner pages' class)
 // the editors' boxes, as both planner pages' layouts hold them (career/Layout.tsx, loop/Layout.tsx), and the view

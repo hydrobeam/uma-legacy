@@ -61,6 +61,8 @@
 !/webapp/biome.json
 !/webapp/tsconfig.json
 !/webapp/tsconfig.worker.json
+!/webapp/tsconfig.test.json
+!/webapp/playwright.config.ts
 !/val/
 /val/*
 !/val/runval.py
