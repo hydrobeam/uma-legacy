@@ -282,7 +282,10 @@ function workerStandIn(mode: SolverMode) {
         // a background job the recording never sent (the page moved on before it there) stays unanswered, as one still
         // running when the page moved on; a foreground one the page stops in a moment (a change mid-search ends the
         // worker) was never answered when recorded either. Any other is missing: the worker's answer to a failed job
-        if (background(job)) return;
+        if (background(job)) {
+          this.ended(id);
+          return;
+        }
         await sleep(STOP_GRACE_MS);
         if (this.dead) return;
         const what = `${job.cmd} (job ${n} of its worker, key ${key.slice(0, 12)}): ${canonical(job).slice(0, 160)}`;

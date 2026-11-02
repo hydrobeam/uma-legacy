@@ -1,5 +1,5 @@
 // Page-wide: an error or a rejected promise that nothing handled is logged to the console as an error, with what it
-// carries. The browser suite fails a group on a console error (test/helpers.mjs), and Firefox does not report an
+// carries. The browser flows fail on a console error (test/browser/fixtures.ts), and Firefox does not report an
 // unhandled rejection to it otherwise. The first import of both entries, so it is listening before any other module runs.
 // The page shows nothing of it, except for an error before the entry's own code has run to its end (`started`, its last
 // statement): that one stopped the entry part-way, before it drew anything (a module that throws as it loads, on data a
