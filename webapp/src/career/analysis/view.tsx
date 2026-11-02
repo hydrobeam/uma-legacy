@@ -7,10 +7,9 @@
 // (`draftOf`, `rollOf`: the page's veterans and settings, for the machine's deps) and adds her to the veterans.
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { computed, signal } from '@preact/signals';
-import { fmtIn } from '../../dom.ts';
 import { careerTables } from '../../model/data.ts';
 import { settings } from '../../state/settings.ts';
-import { pct } from '../../model/odds.ts';
+import { pct, fmtIn } from '../../model/odds.ts';
 import { draft, draftRef } from '../../veterans/store.ts';
 import type { Draft, LineageNode, NodeRecord } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';

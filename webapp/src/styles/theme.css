@@ -199,7 +199,7 @@
   --text-shadow-outline: 0 1px 0 var(--color-outline), 1px 0 0 var(--color-outline), -1px 0 0 var(--color-outline),
     0 -1px 0 var(--color-outline), 0 2px 2px var(--color-outline-glow);
   --shadow-dialog: 0 10px 30px rgba(0, 0, 0, 0.35);
-  /* the game tooltip's balloon (gmtip.ts) */
+  /* the game tooltip's balloon (dom/gmtip.ts) */
   --shadow-tip: 0 4px 12px var(--color-gm-shadow);
   --shadow-raised: 0 1px 0 rgba(0, 0, 0, 0.06), 0 2px 6px rgba(24, 32, 46, 0.12);
   --shadow-lifted: 0 1px 0 rgba(0, 0, 0, 0.06), 0 4px 12px rgba(24, 32, 46, 0.18);

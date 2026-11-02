@@ -4,7 +4,7 @@
 // the state and the settings: RunNote.tsx the status line, Results.tsx the result cards and the 1 or 3 switch,
 // Affinity.tsx and Export.tsx their dialogs. Each is drawn in its place in the layout, inside a ui/RenderGuard.tsx (a
 // dialog's guard is inside it) that reports a throw while drawing on the status line.
-import { started } from '../errorlog.ts'; // first: it listens before any other module runs
+import { started } from '../dom/errorlog.ts'; // first: it listens before any other module runs
 import { createRef, hydrate } from 'preact';
 import { signal } from '@preact/signals';
 import { ERA } from '../state/saved.ts';
@@ -33,7 +33,7 @@ import { openSetupDialog, pickEra, setupBadges, setupViews } from '../ui/Setup.t
 import { useHydrated } from '../ui/Shell.tsx';
 import { LoopLayout } from './Layout.tsx';
 import type { LoopState, LoopViews } from './Layout.tsx';
-import '../gmtip.ts'; // the game-style tooltips (both planner pages)
+import '../dom/gmtip.ts'; // the game-style tooltips (both planner pages)
 
 // ---------- the search (run.ts), with what it reaches outside itself
 const loop = createRun({
@@ -183,4 +183,4 @@ function start() {
       showStatus();
     }, 0);
 }
-started(); // (the last statement: errorlog.ts)
+started(); // (the last statement: dom/errorlog.ts)

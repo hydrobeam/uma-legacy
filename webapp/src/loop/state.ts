@@ -8,7 +8,7 @@
 // `resultsStale` and `headline` derive from the two.
 import { batch, computed } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
-import { fmtIn } from '../dom.ts';
+import { fmtIn } from '../model/odds.ts';
 import { deepFreeze, store } from '../state/store.ts';
 import type { DeepReadonly } from '../state/store.ts';
 import type { JobTarget } from './job.ts';

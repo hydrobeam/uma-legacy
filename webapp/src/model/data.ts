@@ -231,8 +231,8 @@ export const SCEN_GOLDS: Record<string, number[]> = { unity: [20049, 20046] };
 // reads with pkg/loopopt/build.rs's keys and rounding (vite/research.mjs), so it is the solver's hint_base
 const HINT_BASE: Record<string, unknown> = page.hintBase;
 // a scenario's hint base, checked where the page first reads it: the build writes one per scenario key (`hintBases`,
-// which stops on a missing one). Read as this module loads, so a miss stops the page there (errorlog.ts says so on the
-// status line)
+// which stops on a missing one). Read as this module loads, so a miss stops the page there (dom/errorlog.ts says so on
+// the status line)
 const hintBase = (key: string): number => {
   const base = HINT_BASE[key];
   assert(typeof base === 'number', `the build writes ${key}'s hint base`);

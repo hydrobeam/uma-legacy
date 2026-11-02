@@ -3,9 +3,8 @@
 import { computed, signal } from '@preact/signals';
 import { Fragment } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
-import { fmtIn } from '../../dom.ts';
 import { settings } from '../../state/settings.ts';
-import { pct } from '../../model/odds.ts';
+import { pct, fmtIn } from '../../model/odds.ts';
 import { places as yourPlaces, backToPick } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
 import { must } from '../../must.ts';
@@ -99,12 +98,12 @@ function OptionsTable() {
             <th scope="col" class={HEAD.who}>
               Career
             </th>
-            {/* both columns explain themselves on hover or keyboard focus (gmtip.ts); the (i) popup says more */}
+            {/* both columns explain themselves on hover or keyboard focus (dom/gmtip.ts); the (i) popup says more */}
             <th scope="col" class={HEAD.figure}>
               <span
                 class={TIP}
                 title={`Her odds of landing all ${n} targets in this one run: 1 in N means about N runs of this career for one ${n}/${n}.`}
-                // biome-ignore lint/a11y/noNoninteractiveTabindex: today's markup: focusable, so the keyboard gets its balloon (gmtip.ts shows a title on focus); a button would offer an action it has not
+                // biome-ignore lint/a11y/noNoninteractiveTabindex: today's markup: focusable, so the keyboard gets its balloon (dom/gmtip.ts shows a title on focus); a button would offer an action it has not
                 tabIndex={0}
               >
                 Odds
@@ -114,7 +113,7 @@ function OptionsTable() {
               <span
                 class={TIP}
                 title={`How many more careers than the pick this one costs, on the planner's estimate (≈0: within ${TIE_CAREERS}, as good).`}
-                // biome-ignore lint/a11y/noNoninteractiveTabindex: today's markup: focusable, so the keyboard gets its balloon (gmtip.ts shows a title on focus); a button would offer an action it has not
+                // biome-ignore lint/a11y/noNoninteractiveTabindex: today's markup: focusable, so the keyboard gets its balloon (dom/gmtip.ts shows a title on focus); a button would offer an action it has not
                 tabIndex={0}
               >
                 Extra careers

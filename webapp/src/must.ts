@@ -13,9 +13,9 @@ export function assert(cond: unknown, reason: string): asserts cond {
 }
 
 // `run()`'s value, or null when it throws an `expected` error (one the caller goes on without the value for: settings
-// that make no job, say). Any other error is a bug: it is reported through the page's error path (errorlog.ts logs it,
-// and the browser suite fails on it) and the caller goes on as for an expected one, so a bug costs that value, not the
-// page's start or what the caller was doing (Rust's `.ok()` on a Result, with the unexpected errors logged).
+// that make no job, say). Any other error is a bug: it is reported through the page's error path (dom/errorlog.ts logs
+// it, and the browser suite fails on it) and the caller goes on as for an expected one, so a bug costs that value, not
+// the page's start or what the caller was doing (Rust's `.ok()` on a Result, with the unexpected errors logged).
 export function orNull<T>(run: () => T, expected: abstract new (...args: never[]) => Error): T | null {
   try {
     return run();

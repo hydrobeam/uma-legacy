@@ -114,7 +114,7 @@
     },
     {
       "path": "./lint/dom-lookup.grit",
-      "includes": ["src/**", "!src/career/main.tsx", "!src/loop/main.tsx", "!src/errorlog.ts"]
+      "includes": ["src/**", "!src/career/main.tsx", "!src/loop/main.tsx", "!src/dom/errorlog.ts"]
     },
     {
       "path": "./lint/dialogs.grit",
@@ -126,7 +126,7 @@
     },
     {
       "path": "./lint/load-listener.grit",
-      "includes": ["src/**", "!src/career/main.tsx", "!src/loop/main.tsx", "!src/errorlog.ts", "!src/gmtip.ts"]
+      "includes": ["src/**", "!src/career/main.tsx", "!src/loop/main.tsx", "!src/dom/errorlog.ts", "!src/dom/gmtip.ts"]
     }
   ],
   "overrides": [

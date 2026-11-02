@@ -7,7 +7,6 @@
 import { batch, untracked } from '@preact/signals';
 import type { ComponentChildren, RefObject } from 'preact';
 import { useLayoutEffect, useState } from 'preact/hooks';
-import { fmtIn } from '../dom.ts';
 import { gameData } from '../model/data.ts';
 import { setRunnerFrom } from '../model/images.ts';
 import { cardTitle, chainEndNote } from '../state/cards.ts';
@@ -18,7 +17,7 @@ import type { PopSubject } from '../popover.ts';
 import { usePopOpener } from '../ui/CardPop.tsx';
 import { outfitNote, pickOutfit, umaState } from '../state/roster.ts';
 import { openSched } from '../ui/Schedule.tsx';
-import { deckHint } from '../model/odds.ts';
+import { deckHint, fmtIn } from '../model/odds.ts';
 import { openOdds } from '../ui/OddsDialog.tsx';
 import { fields, setDecksTop } from '../state/settings.ts';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';

@@ -28,7 +28,7 @@
 //   view/SkillDetails.tsx  the Skill Details popup
 //   view/Guard.tsx     the render guard each view draws inside
 //   view/parts.ts      small parts the views share
-import { started } from '../errorlog.ts'; // first: it listens before any other module runs
+import { started } from '../dom/errorlog.ts'; // first: it listens before any other module runs
 import '@preact/signals'; // its option hooks: a component that reads a signal draws again when it changes
 import { hydrate } from 'preact';
 import type { ComponentChildren } from 'preact';
@@ -51,7 +51,7 @@ import { CardPop } from '../ui/CardPop.tsx';
 import '../model/agenda.ts'; // (its document listener is added before gmtip's)
 import { openSetupDialog, pickEra, setupBadges, setupViews } from '../ui/Setup.tsx';
 import { useHydrated } from '../ui/Shell.tsx';
-import '../gmtip.ts'; // the game-style tooltips (both planner pages)
+import '../dom/gmtip.ts'; // the game-style tooltips (both planner pages)
 import {
   vets,
   places,
@@ -320,4 +320,4 @@ loadData(CAREER).then(
     paint();
   },
 );
-started(); // (the last statement: errorlog.ts)
+started(); // (the last statement: dom/errorlog.ts)

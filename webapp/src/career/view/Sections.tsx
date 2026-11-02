@@ -1,12 +1,11 @@
 // The career's sections in the tree: the odds, the deck (its button and popup), the race schedule's button, the
 // targets with what gives each, and the chance of each count of them.
-import { fmtIn } from '../../dom.ts';
 import { assert } from '../../must.ts';
 import { settings } from '../../state/settings.ts';
 import { srcFor } from '../../model/images.ts';
 import { scenarioOf } from '../../state/scenario.ts';
 import { usePopOpener } from '../../ui/CardPop.tsx';
-import { pct, deckHint } from '../../model/odds.ts';
+import { pct, deckHint, fmtIn } from '../../model/odds.ts';
 import { starsOf } from '../../veterans/names.ts';
 import { borrowedLast, deckCards } from '../../details.ts';
 import type { DeckSlot } from '../../details.ts';

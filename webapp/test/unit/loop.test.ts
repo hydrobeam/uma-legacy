@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { test, vi } from 'vitest';
 import { loadData } from '../../src/model/data.ts';
-import { fmtIn } from '../../src/dom.ts';
+import { fmtIn } from '../../src/model/odds.ts';
 import { gameData } from '../../src/model/data.ts';
 import { deckPart, isOwned, skillsPart } from '../../src/model/job.ts';
 import { blockedStatus, buildJob, jobKey } from '../../src/loop/job.ts';
