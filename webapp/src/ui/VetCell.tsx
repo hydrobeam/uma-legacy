@@ -175,7 +175,7 @@ export function VetCell({ v, name, label, onClick, tab, sub, subTitle, id, k, se
         {name}
       </span>
       {sub && (
-        <span class="text-ui text-gm-ink2" title={subTitle}>
+        <span class="text-ui text-gm-ink2 max-w-full truncate" title={subTitle}>
           {sub}
         </span>
       )}
