@@ -322,9 +322,8 @@ const CAREER_BUDGET: usize = 300_000_000;
 #[serde(deny_unknown_fields)]
 pub(crate) struct CareerJob {
     pub(crate) legacies: Vec<Legacy>,
-    /// trainees to consider (chara ids); empty = every owned uma
-    #[serde(default)]
-    #[ts(as = "Option<_>", optional)]
+    /// the trainees to consider (chara ids), each listed (empty: none); one the roster leaves out (`SkillJob::owned`,
+    /// `exclude`) is not considered
     trainees: Vec<u32>,
     #[serde(default = "d_top")]
     #[ts(as = "Option<_>", optional)]

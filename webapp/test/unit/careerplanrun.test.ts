@@ -66,6 +66,8 @@ function comparison(engine: ReturnType<typeof fakeEngine>, clock: ReturnType<typ
       shown: () => store.answerCareer.peek(),
       searching: () => store.runView.peek().searching,
       baseKey: (job) => JSON.stringify(job),
+      // (a fake job's open trainee place lists no trainee)
+      searchesBase: (j) => !j.career.trainees.length && !j.career.fix.length,
       targets: () => [{ group: 20049 }],
       isFull: () => false,
       planTop: 5,
@@ -96,6 +98,8 @@ test('an edit that leaves the job as it is lets the plan go on: no new job, no r
       trainee: () => null,
       refBase: () => 'base',
       baseKey: () => 'basekey',
+      // (a fake job's open trainee place lists no trainee)
+      searchesBase: (j) => !j.career.trainees.length && !j.career.fix.length,
       searched: (_, found) => ({ kind: 'done', text: found }),
       loadAnswer: async () => null,
       saveAnswer: () => undefined,

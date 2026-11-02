@@ -51,8 +51,10 @@ export interface ComparisonDeps {
     shown: () => DeepReadonly<CareerReport> | null;
     /** a run is at work (its answer replaces the career on show) */
     searching: () => boolean;
-    /** career/job.ts `baseKey`: the job of today's best career over everything */
+    /** career/keys.ts `baseKey`: the job of today's best career over everything; `searchesBase`: a job searches what
+     *  its baseline does */
     baseKey: (job: DeepReadonly<CareerJob>) => string;
+    searchesBase: (job: DeepReadonly<CareerJob>) => boolean;
     /** the target skills, in the job's order */
     targets: () => readonly { group: number }[];
     /** she lands every target (career/job.ts `isFull`) */
@@ -167,7 +169,7 @@ function comparisonOf({ engine, clock, answers, store, page }: ComparisonDeps) {
   async function baselineFor(base: CareerJob) {
     const shownNow = lastShown();
     const key = JSON.stringify(base),
-      open = !shownNow.job.career.trainees.length && !shownNow.job.career.fix.length,
+      open = page.searchesBase(shownNow.job),
       cached = baselineCache?.key === key ? baselineCache.result : null;
     const before = cached ? { results: [cached] } : open ? shownNow.r : (await engine.run(base)).r;
     if ('kind' in before && before.kind === 'refusal') throw new Error(before.error);

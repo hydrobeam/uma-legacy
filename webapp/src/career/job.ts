@@ -22,9 +22,9 @@ export const placesKey = (p: PlacesRecord): string => JSON.stringify({ trainee: 
  *  has the fields `buildJob` always writes (the solver has a default for each). */
 export type CareerJob = Omit<SolverCareerJob, 'skills' | 'deck' | 'career'> & {
   skills: Gen.SkillJob & Required<Pick<Gen.SkillJob, 'rank_class' | 'exclude' | 'exclude_outfits' | 'extra'>>;
-  deck: Gen.DeckJob & Required<Pick<Gen.DeckJob, 'owned_cards' | 'borrow' | 'scenario'>>;
+  deck: Gen.DeckJob & Required<Pick<Gen.DeckJob, 'borrow' | 'scenario'>>;
   career: Omit<Gen.CareerJob, 'legacies'> &
-    Required<Pick<Gen.CareerJob, 'trainees' | 'fix' | 'per_trainee' | 'top'>> & { legacies: readonly JobLegacy[] };
+    Required<Pick<Gen.CareerJob, 'fix' | 'per_trainee' | 'top'>> & { legacies: readonly JobLegacy[] };
 };
 type SolverCareerJob = Extract<Gen.Request, { cmd: 'career' }>;
 // ---------- the solver's reports, generated from its Rust structs (src/gen/solver.ts), with what the page adds ----------
@@ -195,21 +195,19 @@ export function buildJob(from: JobFrom, acts: PoolActs): CareerJob {
     if (k === 'trainee')
       throw new Blocked('error', `${umaName(plan.trainee)} can't be her own parent: choose another trainee or parent.`);
   }
-  const exclude = gameData()
-    .umas.filter((u) => !isOwned(u, s) && u.id !== plan.trainee)
-    .map((u) => u.id);
-  if (!plan.trainee && exclude.length >= gameData().umas.length)
-    throw new Blocked('empty', 'No uma is owned: mark yours with Umas above.');
+  const { owned, notOwned } = umaRoster(s);
+  const exclude = notOwned.filter((id) => id !== plan.trainee);
+  if (!plan.trainee && !owned.length) throw new Blocked('empty', 'No uma is owned: mark yours with Umas above.');
   const allPlaced = plan.trainee && fixed.length === 2;
-  // a place left open: the K best careers by odds (their trainees are among the plan's stage candidates; the plan
-  // scores every owned uma, `planPhase`)
+  // a place left open: the K best careers by odds of every owned uma (their trainees are among the plan's stage
+  // candidates; the plan scores every owned uma, `planPhase`)
   const job: CareerJob = {
     cmd: 'career',
     skills: skillsPart(s, exclude),
     deck: deckPart(s),
     career: {
       legacies: from.legacies,
-      trainees: plan.trainee ? [plan.trainee] : [],
+      trainees: plan.trainee ? [plan.trainee] : owned,
       fix: plan.parents.filter(Boolean).map((id) => pool.findIndex((v) => v.id === id)),
       per_trainee: false,
       top: allPlaced ? 1 : ROLL_K,
@@ -254,11 +252,17 @@ const chosenApplies = (
 export const isFull = (nd: DeepReadonly<LineageNode> | null | undefined, targets: SettingsView['targets']): boolean =>
   !!nd && targets.length > 0 && targets.every((t) => starsOf(nd.sparks, t.group) > 0);
 export const ROLL_K = 6; // careers a search returns with a place open (the plan's candidates; `buildJob`)
-/** the umas not owned under settings `s`, by id (a baseline's or the last plan's `exclude`: keys.ts `baseKey`) */
-export const umasNotOwned = (s: SettingsView): number[] =>
-  gameData()
+/** a roster's umas by id, in the data's order: those owned, those not */
+export type Roster = { owned: number[]; notOwned: number[] };
+/** the umas owned and not owned under settings `s`, by id (a baseline's or the last plan's roster: keys.ts `baseKey`) */
+export const umaRoster = (s: SettingsView): Roster => ({
+  owned: gameData()
+    .umas.filter((u) => isOwned(u, s))
+    .map((u) => u.id),
+  notOwned: gameData()
     .umas.filter((u) => !isOwned(u, s))
-    .map((u) => u.id);
+    .map((u) => u.id),
+});
 // an uma.moe listing (in the pool, not yours): shown in the popups, never edited
 export const listed = (v: { src: string }): boolean => v.src === 'umamoe';
 // The parent rules for veteran v beside the other parent o (none: no other) with trainee t (0: none), the page's form

@@ -14,7 +14,14 @@ import { memory } from './fakes.ts';
 /** a career job as buildJob makes it: one target, the places left to the planner, `over`'s career fields */
 export const careerJob = (over: Partial<CareerJob['career']> = {}): CareerJob => ({
   cmd: 'career',
-  skills: { targets: [{ group: 20049 }], rank_class: 'below_ss', exclude: [], exclude_outfits: [], extra: [] },
+  skills: {
+    targets: [{ group: 20049 }],
+    rank_class: 'below_ss',
+    owned: [],
+    exclude: [],
+    exclude_outfits: [],
+    extra: [],
+  },
   deck: { owned_cards: [], borrow: false, scenario: 'unity' },
   career: { legacies: [], trainees: [], fix: [], per_trainee: false, top: 5, ...over },
 });

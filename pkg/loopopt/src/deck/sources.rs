@@ -979,9 +979,6 @@ pub(crate) fn deck_entries<'data>(
     if deck_job.chain_events.is_some() && deck_job.chain_budget.is_some() {
         return Err(Refusal::new("chain_events and chain_budget both set: give one chain-event law, not both."));
     }
-    let is_owned = |id: u32| {
-        deck_job.owned_cards.is_empty() || deck_job.owned_cards.contains(&id) || deck_job.lock_cards.contains(&id)
-    };
     // a card the scenario bans can't be in the deck, owned, borrowed or locked
     let banned: &[u32] = cards.restrict.get(deck_job.scenario.key()).map_or(&[], |banned_ids| banned_ids.as_slice());
     if let Some(card) = deck_job
@@ -996,8 +993,9 @@ pub(crate) fn deck_entries<'data>(
             deck_job.scenario.label()
         )));
     }
-    let usable =
-        |id: u32| (is_owned(id) || deck_job.borrow) && !deck_job.exclude_cards.contains(&id) && !banned.contains(&id);
+    let usable = |id: u32| {
+        (deck_job.owns(id) || deck_job.borrow) && !deck_job.exclude_cards.contains(&id) && !banned.contains(&id)
+    };
     // ---- card sources ----
     let source_builder = Sources { deck_job, target_groups };
     let cards: Vec<&Card> = cards.cards.iter().filter(|card| usable(card.id)).collect();
@@ -1061,7 +1059,7 @@ pub(crate) fn deck_entries<'data>(
     // A deck with p plain pals uses the first p, so those blocking no uma in the pool come first (a plain pal that
     // blocks a loop member makes the result illegal, and `run_deck` then searches without it).
     let mut plain: Vec<(usize, u32, String)> = vec![];
-    for card in cards.iter().filter(|card| card.pal && is_owned(card.id)) {
+    for card in cards.iter().filter(|card| card.pal && deck_job.owns(card.id)) {
         if card_indices.iter().any(|&card_index| cards[card_index].character_id == card.character_id)
             || plain_chars.contains(&card.character_id)
         {
@@ -1070,7 +1068,7 @@ pub(crate) fn deck_entries<'data>(
         plain_chars.push(card.character_id);
         let best = cards
             .iter()
-            .filter(|other| other.pal && other.character_id == card.character_id && is_owned(other.id))
+            .filter(|other| other.pal && other.character_id == card.character_id && deck_job.owns(other.id))
             .max_by_key(|other| other.rarity)
             .unwrap();
         plain.push((
@@ -1088,7 +1086,7 @@ pub(crate) fn deck_entries<'data>(
         let mut seen: Vec<u32> = vec![];
         for card in &cards {
             if !card.pal
-                || is_owned(card.id)
+                || deck_job.owns(card.id)
                 || plain_chars.contains(&card.character_id)
                 || seen.contains(&card.character_id)
                 || card_indices.iter().any(|&card_index| cards[card_index].character_id == card.character_id)

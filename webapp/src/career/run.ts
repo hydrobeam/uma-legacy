@@ -75,9 +75,10 @@ export interface RunDeps {
     places: () => string;
     /** the trainee chosen by hand (null: the planner picks, so a plan runs) */
     trainee: () => number | null;
-    /** job.ts `refBase` and `baseKey` of a job */
+    /** keys.ts `refBase` and `baseKey` of a job, and whether it searches what its baseline does (`searchesBase`) */
     refBase: (job: CareerJob) => string;
     baseKey: (job: CareerJob) => string;
+    searchesBase: (job: CareerJob) => boolean;
     /** the search's status line (main.tsx `searchStatus`): done with its caveats, or why no career lands every target */
     searched: (m: { r: CareerSearch; ms: number }, found: string) => Status;
     /** the answer the last visit kept, and keeping this one (state/statestore.ts) */
@@ -323,8 +324,7 @@ export function createRun(deps: RunDeps) {
           page.saveAnswer(`${stateKey()}\n${answerKey}`, store.answer.peek());
         }
         analysis.show(view.shown());
-        if (best && !job.career.trainees.length && !job.career.fix.length)
-          analysis.keepBaseline(page.baseKey(job), best);
+        if (best && page.searchesBase(job)) analysis.keepBaseline(page.baseKey(job), best);
       }
     } catch (e) {
       if (runId !== id) return;

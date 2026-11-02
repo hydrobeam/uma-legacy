@@ -42,7 +42,9 @@ fn fixture_cards() -> CardsRaw {
 fn fast_metric_matches_reference() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
     let skills = fixture_skills();
-    let skill_job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":21010},{"group":20165}]})).unwrap();
+    let skill_job = skill_job_with(
+        json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":21010},{"group":20165}]}),
+    );
     let m = Model::new(&d, &skills, &skill_job);
     let nu = m.uncertain.len();
     let fs: [&[usize]; 5] = [&[0, 5, 9, 20], &[3, 7, 11, 40], &[1, 2, 3, 4], &[0, 5, 9], &[3, 11, 40]];
@@ -282,7 +284,17 @@ fn scenario_bans_exported() {
         assert!(!cards.restrict.get(sc).is_some_and(|v| v.contains(&30081)));
     }
 }
-fn job_with(job: Value) -> DeckJob {
+/// The skill job `job` (targets and settings), owning every uma of the data_v1 fixture: the tests' models read no roster
+fn skill_job_with(mut job: Value) -> SkillJob {
+    let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json")).unwrap();
+    let data: Value = serde_json::from_str(&text).unwrap();
+    job["owned"] = data["umas"].as_array().unwrap().iter().map(|uma| uma["id"].clone()).collect();
+    serde_json::from_value(job).unwrap()
+}
+/// The deck job `job`, owning every card of the Global fixture where `job` does not list its own `owned_cards`.
+fn job_with(mut job: Value) -> DeckJob {
+    let every_card: Vec<u32> = fixture_cards().cards.iter().map(|card| card.id).collect();
+    job.as_object_mut().unwrap().entry("owned_cards").or_insert_with(|| json!(every_card));
     serde_json::from_value(job).unwrap()
 }
 /// The card rule: of two running cards with 1 and 3 links left, each takes the next event half the time (the slots
@@ -472,7 +484,9 @@ fn chain_event_parameters_are_independent() {
 fn joint_fast_matches_reference() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
     let skills = fixture_skills();
-    let skill_job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
+    let skill_job = skill_job_with(
+        json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]}),
+    );
     let m = Model::new(&d, &skills, &skill_job);
     let g1 = |k: usize, level: u8, p: f64| -> Group {
         vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level }] }]
@@ -563,8 +577,10 @@ fn joint_fast_matches_reference() {
 fn career_fold_and_scale() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
     let skills = fixture_skills();
-    let skill_job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}],
-        "trainee_hints": [[1001, 20166, 0.3]]})).unwrap();
+    let skill_job = skill_job_with(
+        json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}],
+        "trainee_hints": [[1001, 20166, 0.3]]}),
+    );
     let m = Model::new(&d, &skills, &skill_job);
     let g1 = |k: usize, level: u8, p: f64| -> Group {
         vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level }] }]
@@ -663,7 +679,7 @@ fn career_fold_and_scale() {
         }
     }
     // two targets, coupled sources: marginals against P(all) and P(all but at most one)
-    let sj2: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20166}]})).unwrap();
+    let sj2 = skill_job_with(json!({"targets": [{"group":20159},{"group":20166}]}));
     let m2 = Model::new(&d, &skills, &sj2);
     let p = TargetSources {
         training_hints: vec![TrainingHint { target: 0, probability: 0.2 }],
@@ -710,7 +726,9 @@ fn career_fold_and_scale() {
 fn upper_bound_covers_exact() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
     let skills = fixture_skills();
-    let skill_job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
+    let skill_job = skill_job_with(
+        json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]}),
+    );
     let m = Model::new(&d, &skills, &skill_job);
     let g1 = |k: usize, level: u8, p: f64| -> Group {
         vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level }] }]
@@ -852,7 +870,7 @@ fn unchecked_inline_event_disables_orthant_bound() {
     let target_groups: Vec<u32> = skills.skills.iter().take(21).map(|s| s.0).collect();
     assert_eq!(target_groups.len(), 21);
     let targets: Vec<Value> = target_groups.iter().map(|g| json!({"group": g})).collect();
-    let skill_job: SkillJob = serde_json::from_value(json!({"targets": targets})).unwrap();
+    let skill_job = skill_job_with(json!({"targets": targets}));
     let model = Model::new(&d, &skills, &skill_job);
     let mut card = halo();
     card.skill_count = 0;
@@ -925,7 +943,9 @@ fn group_level_orthant_check() {
     ]));
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
     let skills = fixture_skills();
-    let skill_job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
+    let skill_job = skill_job_with(
+        json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]}),
+    );
     let m = Model::new(&d, &skills, &skill_job);
     let g1 = |k: usize, level: u8, p: f64| -> Group {
         vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level }] }]
@@ -1015,7 +1035,9 @@ fn group_level_orthant_check() {
 fn joint_equals_product_without_correlation() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
     let skills = fixture_skills();
-    let skill_job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
+    let skill_job = skill_job_with(
+        json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]}),
+    );
     let m = Model::new(&d, &skills, &skill_job);
     let nu = m.uncertain.len();
     let g1 = |k: usize, level: u8, p: f64| -> Group {
@@ -1165,6 +1187,34 @@ fn deck_limits_refuse_with_an_error() {
     assert!(passed > 0 && refused > 0, "{passed} passed, {refused} refused");
 }
 
+/// `owned_cards` lists every card owned: a job owning none (`[]`) has no card of its own in its deck space. With `borrow`
+/// each card it holds is one it does not own (the one borrowed card a deck may hold), plain pals included; without, it
+/// holds none.
+#[test]
+fn owning_no_card_leaves_only_borrowed_cards() {
+    let cards = fixture_cards();
+    let banned = cards.restrict.get("unity").cloned().unwrap_or_default();
+    let chain: Vec<&Card> = cards
+        .cards
+        .iter()
+        .filter(|c| !c.pal && c.links >= 2 && c.rarity >= 2 && !banned.contains(&c.id))
+        .take(6)
+        .collect();
+    let target = 20159u32;
+    let events: Vec<Value> = chain.iter().map(|c| json!([c.id, target, 1, 1])).collect();
+    for borrow in [true, false] {
+        let deck_job = job_with(json!({"owned_cards": [], "borrow": borrow, "events": events}));
+        let entries = deck_entries(&cards, &deck_job, &[target], &[]).unwrap();
+        let held: Vec<u32> = entries.card_indices.iter().map(|&card| entries.cards[card].id).collect();
+        assert!(held.iter().chain(&entries.plain_ids).all(|&id| !deck_job.owns(id)), "borrow {borrow}: {held:?}");
+        if borrow {
+            assert!(chain.iter().all(|c| held.contains(&c.id)), "borrow: the event cards are borrowable: {held:?}");
+        } else {
+            assert!(held.is_empty() && entries.plain_ids.is_empty(), "no borrow: {held:?} {:?}", entries.plain_ids);
+        }
+    }
+}
+
 /// Decks with a nested chain (`deck::nested`): one card's chain feeding two targets, the second at a later link, with
 /// nothing else giving the later one (the shape of a Seiun Sky [Paint the Sky Red] deck without pals, 4.00 in the
 /// career search), the same with a training source, and one card's chain feeding three targets at links 1, 2 and 3
@@ -1179,7 +1229,9 @@ fn pair_bound_covers_exact() {
     use crate::deck::nested::{ChainLaw, NestedChains, NestedDeck, NestedTrainee};
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
     let skills = fixture_skills();
-    let skill_job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
+    let skill_job = skill_job_with(
+        json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]}),
+    );
     let m = Model::new(&d, &skills, &skill_job);
     let target_count = m.uncertain.len();
     let g1 = |k: usize, level: u8| -> Group {

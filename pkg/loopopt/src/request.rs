@@ -148,8 +148,20 @@ mod tests {
         let request = |text: &str| serde_json::from_str::<Request>(text);
         assert!(request(r#"{"cmd": "dock"}"#).is_err(), "an unknown command");
         assert!(matches!(request(r#"{"cmd": "state_out"}"#), Ok(Request::StateOut)));
-        let deck = r#"{"cmd": "deck", "skills": {"targets": [{"group": 20159}]}, "deck": {}"#;
+        let deck =
+            r#"{"cmd": "deck", "skills": {"targets": [{"group": 20159}], "owned": []}, "deck": {"owned_cards": []}"#;
         assert!(request(&format!("{deck}}}")).is_ok(), "a deck job");
+        let no_cards = r#"{"cmd": "deck", "skills": {"targets": [{"group": 20159}], "owned": []}, "deck": {}}"#;
+        assert!(request(no_cards).is_err(), "a deck job that does not list the cards owned");
+        let no_umas = r#"{"cmd": "deck", "skills": {"targets": [{"group": 20159}]}, "deck": {"owned_cards": []}}"#;
+        assert!(request(no_umas).is_err(), "a deck job that does not list the umas owned");
+        let career = |trainees: &str| {
+            format!(
+                r#"{{"cmd": "career", "skills": {{"targets": [], "owned": []}}, "deck": {{"owned_cards": []}}, "career": {{"legacies": []{trainees}}}}}"#
+            )
+        };
+        assert!(request(&career(r#", "trainees": []"#)).is_ok(), "a career job");
+        assert!(request(&career("")).is_err(), "a career job that does not list its trainees");
         assert!(request(&format!("{deck}, \"star_dist\": [0.5, 0.45, 0.05]}}")).is_err(), "an unknown field");
     }
 }

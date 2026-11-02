@@ -113,8 +113,7 @@ pub(crate) struct SkillJob {
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     pub rank_class: RankClass,
-    #[serde(default)]
-    #[ts(as = "Option<_>", optional)]
+    /// the umas the player owns (chara ids), each listed (empty: none)
     pub owned: Vec<u32>,
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
@@ -174,6 +173,10 @@ impl RankClass {
 }
 
 impl SkillJob {
+    /// Whether uma `id` is in the loop search's pool: owned or required, and not excluded.
+    pub(crate) fn pools(&self, id: u32) -> bool {
+        (self.owned.contains(&id) || self.require.contains(&id)) && !self.exclude.contains(&id)
+    }
     /// The job's star mix (`RankClass::star_mix`).
     pub(crate) const fn star_mix(&self) -> [f64; 3] {
         self.rank_class.star_mix()
@@ -1042,14 +1045,18 @@ mod tests {
         let outfits = |m: &Model, i: UmaIndex| -> Vec<u32> {
             m.outfit_options[i].iter().flat_map(|o| o.outfits.iter().map(|c| c.0)).collect()
         };
-        let job: SkillJob =
-            serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [100_102]})).unwrap();
+        let owned: Vec<u32> = data.umas.indices().map(|i| data.umas[i].id).collect();
+        let job: SkillJob = serde_json::from_value(
+            json!({"targets": [{"group":20159}], "owned": &owned, "exclude_outfits": [100_102]}),
+        )
+        .unwrap();
         let m = Model::new(data, &skills, &job);
         let sw = outfits(&m, ix(1001));
         assert!(!sw.contains(&100_102) && !sw.is_empty() && !m.no_outfit[ix(1001)], "{sw:?}");
-        let job2: SkillJob =
-            serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [101_901, 101_902]}))
-                .unwrap();
+        let job2: SkillJob = serde_json::from_value(
+            json!({"targets": [{"group":20159}], "owned": &owned, "exclude_outfits": [101_901, 101_902]}),
+        )
+        .unwrap();
         let model2 = Model::new(data, &skills, &job2);
         assert!(model2.no_outfit[ix(1019)]);
         assert!(!model2.no_outfit[ix(1001)]);
@@ -1108,7 +1115,9 @@ mod tests {
     fn rotation_affinities_by_hand() {
         let data = data();
         let skills = skills();
-        let job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20161}]})).unwrap();
+        let owned: Vec<u32> = data.umas.indices().map(|i| data.umas[i].id).collect();
+        let job: SkillJob =
+            serde_json::from_value(json!({"targets": [{"group":20159},{"group":20161}], "owned": owned})).unwrap();
         let m = Model::new(data, &skills, &job);
         // Agnes Digital, Tamamo Cross, Inari One and made-up shared wins per pair
         let f = [18, 20, 33].map(UmaIndex);
@@ -1175,9 +1184,16 @@ mod tests {
     fn rank_classes_are_star_mixes() {
         let job = |fields: serde_json::Value| serde_json::from_value::<SkillJob>(fields);
         let mix = |fields| job(fields).unwrap().star_mix();
-        assert_eq!(mix(json!({"targets": [{"group": 20159}]})), [0.5, 0.45, 0.05], "below SS unless sent");
-        assert_eq!(mix(json!({"targets": [{"group": 20159}], "rank_class": "ss_and_up"})), [0.2, 0.7, 0.1]);
-        for bad in [json!({"targets": [], "rank_class": "ss"}), json!({"targets": [], "star_dist": [0.2, 0.7, 0.1]})] {
+        assert_eq!(mix(json!({"targets": [{"group": 20159}], "owned": []})), [0.5, 0.45, 0.05], "below SS unless sent");
+        assert_eq!(
+            mix(json!({"targets": [{"group": 20159}], "owned": [], "rank_class": "ss_and_up"})),
+            [0.2, 0.7, 0.1]
+        );
+        for bad in [
+            json!({"targets": [], "owned": [], "rank_class": "ss"}),
+            json!({"targets": [], "owned": [], "star_dist": [0.2, 0.7, 0.1]}),
+            json!({"targets": []}),
+        ] {
             assert!(job(bad.clone()).is_err(), "{bad} accepted");
         }
         for class in RankClass::ALL {
