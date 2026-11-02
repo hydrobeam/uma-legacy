@@ -31,7 +31,7 @@ const ART = fs.existsSync(new URL('../../img/uma', import.meta.url));
 // each flow's limit: replayed, a few seconds of solver waits; recording (LLP_SOLVER=live), the live solver's plans
 const LIMIT = process.env.LLP_SOLVER === 'live' ? 900_000 : 120_000;
 
-test('from no veterans to a plan for 12: the setup panel, the import, one answer per run, and the plan drawn', async ({
+test('from no veterans to a plan for 12: the setup panel, the import, one answer per run, and the plan drawn @both', async ({
   page,
   context,
   browserName,

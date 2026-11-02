@@ -63,7 +63,7 @@ const forgetAnswer = (page: Page) =>
   );
 const trainee = (page: Page) => page.locator('#tree [data-node="trainee"] [data-nm]');
 
-test('the kept work is stored after a plan and restored first by the next worker; a reload with nothing changed draws the answer at once', async ({
+test('the kept work is stored after a plan and restored first by the next worker; a reload with nothing changed draws the answer at once @both', async ({
   page,
 }) => {
   await samplePlan(page);
@@ -132,7 +132,7 @@ const PILLS = (): string[] => {
   return bad;
 };
 
-test.describe('on a 375 px phone', () => {
+test.describe('on a 375 px phone @both', () => {
   test.use({
     viewport: { width: 375, height: 812 },
     // (touch and a mobile viewport: Chromium's emulation; Firefox has none)

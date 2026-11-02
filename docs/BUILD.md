@@ -389,10 +389,12 @@ merge, not a `valq` per commit. A change to arithmetic, control flow or data fol
   browser only when it needs one.
 - **Browser flows:** `./build.sh test` builds the page and runs Playwright Test (`webapp/playwright.config.ts`, from
   the pinned `playwright` package) against `webapp/dist`, served by `vite preview` over HTTP/2 with TLS as the host
-  serves it (a self-signed certificate made once into `cache/tls/`), or against `LLP_URL`, in Chromium and Firefox:
+  serves it (a self-signed certificate made once into `cache/tls/`), or against `LLP_URL`:
   `webapp/test/browser/*.spec.ts`, small independent tests run in parallel (`fullyParallel`, Playwright's default
   workers), each for what needs a real browser: layout at real widths, the worker as the page drives it, keyboard and
-  focus, storage across a reload, both engines. Each starts from the state it seeds (`test.use({ seed })`,
+  focus, storage across a reload. Every flow runs in Chromium; Firefox runs only those with `@both` in their
+  title (or their `describe`'s), where the engine matters: layout at real widths, keyboard and focus, the worker. Each
+  starts from the state it seeds (`test.use({ seed })`,
   `fixtures.ts`: localStorage written before the page's first script, once per tab) rather than clicking its way
   there, moves the page's own timers with `page.clock`, and fails on any page error. An action or an assertion waits
   at most 5 s; a wait on the solver says so (`pages.ts` `SOLVER_WAIT`). All test code is TypeScript, checked by
