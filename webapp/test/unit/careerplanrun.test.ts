@@ -11,7 +11,7 @@ import { createComparison } from '../../src/career/analysis/compare.ts';
 import { draft } from '../../src/veterans/store.ts';
 import type { CareerAnswer, CareerJob } from '../../src/career/job.ts';
 import type { PlanProgress } from '../../src/solver.ts';
-import type { DeepReadonly } from '../../src/store.ts';
+import type { DeepReadonly } from '../../src/state/store.ts';
 import { career, careerJob, loadVets, option, plan, search, showPlan, completeVet } from './careerplans.ts';
 import { lineageNode } from './reports.ts';
 import { fakeClock, flush } from './fakes.ts';

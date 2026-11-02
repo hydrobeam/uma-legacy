@@ -24,13 +24,13 @@ import {
   setSort,
   setTargets,
   settings,
-} from '../../src/settings.ts';
-import { on } from '../../src/store.ts';
+} from '../../src/state/settings.ts';
+import { on } from '../../src/state/store.ts';
 import { FIXTURES } from './loopfixtures.ts';
 import { fakeClock, flush, memory } from './fakes.ts';
 import { must } from '../../src/must.ts';
-import type { Backing } from '../../src/storage.ts';
-import type { SettingsView } from '../../src/settings.ts';
+import type { Backing } from '../../src/state/storage.ts';
+import type { SettingsView } from '../../src/state/settings.ts';
 import type { SolverRefusal } from '../../src/solver.ts';
 import type { DeckJob } from '../../src/loop/job.ts';
 import type { DeckAnswer, LoopDeps } from '../../src/loop/run.ts';

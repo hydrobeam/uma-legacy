@@ -1,11 +1,11 @@
 // ---------- the settings store: the planner's settings (both pages), one record in a signal ----------
 // `settings` hands the record out read-only. Each setter builds the next record copy-on-write (only the fields it
-// changes are new objects), persists it (saved.ts), then assigns it: effects run inside the assignment, so one that
-// throws cannot lose the write. Every record is frozen all the way down (`deepFreeze`), DEFAULTS too, and a record
+// changes are new objects), persists it (state/saved.ts), then assigns it: effects run inside the assignment, so one
+// that throws cannot lose the write. Every record is frozen all the way down (`deepFreeze`), DEFAULTS too, and a record
 // shares none of DEFAULTS' objects: a write past the read-only type throws. `fields` has a signal per setting, which changes only when that field is replaced;
-// `jobSetup` changes when any setting a job reads is. Nothing here subscribes: the entries make the effects (store.ts
-// `on`). Read `.value` in handlers and in what an entry's effect calls (`on` runs it untracked); logic modules take
-// the values as arguments.
+// `jobSetup` changes when any setting a job reads is. Nothing here subscribes: the entries make the effects
+// (state/store.ts `on`). Read `.value` in handlers and in what an entry's effect calls (`on` runs it untracked); logic
+// modules take the values as arguments.
 import { computed } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import { COMMON, ERA, PER_ERA, SAVED, SETTINGS, loadSaved, writeSaved } from './saved.ts';
@@ -14,7 +14,7 @@ import { browserStorage } from './storage.ts';
 import type { Backing } from './storage.ts';
 import { deepFreeze, store } from './store.ts';
 import type { DeepReadonly } from './store.ts';
-import type { RankClass } from './gen/solver.ts';
+import type { RankClass } from '../gen/solver.ts';
 
 export interface Target {
   group: number;
@@ -75,8 +75,8 @@ function dropRequired(settings: Record<string, unknown>) {
     Object.fromEntries(Object.entries(settings[key] || {}).filter(([, mark]) => mark !== 'req'));
   return { ...settings, roster: marked('roster'), outfits: marked('outfits') } as unknown as SettingsView;
 }
-// Presets are edited by name (presets.ts): of two under one name, which only a hand-edited storage holds, the first
-// is kept
+// Presets are edited by name (state/presets.ts): of two under one name, which only a hand-edited storage holds, the
+// first is kept
 const firstOfEachName = (presets: Preset[]) =>
   presets.filter((p, at) => presets.findIndex((q) => q.name === p.name) === at);
 // a stored rank as a rank class: a class, or a store from before them, which kept the star mix (SS's was 0.20, 0.70,
@@ -101,7 +101,7 @@ let storage = browserStorage;
 const [record, setRecord] = store<Settings>(fromSaved(SAVED));
 export const settings: ReadonlySignal<SettingsView> = record;
 // Load the settings from `storage` and keep them there from now on: the page's are localStorage's, read at load
-// (saved.ts); a test passes its own
+// (state/saved.ts); a test passes its own
 export function initStore(at: () => Backing) {
   storage = at;
   setRecord(fromSaved(loadSaved(at)));

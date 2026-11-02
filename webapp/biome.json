@@ -66,8 +66,8 @@
           "level": "error",
           "options": {
             "deniedGlobals": {
-              "localStorage": "storage is reached through storage.ts (read, readJson; the one write is update, which reads what is stored now)",
-              "sessionStorage": "storage is reached through storage.ts (read, readJson; the one write is update, which reads what is stored now)",
+              "localStorage": "storage is reached through state/storage.ts (read, readJson; the one write is update, which reads what is stored now)",
+              "sessionStorage": "storage is reached through state/storage.ts (read, readJson; the one write is update, which reads what is stored now)",
               "requestAnimationFrame": "a DOM write runs from the layout effect of the component that draws what it measures (useLayoutEffect); a frame's wait is veterans/store.ts's alone (its save waits a frame: it writes storage, not the DOM)"
             }
           }
@@ -79,7 +79,7 @@
             "paths": {
               "@preact/signals": {
                 "importNames": ["effect"],
-                "message": "only store.ts makes an effect: name its signals with on([a, b], (a, b) => ...)"
+                "message": "only state/store.ts makes an effect: name its signals with on([a, b], (a, b) => ...)"
               },
               "@preact/signals-core": "signals come from @preact/signals alone: one package, so one signal graph (a second copy of core, nested by npm, would leave its signals' effects unseen)",
               "preact": {
@@ -102,7 +102,7 @@
   "plugins": [
     {
       "path": "./lint/effects.grit",
-      "includes": ["src/**", "!src/store.ts"]
+      "includes": ["src/**", "!src/state/store.ts"]
     },
     {
       "path": "./lint/mutable-export.grit",
@@ -110,7 +110,7 @@
     },
     {
       "path": "./lint/storage-write.grit",
-      "includes": ["src/**", "!src/storage.ts"]
+      "includes": ["src/**", "!src/state/storage.ts"]
     },
     {
       "path": "./lint/dom-lookup.grit",
@@ -132,7 +132,7 @@
   "overrides": [
     {
       "includes": [
-        "src/settings.ts",
+        "src/state/settings.ts",
         "src/loop/state.ts",
         "src/veterans/store.ts",
         "src/career/state.ts",
@@ -147,7 +147,7 @@
                 "paths": {
                   "@preact/signals": {
                     "importNames": ["effect", "signal"],
-                    "message": "a store module (.dependency-cruiser.mjs's stores layer) makes its records with store.ts's store(), which hands them out read-only all the way down, and computed() over them; only store.ts makes an effect"
+                    "message": "a store module (.dependency-cruiser.mjs's stores layer) makes its records with state/store.ts's store(), which hands them out read-only all the way down, and computed() over them; only state/store.ts makes an effect"
                   },
                   "@preact/signals-core": "signals come from @preact/signals alone: one package, so one signal graph",
                   "preact": {
@@ -172,7 +172,7 @@
                 "paths": {
                   "@preact/signals": {
                     "importNames": ["effect"],
-                    "message": "only store.ts makes an effect: name its signals with on([a, b], (a, b) => ...)"
+                    "message": "only state/store.ts makes an effect: name its signals with on([a, b], (a, b) => ...)"
                   },
                   "@preact/signals-core": "signals come from @preact/signals alone: one package, so one signal graph (a second copy of core, nested by npm, would leave its signals' effects unseen)"
                 }
@@ -191,8 +191,8 @@
               "level": "error",
               "options": {
                 "deniedGlobals": {
-                  "localStorage": "storage is reached through storage.ts (read, readJson; the one write is update, which reads what is stored now)",
-                  "sessionStorage": "storage is reached through storage.ts (read, readJson; the one write is update, which reads what is stored now)"
+                  "localStorage": "storage is reached through state/storage.ts (read, readJson; the one write is update, which reads what is stored now)",
+                  "sessionStorage": "storage is reached through state/storage.ts (read, readJson; the one write is update, which reads what is stored now)"
                 }
               }
             }
@@ -201,7 +201,7 @@
       }
     },
     {
-      "includes": ["src/storage.ts", "test/**"],
+      "includes": ["src/state/storage.ts", "test/**"],
       "linter": {
         "rules": {
           "style": {
@@ -211,7 +211,7 @@
       }
     },
     {
-      "includes": ["src/store.ts", "test/**"],
+      "includes": ["src/state/store.ts", "test/**"],
       "linter": {
         "rules": {
           "style": {

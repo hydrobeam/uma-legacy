@@ -5,7 +5,7 @@
 // `SettingsSort` is the umas' and the cards' menu, Release or Name, kept in the settings.
 import { useRef, useState } from 'preact/hooks';
 import { must } from '../must.ts';
-import { fields, setSort } from '../settings.ts';
+import { fields, setSort } from '../state/settings.ts';
 import { Button } from './Button.tsx';
 import type { ButtonSize } from './Button.tsx';
 import { menuKeys, opensOnArrow, useDropdown, useFocusChecked } from './dropdown.ts';

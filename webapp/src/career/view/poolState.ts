@@ -3,7 +3,7 @@
 // component, so modules that are not views (io.ts's imports switch the tab) take it without importing a view.
 import { batch, computed, signal } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
-import { settings } from '../../settings.ts';
+import { settings } from '../../state/settings.ts';
 import { vets } from '../../veterans/store.ts';
 import { starsOf } from '../../veterans/names.ts';
 import type { VetRecord } from '../../veterans/store.ts';

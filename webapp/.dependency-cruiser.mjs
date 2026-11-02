@@ -15,10 +15,33 @@
 export const LAYERS = [
   [
     'types',
-    ['globals.d', 'must', 'model/grades', 'solver', 'store', 'loop/types', 'model/eras', 'gen/solver', 'gen/constants'],
+    [
+      'globals.d',
+      'must',
+      'model/grades',
+      'solver',
+      'state/store',
+      'loop/types',
+      'model/eras',
+      'gen/solver',
+      'gen/constants',
+    ],
   ],
   // (gen/loopopt: wasm-bindgen's glue, which the worker imports; JavaScript, the one module of src/ that is)
-  ['io', ['dom', 'model/data', 'engine', 'statestore', 'errorlog', 'worker', 'gen/loopopt', 'saved', 'storage']],
+  [
+    'io',
+    [
+      'dom',
+      'model/data',
+      'engine',
+      'state/statestore',
+      'errorlog',
+      'worker',
+      'gen/loopopt',
+      'state/saved',
+      'state/storage',
+    ],
+  ],
   [
     'model',
     ['model/job', 'model/pink', 'model/proofs', 'umadump', 'umamoe', 'career/roll', 'career/job', 'career/reply']
@@ -26,7 +49,7 @@ export const LAYERS = [
       .concat(['career/analysis/compare', 'loop/job', 'loop/keys', 'loop/members', 'loop/run', 'umamoesetup'])
       .concat(['veterans/names', 'veterans/records', 'veterans/complete']),
   ],
-  ['stores', ['settings', 'loop/state', 'veterans/store', 'career/state', 'career/analysis/state']],
+  ['stores', ['state/settings', 'loop/state', 'veterans/store', 'career/state', 'career/analysis/state']],
   ['shared', null], // every module of src/ not named in another layer
   [
     'page:loop',

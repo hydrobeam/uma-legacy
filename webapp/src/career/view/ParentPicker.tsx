@@ -1,7 +1,7 @@
 // The parent picker: a veteran for a parent place, a new one, or the place handed back to the planner. Open while
 // dialogs.ts `pickerFor` names a place.
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { settings } from '../../settings.ts';
+import { settings } from '../../state/settings.ts';
 import { batch } from '@preact/signals';
 import { vets, places, vetById, setParent } from '../../veterans/store.ts';
 import { starsOf, umaName } from '../../veterans/names.ts';
@@ -9,7 +9,7 @@ import { lacks, lacksSaid } from '../../veterans/complete.ts';
 import { enterVeteran } from '../../veterans/entry.ts';
 import { UmaList } from '../../veterans/Editors.tsx';
 import type { ParentNode, VetRecord } from '../../veterans/store.ts';
-import type { DeepReadonly } from '../../store.ts';
+import type { DeepReadonly } from '../../state/store.ts';
 import { Dialog, DialogHead, DialogPanel } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { BORROW_CHOICES, borrowChoice, pairBlock } from '../job.ts';

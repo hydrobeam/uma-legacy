@@ -18,7 +18,7 @@ import { useDropdown } from '../ui/dropdown.ts';
 import { AddPop } from '../ui/Shell.tsx';
 import { NEW_STARS } from './store.ts';
 import type { NodeRecord, NodeRef } from './store.ts';
-import { settings } from '../settings.ts';
+import { settings } from '../state/settings.ts';
 import { skillName, targetGroups } from './names.ts';
 import { KIND, colourClosed, colourEditing, currentSpark } from './sparks.ts';
 import type { ColourEdit } from './sparks.ts';

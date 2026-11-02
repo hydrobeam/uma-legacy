@@ -3,7 +3,7 @@
 // (`takeCareer`). view/Options.tsx draws it and its Saves popup. It reads the answer from the answer store
 // (career/state.ts) and the career's helpers from job.ts, current.ts and keys.ts; its one write there is
 // `forgetDroppedChoice`.
-import { settings } from '../settings.ts';
+import { settings } from '../state/settings.ts';
 import { pct } from '../model/odds.ts';
 import { batch } from '@preact/signals';
 import { places as yourPlaces, usePlaces, setChosen } from '../veterans/store.ts';
@@ -15,7 +15,7 @@ import { Blocked, chosenSetup, placesKey, BORROW_CHOICES } from './job.ts';
 import { currentJob, legacyVet, poolNumber, refFor, shown } from './current.ts';
 import { assert, must } from '../must.ts';
 import type { OptionRow, PairSearch, PlanOption, PlanReport } from './job.ts';
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 
 /** a note under the table: `id` names it among the others (its kind; a pair-search note, its uma) */
 export interface Note {

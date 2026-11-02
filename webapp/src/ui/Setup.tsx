@@ -5,11 +5,11 @@
 // (`openSetupDialog`), each with its count (`setupBadges`). `pickEra` is the era switch's press on both pages.
 import { signal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
-import { ERA } from '../saved.ts';
-import { settings, switchEra } from '../settings.ts';
-import { rosterCounts } from '../roster.ts';
-import { cardsOwned } from '../cards.ts';
-import { eraScenario } from '../scenario.ts';
+import { ERA } from '../state/saved.ts';
+import { settings, switchEra } from '../state/settings.ts';
+import { rosterCounts } from '../state/roster.ts';
+import { cardsOwned } from '../state/cards.ts';
+import { eraScenario } from '../state/scenario.ts';
 import { Dialog, DialogHead, DialogPanel } from './Dialog.tsx';
 import { RenderGuard } from './RenderGuard.tsx';
 import { RosterPanel } from './Roster.tsx';

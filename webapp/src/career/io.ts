@@ -2,7 +2,7 @@
 // popups that show them are view/Io.tsx's; an import's outcome is said in the veterans dialog (poolState.ts `sayVets`).
 import { ERA_NAMES } from '../model/eras.ts';
 import type { Era } from '../model/eras.ts';
-import { ERA } from '../saved.ts';
+import { ERA } from '../state/saved.ts';
 import { vets, places, importVets, isVeteran, asVeteran, addVets } from '../veterans/store.ts';
 import { umaName } from '../veterans/names.ts';
 import { unknownPinksIn, unknownPinksSaid } from '../veterans/records.ts';

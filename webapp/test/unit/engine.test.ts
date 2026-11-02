@@ -13,7 +13,7 @@ import { flush } from './fakes.ts';
 vi.mock('#page-data', () => import('./fakepage.ts'));
 // the page's IndexedDB store of the kept work, in a Map
 const stored = new Map<string, unknown>();
-vi.mock('../../src/statestore.ts', () => ({
+vi.mock('../../src/state/statestore.ts', () => ({
   stateLoad: async (key: string) => stored.get(key) ?? null,
   stateSave: async (key: string, value: unknown) => void stored.set(key, value),
   stateDrop: async (key: string) => void stored.delete(key),

@@ -11,9 +11,9 @@
 // actions and the comparison panel), Details.tsx (her card, the game's Umamusume Details screen).
 import { batch } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
-import { deepFreeze, store } from '../../store.ts';
+import { deepFreeze, store } from '../../state/store.ts';
 import { assert } from '../../must.ts';
-import type { DeepReadonly } from '../../store.ts';
+import type { DeepReadonly } from '../../state/store.ts';
 import { clearPlaces, draft, newVet, setDraft, setDraftParents } from '../../veterans/store.ts';
 import type { Draft } from '../../veterans/store.ts';
 import type { CareerReport, CareerSearch, PlanOption } from '../job.ts';

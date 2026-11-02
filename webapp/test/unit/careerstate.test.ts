@@ -4,7 +4,7 @@
 // the signals it names. npx vitest run (in webapp)
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
-import { on } from '../../src/store.ts';
+import { on } from '../../src/state/store.ts';
 import * as store from '../../src/career/state.ts';
 import {
   answer,
@@ -39,7 +39,7 @@ import type { ReadonlySignal } from '@preact/signals';
 import type { Answer, AnswerView, PlanDone } from '../../src/career/state.ts';
 import type { CareerJob, PlanCheck } from '../../src/career/job.ts';
 import type { CheckReply, PairSearch } from '../../src/gen/solver.ts';
-import type { DeepReadonly } from '../../src/store.ts';
+import type { DeepReadonly } from '../../src/state/store.ts';
 import { must } from '../../src/must.ts';
 import { careerJob, careerReport, careerSearch, checkReport, pairSearch, planOption, planReport } from './reports.ts';
 

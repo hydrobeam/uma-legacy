@@ -2,10 +2,10 @@
 // { v, era: 'global' | 'gm', common: {targets, rank, ...}, global: {roster, outfits, cardsOff}, gm: {...} }
 // Owned umas, outfits and cards are kept per data set; everything else is shared.
 // Game data: Global today, or JP data cut at L'Arc's launch (24 Aug 2023), the Grand Masters era. Switching
-// reloads the page with the other data set. The settings themselves (the record, its setters) are settings.ts's.
+// reloads the page with the other data set. The settings themselves (the record, its setters) are state/settings.ts's.
 import { browserStorage, readJson, updateJson } from './storage.ts';
 import type { Backing } from './storage.ts';
-import type { Era } from './model/eras.ts';
+import type { Era } from '../model/eras.ts';
 
 const SETTINGS_KEY = 'llp:settings',
   SETTINGS_VERSION = 2;

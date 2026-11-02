@@ -20,9 +20,9 @@ import {
 } from '../model/agenda.ts';
 import { Grade } from '../gen/solver.ts';
 import type { ScheduleCell, ScheduleRow } from '../solver.ts';
-import { pickOutfit } from '../roster.ts';
+import { pickOutfit } from '../state/roster.ts';
 import { must } from '../must.ts';
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import { AgendaGrid, AgendaSlot, RACE_BOX, RaceFace, WhenBar } from './Agenda.tsx';
 import { Dialog, DialogHead, DialogPanel } from './Dialog.tsx';
 import { SegmentedControl } from './SegmentedControl.tsx';

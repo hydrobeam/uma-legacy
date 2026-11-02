@@ -10,7 +10,7 @@ import { createRef } from 'preact';
 import { fireEvent, render, within } from '@testing-library/preact';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { loadData } from '../../src/model/data.ts';
-import * as S from '../../src/settings.ts';
+import * as S from '../../src/state/settings.ts';
 import { initLoopState } from '../../src/loop/state.ts';
 import { Results, drawResult } from '../../src/loop/Results.tsx';
 import { AffinityDialog } from '../../src/loop/Affinity.tsx';

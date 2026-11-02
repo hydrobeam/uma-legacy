@@ -4,7 +4,7 @@
 // `CareerSearch` for `career`); here, what the worker and the engine read. The solver's side is
 // pkg/loopopt/src/web.rs (`Solver::answer`: the commands).
 import type { Request, ScheduleCell as SolverCell, ScheduleRow as SolverRow, StateOut } from './gen/solver.ts';
-import type { DeepReadonly } from './store.ts';
+import type { DeepReadonly } from './state/store.ts';
 
 /** A job: its command and that command's fields (the solver's `Request`, src/request.rs in pkg/loopopt: generated),
  *  read-only (the engine posts a copy; a career job shares the veterans store's arrays) */

@@ -18,7 +18,7 @@ import { drawResult, Results } from '../../src/loop/Results.tsx';
 import { RunAct, RunNote } from '../../src/loop/RunNote.tsx';
 import { beginSearch, initLoopState, interim, loopDrawn, settle, tick } from '../../src/loop/state.ts';
 import type { DrawnReport, LoopResult, ShownResult } from '../../src/loop/types.ts';
-import { loadExample, saveCurrent } from '../../src/presets.ts';
+import { loadExample, saveCurrent } from '../../src/state/presets.ts';
 import { PresetDialogs, openPresets } from '../../src/ui/Presets.tsx';
 import {
   DEFAULTS,
@@ -29,8 +29,8 @@ import {
   setOwned,
   setPresets,
   setTargets,
-} from '../../src/settings.ts';
-import { on } from '../../src/store.ts';
+} from '../../src/state/settings.ts';
+import { on } from '../../src/state/store.ts';
 import { OddsDialog } from '../../src/ui/OddsDialog.tsx';
 import { RenderGuard, sayRenderErrors } from '../../src/ui/RenderGuard.tsx';
 import { memory } from './fakes.ts';

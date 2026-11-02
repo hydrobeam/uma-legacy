@@ -1,9 +1,9 @@
-// The settings store (src/settings.ts) and the effect helper (src/store.ts `on`), on a Map standing in for localStorage:
+// The settings store (src/state/settings.ts) and the effect helper (src/state/store.ts `on`), on a Map standing in for localStorage:
 // each setter copies on write and persists before it assigns; an effect wakes only for the signals it names; what is
 // stored loads back, old shapes included. npx vitest run (in webapp)
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { ERA } from '../../src/saved.ts';
+import { ERA } from '../../src/state/saved.ts';
 import {
   DEFAULTS,
   fields,
@@ -24,10 +24,10 @@ import {
   settings,
   switchEra,
   type SettingsView,
-} from '../../src/settings.ts';
-import { on } from '../../src/store.ts';
+} from '../../src/state/settings.ts';
+import { on } from '../../src/state/store.ts';
 import { must } from '../../src/must.ts';
-import type { Backing } from '../../src/storage.ts';
+import type { Backing } from '../../src/state/storage.ts';
 
 const KEY = 'llp:settings',
   OTHER = ERA === 'gm' ? 'global' : 'gm';

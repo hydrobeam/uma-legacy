@@ -6,7 +6,7 @@
 // says what one that is not whole lacks).
 import { isAptitude } from '../model/grades.ts';
 import type { Ancestor, Legacy, Pink, Spark } from '../gen/solver.ts';
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 
 /** A veteran's parent as the solver's job takes her. */
 export type JobNode = DeepReadonly<Required<Ancestor>>;

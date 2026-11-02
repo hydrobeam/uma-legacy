@@ -1,12 +1,12 @@
-// ---------- the Presets dialog (presets.ts holds the edits): the list, Save current skills, a preset's view ----------
+// ---------- the Presets dialog (state/presets.ts holds the edits): the list, Save current skills, a preset's view ----------
 // The list: per preset its name and count (a click opens its skills as the editor's tiles, with Rename), Load, Overwrite
 // (with the targets now) and a trash can; under it, Save current skills opens a small popup for the name. Each preset is
 // named by its name, unique. The Target skills panel's Presets button calls `openPresets`.
 import { batch, signal } from '@preact/signals';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { fields } from '../settings.ts';
-import type { Preset } from '../settings.ts';
-import type { DeepReadonly } from '../store.ts';
+import { fields } from '../state/settings.ts';
+import type { Preset } from '../state/settings.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import {
   deletePreset,
   loadPreset,
@@ -16,7 +16,7 @@ import {
   sameSkills,
   skillCount,
   suggestName,
-} from '../presets.ts';
+} from '../state/presets.ts';
 import { must } from '../must.ts';
 import { Dialog, DialogHead, DialogPanel } from './Dialog.tsx';
 import { TargetTile, groupKeys } from './TargetTile.tsx';

@@ -17,7 +17,7 @@ import { Blocked } from '../../src/career/job.ts';
 import type { CareerAnswer, CareerJob, CareerReply, CareerReport, PlanCheck } from '../../src/career/job.ts';
 import type { PairSearch } from '../../src/gen/solver.ts';
 import type { PlanProgress, SolverRefusal } from '../../src/solver.ts';
-import type { DeepReadonly } from '../../src/store.ts';
+import type { DeepReadonly } from '../../src/state/store.ts';
 import { must } from '../../src/must.ts';
 import { fakeClock, flush } from './fakes.ts';
 import { careerJob, careerReport, careerSearch, checkReport, pairSearch, planOption, planReport } from './reports.ts';

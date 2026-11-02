@@ -30,8 +30,8 @@ async function page(stored: object | null) {
   vi.resetModules();
   document.body.replaceChildren();
   const data = await import('../../src/model/data.ts');
-  const S = await import('../../src/settings.ts');
-  const { initScenario } = await import('../../src/scenario.ts');
+  const S = await import('../../src/state/settings.ts');
+  const { initScenario } = await import('../../src/state/scenario.ts');
   const { setupViews } = await import('../../src/ui/Setup.tsx');
   const { RosterPanel } = await import('../../src/ui/Roster.tsx');
   const { CardsPanel } = await import('../../src/ui/Cards.tsx');

@@ -5,7 +5,7 @@
 // with .peek().
 import { batch, computed } from '@preact/signals';
 import { careerTables } from '../model/data.ts';
-import { settings } from '../settings.ts';
+import { settings } from '../state/settings.ts';
 import { run as engineRun } from '../engine.ts';
 import { goldGiven } from '../model/job.ts';
 import { srcFor } from '../model/images.ts';
@@ -14,10 +14,10 @@ import { pinkAmong } from '../model/pink.ts';
 import { vets, places, chosen, setChosen, vetById, addVets, legaciesJob, readyVets } from '../veterans/store.ts';
 import { targetGroups } from '../veterans/names.ts';
 import { answer, answerCareer, answerPool, choiceDropped, dropAnswer, reference } from './state.ts';
-import { on } from '../store.ts';
+import { on } from '../state/store.ts';
 import { searchHeld } from '../veterans/pickers.ts';
 import { must, orNull } from '../must.ts';
-import { pickOutfit, outfitNote } from '../roster.ts';
+import { pickOutfit, outfitNote } from '../state/roster.ts';
 import { unprovenWhy } from '../model/proofs.ts';
 import { refBase } from './keys.ts';
 import { openPool } from './view/poolState.ts';
@@ -27,7 +27,7 @@ import type { CareerAnswer, CareerJob, CareerReport, CareerTrainee, OptionRow, P
 import type { PlanProgress, SolverAnswer } from '../solver.ts';
 import type * as Gen from '../gen/solver.ts';
 import type { LineageNode, Sparks, Veteran, VetRecord } from '../veterans/store.ts';
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 
 // ---------- the job
 /** her place in the pool (-1: none) */

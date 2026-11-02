@@ -2,15 +2,15 @@
 // targets with what gives each, and the chance of each count of them.
 import { fmtIn } from '../../dom.ts';
 import { assert } from '../../must.ts';
-import { settings } from '../../settings.ts';
+import { settings } from '../../state/settings.ts';
 import { srcFor } from '../../model/images.ts';
-import { scenarioOf } from '../../scenario.ts';
+import { scenarioOf } from '../../state/scenario.ts';
 import { usePopOpener } from '../../ui/CardPop.tsx';
 import { pct, deckHint } from '../../model/odds.ts';
 import { starsOf } from '../../veterans/names.ts';
 import { borrowedLast, deckCards } from '../../details.ts';
 import type { DeckSlot } from '../../details.ts';
-import { cardTitle, chainEndNote } from '../../cards.ts';
+import { cardTitle, chainEndNote } from '../../state/cards.ts';
 import { CardAv, ScenLogo, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle } from '../../ui/Dialog.tsx';
 import { legacyVet, shown } from '../current.ts';

@@ -16,7 +16,7 @@ import { Aptitude, type Grades, type Route } from '../../src/gen/solver.ts';
 import type { SolverRefusal } from '../../src/solver.ts';
 import type { JobLegacy } from '../../src/veterans/records.ts';
 import * as vs from '../../src/veterans/store.ts';
-import { on } from '../../src/store.ts';
+import { on } from '../../src/state/store.ts';
 import { must } from '../../src/must.ts';
 import { fakeClock, flush, memory } from './fakes.ts';
 import { careerJob, careerReport, careerSearch, planOption, planReport } from './reports.ts';

@@ -1,11 +1,11 @@
 // ---------- the scenarios: those this era offers, a pick (with its golds and default lineage rank), their labels ----------
 // The scenario picker and the lineage rank control that draw them are ui/Scenario.tsx.
-import { SCENARIOS, SCEN_GOLDS, gameData } from './model/data.ts';
-import type { RankClass } from './gen/solver.ts';
+import { SCENARIOS, SCEN_GOLDS, gameData } from '../model/data.ts';
+import type { RankClass } from '../gen/solver.ts';
 import { ERA } from './saved.ts';
 import { settings, setScenario } from './settings.ts';
-import { srcFor } from './model/images.ts';
-import type { Scenario } from './model/data.ts';
+import { srcFor } from '../model/images.ts';
+import type { Scenario } from '../model/data.ts';
 // the scenarios this era's data offers (Grand Masters only with the JP Grand Masters-era data)
 export const LIST = SCENARIOS.filter((s) => !s.era || s.era === ERA);
 // (a key it doesn't offer, as from a hand-edited storage: the first scenario, which every era offers)
@@ -20,7 +20,7 @@ export function chooseScenario(v: string) {
 }
 // Switching to the JP Grand Masters-era data opens on its newest scenario, Grand Masters (with its golds and rank
 // defaults); switching back to Global turns it into Unity Cup on load (initScenario). The settings `era` opens with
-// that differ from these (settings.ts switchEra).
+// that differ from these (state/settings.ts switchEra).
 export function eraScenario(era: string): { scen?: string; rank?: RankClass } {
   const sc = SCENARIOS.find((s) => s.v === 'grandmasters');
   if (era !== 'gm' || !sc || settings.value.scen === sc.v) return {};

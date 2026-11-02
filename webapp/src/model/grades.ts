@@ -6,7 +6,7 @@ import { Grade } from '../gen/solver.ts';
 import type { Aptitude, Grades } from '../gen/solver.ts';
 import { SOLVER } from '../gen/constants.ts';
 import { assert } from '../must.ts';
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 
 /** her grade at `aptitude` */
 export function gradeOf(grades: DeepReadonly<Grades>, aptitude: Aptitude): Grade {

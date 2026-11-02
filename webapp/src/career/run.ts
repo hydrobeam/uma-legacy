@@ -8,7 +8,7 @@ import type { PlanProgress } from '../solver.ts';
 import { checkIn, planIn, searchIn } from './reply.ts';
 import { must } from '../must.ts';
 import type { CareerAnswer, CareerJob, CareerReport, CareerSearch, PlanReport } from './job.ts';
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import type * as AnswerStore from './state.ts';
 import type { Answer, AnswerView, PlanDone, PlanState, Status } from './state.ts';
 import { jobKey, planKey } from './keys.ts';
@@ -80,7 +80,7 @@ export interface RunDeps {
     baseKey: (job: CareerJob) => string;
     /** the search's status line (main.tsx `searchStatus`): done with its caveats, or why no career lands every target */
     searched: (m: { r: CareerSearch; ms: number }, found: string) => Status;
-    /** the answer the last visit kept, and keeping this one (statestore.ts) */
+    /** the answer the last visit kept, and keeping this one (state/statestore.ts) */
     loadAnswer: () => Promise<{ key: string; value: AnswerView } | null>;
     saveAnswer: (key: string, value: AnswerView) => void;
   };

@@ -10,7 +10,7 @@ import { h, options, render } from 'preact';
 import * as vs from '../../src/veterans/store.ts';
 import { NodeDialog } from '../../src/career/view/NodeDialog.tsx';
 import { closeNode, nodeOpen, openNode, pickerClosed, pickerFor } from '../../src/career/view/dialogs.ts';
-import { on } from '../../src/store.ts';
+import { on } from '../../src/state/store.ts';
 import { sayRenderErrors } from '../../src/ui/RenderGuard.tsx';
 import { answer, loadFails } from '../../src/career/state.ts';
 import { PoolBody, PoolHead } from '../../src/career/view/Pool.tsx';

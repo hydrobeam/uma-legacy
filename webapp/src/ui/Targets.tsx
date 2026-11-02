@@ -1,7 +1,7 @@
 import type { RefObject } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { fields } from '../settings.ts';
-import { addTarget, namesOf, removeTargetAt, suggest } from '../targets.ts';
+import { fields } from '../state/settings.ts';
+import { addTarget, namesOf, removeTargetAt, suggest } from '../state/targets.ts';
 import { must } from '../must.ts';
 import { SkillIcon } from './Images.tsx';
 import { PresetDialogs, openPresets } from './Presets.tsx';

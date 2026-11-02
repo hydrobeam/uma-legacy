@@ -7,20 +7,20 @@
 import { started } from '../errorlog.ts'; // first: it listens before any other module runs
 import { createRef, hydrate } from 'preact';
 import { signal } from '@preact/signals';
-import { ERA } from '../saved.ts';
+import { ERA } from '../state/saved.ts';
 import type { Era } from '../model/eras.ts';
-import { browserStorage } from '../storage.ts';
+import { browserStorage } from '../state/storage.ts';
 import { loadData } from '../model/data.ts';
 import EXAMPLE from '../../example.json'; // the default settings' result, precomputed (example.mjs)
-import { DEFAULTS, fields, jobSetup, settings, setAuto, setPerUma } from '../settings.ts';
-import { on } from '../store.ts';
+import { DEFAULTS, fields, jobSetup, settings, setAuto, setPerUma } from '../state/settings.ts';
+import { on } from '../state/store.ts';
 import { must } from '../must.ts';
 import { beginSearch, headline, interim, loopDrawn, loopRun, loopView, resultsStale, settle, tick } from './state.ts';
 import { createRun } from './run.ts';
 import { RunAct, RunNote, noteShown, noteTitle, pillText } from './RunNote.tsx';
 import { RenderGuard, sayRenderErrors } from '../ui/RenderGuard.tsx';
 import { restartEngine, run, warmEngine } from '../engine.ts';
-import { initScenario } from '../scenario.ts';
+import { initScenario } from '../state/scenario.ts';
 import { Results, ResultsCount, drawResult } from './Results.tsx';
 import { AffinityDialog } from './Affinity.tsx';
 import { ExportDialog, openExport } from './Export.tsx';
@@ -28,7 +28,7 @@ import { OddsDialog } from '../ui/OddsDialog.tsx';
 import { ScheduleDialog } from '../ui/Schedule.tsx';
 import { initPopover } from '../popover.ts';
 import { CardPop } from '../ui/CardPop.tsx';
-import { loadExample } from '../presets.ts';
+import { loadExample } from '../state/presets.ts';
 import { openSetupDialog, pickEra, setupBadges, setupViews } from '../ui/Setup.tsx';
 import { useHydrated } from '../ui/Shell.tsx';
 import { LoopLayout } from './Layout.tsx';

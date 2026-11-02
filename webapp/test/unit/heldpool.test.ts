@@ -11,7 +11,7 @@ import { test, vi } from 'vitest';
 import '@preact/signals';
 import { h, render } from 'preact';
 import * as vs from '../../src/veterans/store.ts';
-import { initStore, setTargets } from '../../src/settings.ts';
+import { initStore, setTargets } from '../../src/state/settings.ts';
 import { type Answer, dropAnswer, showAnswer } from '../../src/career/state.ts';
 import { takeCareer } from '../../src/career/options.ts';
 import { draftOf } from '../../src/career/analysis/view.tsx';

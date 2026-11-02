@@ -2,19 +2,19 @@
 // `runView` is what the page draws of the run under way (the status line, the dimmed answer); `answer` is the answer on
 // show (the search's status, its result, the plan); `reference` is the last plan made, whose table stays while you weigh
 // a career you chose. Each is handed out read-only; the transitions below build the next record copy-on-write and
-// assign it (nothing here is saved: statestore.ts keeps the answer, the run machine calls it). The run machine's
+// assign it (nothing here is saved: state/statestore.ts keeps the answer, the run machine calls it). The run machine's
 // tokens, timers and the job in flight are the run machine's closure state (career/run.ts `createRun`), not here:
 // nothing draws them.
 // A plan is known by its id (`PlanDone.id`, given when it is made or loaded), never by its object: its check's writes
 // replace the record (`setPlanCheck`), and reach every place that keeps the plan (the answers cache, `reference`).
 // Records are frozen as they come in, except the jobs: a job holds the veterans store's legacies (veterans/store.ts
 // `legaciesJob`), one array every job made from the same veterans shares, and the veterans store's to keep. Nothing
-// here subscribes: the entry makes the effects (store.ts `on`).
+// here subscribes: the entry makes the effects (state/store.ts `on`).
 import { batch, computed } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import { must } from '../must.ts';
-import { deepFreeze, store } from '../store.ts';
-import type { DeepReadonly } from '../store.ts';
+import { deepFreeze, store } from '../state/store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import type { CareerJob, CareerSearch, PlanReport } from './job.ts';
 import type { PlacesRecord } from '../veterans/store.ts';
 import { planKey } from './keys.ts';
@@ -104,7 +104,7 @@ export const answer: ReadonlySignal<AnswerView> = shownAnswer;
 // answer; a kept answer drawn again takes those of the job that recalled it, which has the same legacies). A career
 // names its parents by legacy index, and the pool can change under an answer the page holds (career/main.tsx: while a
 // pool veteran's G1 wins window is open), so a parent is read by her id here (career/current.ts `legacyVet`), never by
-// her place in the pool now. Empty without an answer; not saved with it (statestore.ts keeps the answer alone).
+// her place in the pool now. Empty without an answer; not saved with it (state/statestore.ts keeps the answer alone).
 const [shownPool, setPool] = store<readonly string[]>(Object.freeze([]));
 export const answerPool: ReadonlySignal<readonly string[]> = shownPool;
 const [lastPlan, setLastPlan] = store<Reference | null>(null);
@@ -239,7 +239,7 @@ export function recallAnswer(key: string) {
   answers.set(key, hit);
   return hit;
 }
-/** an answer kept since the last visit (statestore.ts), under `key`: its plan gets an id of this page's */
+/** an answer kept since the last visit (state/statestore.ts), under `key`: its plan gets an id of this page's */
 export function keepSavedAnswer(key: string, saved: AnswerView) {
   const planState = saved.planState.state === 'done' ? { ...saved.planState, id: newPlanId() } : saved.planState;
   answers.set(key, freezeInPlace({ ...saved, planState }));

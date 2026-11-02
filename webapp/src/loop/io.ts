@@ -1,15 +1,15 @@
 // ---------- export / import: the text Export shows, and what an import's text may set ----------
 // Values in, values out (the settings, the result on show): Export.tsx shows them and applies an import.
 import { fmtIn } from '../dom.ts';
-import { SETTINGS, ERA } from '../saved.ts';
+import { SETTINGS, ERA } from '../state/saved.ts';
 import { SCENARIOS, gameData } from '../model/data.ts';
 import { goldGiven, isOwned } from '../model/job.ts';
-import { pickOutfit } from '../roster.ts';
-import { mergePresets } from '../presets.ts';
+import { pickOutfit } from '../state/roster.ts';
+import { mergePresets } from '../state/presets.ts';
 import { deckHint } from '../model/odds.ts';
-import { scenarioOf } from '../scenario.ts';
-import type { SettingsView } from '../settings.ts';
-import type { DeepReadonly } from '../store.ts';
+import { scenarioOf } from '../state/scenario.ts';
+import type { SettingsView } from '../state/settings.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import type { LoopResult, ResultLoop, ShownResult } from './types.ts';
 import { loopMembers } from './members.ts';
 import { must } from '../must.ts';
@@ -105,7 +105,7 @@ const VALID: Record<(typeof SETTINGS)[number], (v: unknown, era: string) => bool
         Array.isArray(p.groups) &&
         p.groups.every(Number.isInteger),
     ),
-  // a rank class, or the star mix an older file kept for it (settings.ts `rankClassOf` reads both)
+  // a rank class, or the star mix an older file kept for it (state/settings.ts `rankClassOf` reads both)
   rank: (v) => ['below_ss', 'ss_and_up', '0.50,0.45,0.05', '0.20,0.70,0.10'].includes(v as string),
   auto: (v) => typeof v === 'boolean',
   perUma: (v) => typeof v === 'boolean',

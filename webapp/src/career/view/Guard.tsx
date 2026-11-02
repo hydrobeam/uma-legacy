@@ -5,7 +5,7 @@
 import { computed, useComputed } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
-import { settings } from '../../settings.ts';
+import { settings } from '../../state/settings.ts';
 import { places, vets } from '../../veterans/store.ts';
 import { RenderGuard } from '../../ui/RenderGuard.tsx';
 import { answer } from '../state.ts';

@@ -5,7 +5,7 @@ import { must } from '../must.ts';
 import { drawPink } from '../model/pink.ts';
 import { SOLVER } from '../gen/constants.ts';
 import type { Grades, RankClass } from '../gen/solver.ts';
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import type { CareerReport } from './job.ts';
 
 /** What a roll reads besides the career's report. */

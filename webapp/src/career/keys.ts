@@ -1,7 +1,7 @@
 // The keys a career job, a plan job and a career are known by (the answers kept, the plan Compare kept, a career's
 // identity, a comparison's baseline, the last plan's base). It reads no store and no game data.
-import { ERA } from '../saved.ts';
-import type { DeepReadonly } from '../store.ts';
+import { ERA } from '../state/saved.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import type { CareerJob } from './job.ts';
 
 /** what the keys read of a job: they never write it */

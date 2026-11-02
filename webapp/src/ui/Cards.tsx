@@ -9,10 +9,10 @@ import { Fragment } from 'preact';
 import { useRef } from 'preact/hooks';
 import { SCENARIOS, gameData } from '../model/data.ts';
 import type { Card } from '../model/data.ts';
-import { fields, settings } from '../settings.ts';
+import { fields, settings } from '../state/settings.ts';
 import { goldGiven } from '../model/job.ts';
-import { cardGives, cardTitle, ownAllCards, ownNoCards, toggleCard } from '../cards.ts';
-import type { CardGift } from '../cards.ts';
+import { cardGives, cardTitle, ownAllCards, ownNoCards, toggleCard } from '../state/cards.ts';
+import type { CardGift } from '../state/cards.ts';
 import { CardAv } from './Images.tsx';
 import { OWNED_PANEL, OwnedImport, useSaid } from './OwnedImport.tsx';
 import { SettingsSort } from './SortMenu.tsx';
@@ -37,7 +37,7 @@ const scenarioName = (v: string) => SCENARIOS.find((s) => s.v === v)?.name;
 const sections = computed(() => {
   const scen = fields.scen.value || 'unity',
     groups = new Set(fields.targets.value.filter((t) => !goldGiven(scen, t.group)).map((t) => t.group));
-  // R cards (not pals): no setting turns them on (settings.ts DEFAULTS), so this is read without subscribing
+  // R cards (not pals): no setting turns them on (state/settings.ts DEFAULTS), so this is read without subscribing
   const rCards = settings.peek().rcards === true;
   const dir = fields.cdir.value === 'desc' ? -1 : 1,
     byName = fields.csort.value === 'name',

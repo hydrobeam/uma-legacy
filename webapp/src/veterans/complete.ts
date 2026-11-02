@@ -6,7 +6,7 @@
 // solver's jobs (veterans/store.ts `readyVets`, career/job.ts `buildJob`) until her editors finish her. A parent place
 // with no uma is one not entered: what a veteran entered by hand holds until her parent is entered (entry.ts), and what
 // earlier pages made up for a hand-entered veteran's parents (no uma, her own sparks copied).
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import { pinkRecord } from './records.ts';
 import type { LineageNode, ParentNode, ParentPlace } from './store.ts';
 

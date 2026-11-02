@@ -9,7 +9,7 @@
 // career on show, the roll) comes in `deps`, so the node tests run the machine on fakes. It reads no store itself (a
 // model module: .dependency-cruiser.mjs checks it).
 import { batch } from '@preact/signals';
-import type { DeepReadonly } from '../../store.ts';
+import type { DeepReadonly } from '../../state/store.ts';
 import type * as AnswerStore from '../state.ts';
 import type { PlanDone } from '../state.ts';
 import type * as AnalysisStore from './state.ts';

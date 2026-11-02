@@ -9,7 +9,7 @@ import { test, vi } from 'vitest';
 import '@preact/signals';
 import { h, render } from 'preact';
 import * as vs from '../../src/veterans/store.ts';
-import { on } from '../../src/store.ts';
+import { on } from '../../src/state/store.ts';
 import {
   addOpen,
   askClosed,

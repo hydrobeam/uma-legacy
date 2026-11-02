@@ -12,7 +12,7 @@
 // trainers too). Pages count from 0, 100 results each.
 import { careerTables } from './model/data.ts';
 import { must } from './must.ts';
-import { read, readJson, update, updateJson } from './storage.ts';
+import { read, readJson, update, updateJson } from './state/storage.ts';
 import type { UmamoeListing } from './umadump.ts';
 
 const KEY_STORE = 'llp:umamoe-key',

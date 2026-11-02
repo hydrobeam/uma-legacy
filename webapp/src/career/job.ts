@@ -9,10 +9,10 @@ import { lacks, lacksSaid } from '../veterans/complete.ts';
 import { assert, must } from '../must.ts';
 import type { SolverAnswer } from '../solver.ts';
 import type * as Gen from '../gen/solver.ts';
-import type { SettingsView } from '../settings.ts';
+import type { SettingsView } from '../state/settings.ts';
 import type { ChosenCareer, LineageNode, PlacesRecord, VetRecord } from '../veterans/store.ts';
 import type { JobLegacy } from '../veterans/records.ts';
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 
 // the places as a key: the trainee and the two parents (not how they were set, `fromTable`)
 export const placesKey = (p: PlacesRecord): string => JSON.stringify({ trainee: p.trainee, parents: p.parents });

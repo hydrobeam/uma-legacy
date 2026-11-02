@@ -4,8 +4,8 @@
 import { ASSETS, gameData } from '../model/data.ts';
 import { deckPart, isOwned, skillsPart } from '../model/job.ts';
 import type { jobTargets } from '../model/job.ts';
-import { ERA } from '../saved.ts';
-import type { SettingsView } from '../settings.ts';
+import { ERA } from '../state/saved.ts';
+import type { SettingsView } from '../state/settings.ts';
 import type { Request } from '../gen/solver.ts';
 import type { LoopReport, Status } from './types.ts';
 
@@ -35,7 +35,7 @@ export function buildJob(s: SettingsView): Built {
   };
   return { job, targets: skills.targets };
 }
-/** what the status line says of blocked settings, with the button that fixes it (`loadExample`: presets.ts's) */
+/** what the status line says of blocked settings, with the button that fixes it (`loadExample`: state/presets.ts's) */
 export const blockedStatus = (blocked: Blocked, loadExample: () => void): Status =>
   blocked.blocked === 'targets'
     ? {

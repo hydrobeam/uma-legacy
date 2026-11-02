@@ -10,16 +10,16 @@
 // out when the page is hidden or left (the entry listens: `flushPersist`).
 import { computed } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
-import { ERA } from '../saved.ts';
-import { browserStorage, readJson, updateJson } from '../storage.ts';
-import type { Backing } from '../storage.ts';
+import { ERA } from '../state/saved.ts';
+import { browserStorage, readJson, updateJson } from '../state/storage.ts';
+import type { Backing } from '../state/storage.ts';
 import { gradesOfList, isGrades } from '../model/grades.ts';
 import type { Grades } from '../gen/solver.ts';
 import { jobLegacy, knownPinks } from './records.ts';
 import { must } from '../must.ts';
 import type { JobLegacy } from './records.ts';
-import { store } from '../store.ts';
-import type { DeepReadonly } from '../store.ts';
+import { store } from '../state/store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 
 /** a spark map: group -> stars (1-3); keys are object keys, so strings once read back with Object.keys / entries */
 export type Sparks = Record<number, number>;

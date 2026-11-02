@@ -5,11 +5,11 @@
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { gameData } from '../model/data.ts';
 import type { Card, Uma } from '../model/data.ts';
-import { settings, setOwned } from '../settings.ts';
+import { settings, setOwned } from '../state/settings.ts';
 import { goldGiven } from '../model/job.ts';
-import { umaState } from '../roster.ts';
-import { cardTitle, cardGives, chainEndAt } from '../cards.ts';
-import type { CardGift } from '../cards.ts';
+import { umaState } from '../state/roster.ts';
+import { cardTitle, cardGives, chainEndAt } from '../state/cards.ts';
+import type { CardGift } from '../state/cards.ts';
 import { must } from '../must.ts';
 import { popBack, popOpen, popOpener, setPanel, togglePop } from '../popover.ts';
 import type { PopOpen, PopSubject } from '../popover.ts';

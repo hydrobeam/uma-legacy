@@ -7,7 +7,7 @@
 // umas), only the G1s it shares with its child.
 import { signal, untracked } from '@preact/signals';
 import { useState } from 'preact/hooks';
-import { pickOutfit } from '../roster.ts';
+import { pickOutfit } from '../state/roster.ts';
 import { must } from '../must.ts';
 import { Dialog, DialogHead, DialogPanel } from '../ui/Dialog.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
@@ -15,7 +15,7 @@ import { AffHeart, AffTable } from '../ui/AffTable.tsx';
 import type { AffinityLeg } from '../ui/AffTable.tsx';
 import { UmaAv } from '../ui/Images.tsx';
 import { RenderGuard } from '../ui/RenderGuard.tsx';
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import type * as Report from './types.ts';
 import { loopCareers, loopMembers } from './members.ts';
 import type { Career, Member } from './members.ts';

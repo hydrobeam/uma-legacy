@@ -10,7 +10,7 @@
 import type { ComponentChildren, RefObject } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { gameData } from '../../model/data.ts';
-import { settings } from '../../settings.ts';
+import { settings } from '../../state/settings.ts';
 import { umaName } from '../../veterans/names.ts';
 import { borrowedLast, deckCards, fitSparks } from '../../details.ts';
 import type { DeckSlot } from '../../details.ts';
@@ -23,7 +23,7 @@ import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
 import { gradeOf } from '../../model/grades.ts';
 import { Aptitude, Grade } from '../../gen/solver.ts';
 import { CardAv, GradeBadge, SkillIcon, UmaAv } from '../../ui/Images.tsx';
-import type { DeepReadonly } from '../../store.ts';
+import type { DeepReadonly } from '../../state/store.ts';
 import type { CareerReport } from '../job.ts';
 import { draftRef, parentsPlaced } from '../../veterans/store.ts';
 import type { Draft, VetRecord } from '../../veterans/store.ts';

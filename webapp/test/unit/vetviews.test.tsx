@@ -8,7 +8,7 @@ import { WinsEditor } from '../../src/ui/Agenda.tsx';
 import { expect, test, vi } from 'vitest';
 import { loadData } from '../../src/model/data.ts';
 import { Blocked, buildJob } from '../../src/career/job.ts';
-import { initStore, settings } from '../../src/settings.ts';
+import { initStore, settings } from '../../src/state/settings.ts';
 import { NodeDialog } from '../../src/career/view/NodeDialog.tsx';
 import { openNode } from '../../src/career/view/dialogs.ts';
 import { PoolBody } from '../../src/career/view/Pool.tsx';

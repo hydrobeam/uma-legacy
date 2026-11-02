@@ -2,9 +2,9 @@
 // A gold the chosen scenario guarantees shows as that gold (It's On! for Ramp Up), on the game's gold tile. The editor's
 // tiles (`list`) are compact, to fit the setup's column, with a remove button (the game's close cross); the Presets
 // view's (`view`) are the game's full size, the tiles alone.
-import { fields } from '../settings.ts';
+import { fields } from '../state/settings.ts';
 import { goldGiven } from '../model/job.ts';
-import { namesOf } from '../targets.ts';
+import { namesOf } from '../state/targets.ts';
 import { SkillIcon } from './Images.tsx';
 import { cx } from 'tailwind-variants/lite';
 
