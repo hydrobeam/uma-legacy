@@ -34,7 +34,7 @@ export default async function states(b) {
   await expect.soft(rhead, trapped).toHaveAttribute('data-kind', 'error', { timeout: 15_000 });
   await expect.soft(runNote, `${trapped}: the status`).toHaveText(/^Not searched: the solver stopped with an error/);
   await expect.soft(loops, `${trapped}: the results kept`).not.toHaveCount(0);
-  await expect.soft(results, `${trapped}: … dimmed`).toContainClass('stale');
+  await expect.soft(results, `${trapped}: … dimmed`).toHaveAttribute('data-stale');
   check(`${trapped}: the worker restarted`, (await pg.evaluate(() => window.__killed)) > kt);
   await pg.evaluate(() => {
     window.__trap = false;
@@ -60,7 +60,7 @@ export default async function states(b) {
   await expect.soft(runNote, noTargets).toHaveText(/Add a target skill/);
   await expect.soft(act, `${noTargets}: the button`).toHaveText(/8\/8 example/, { useInnerText: true });
   await expect.soft(loops, `${noTargets}: the old result stays`).not.toHaveCount(0);
-  await expect.soft(results, `${noTargets}: … dimmed`).toContainClass('stale');
+  await expect.soft(results, `${noTargets}: … dimmed`).toHaveAttribute('data-stale');
   // a preset is never emptied: with no targets, Overwrite is off on every preset
   await pg.click('#t-preset');
   const overwrite = await pg.$$eval('#pr-list [role="group"] button', (l) =>
@@ -78,7 +78,7 @@ export default async function states(b) {
   await expect.soft(pg.locator('#targets > [data-g]'), loaded).toHaveCount(8);
   await expect.soft(rhead, `${loaded}: done`).toHaveAttribute('data-kind', 'done');
   await expect.soft(runNote, `${loaded}: the status`).toHaveText(/^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/);
-  await expect.soft(results, `${loaded}: not dimmed`).not.toContainClass('stale');
+  await expect.soft(results, `${loaded}: not dimmed`).not.toHaveAttribute('data-stale');
   await openEditor(pg, 'umas');
   await pg.click('#r-none');
   await kind(pg, 'empty');
@@ -188,7 +188,7 @@ export default async function states(b) {
   const next = '… and the next result draws';
   await expect.soft(rhead, next).toHaveAttribute('data-kind', 'done');
   await expect.soft(loops, `${next}: results`).not.toHaveCount(0);
-  await expect.soft(results, `${next}: not dimmed`).not.toContainClass('stale');
+  await expect.soft(results, `${next}: not dimmed`).not.toHaveAttribute('data-stale');
   check('no page errors', !pg.errors.length, pg.errors.join(' | '));
   await pg.context().close();
 }

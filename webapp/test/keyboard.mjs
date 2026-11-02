@@ -99,12 +99,12 @@ export default async function keyboard(b) {
   const skip = await pg.evaluate(() => {
     const a = document.activeElement,
       r = a.getBoundingClientRect();
-    return { cls: a.className, top: r.top, text: a.textContent };
+    return { href: a.getAttribute('href'), top: r.top, text: a.textContent };
   });
   await pg.keyboard.press('Enter');
   check(
     'the first Tab stop is a visible "Skip to results" link',
-    skip.cls === 'skip' && skip.top >= 0 && skip.text === 'Skip to results',
+    /^#\w/.test(skip.href ?? '') && skip.top >= 0 && skip.text === 'Skip to results',
     JSON.stringify(skip),
   );
   await expect.soft(pg.locator('#rcol'), '… that moves the focus to the results').toBeFocused();
@@ -137,14 +137,18 @@ export default async function keyboard(b) {
   await pg.keyboard.press('Shift+Tab'); // (out and back by the keyboard: a focus by script may not be focus-visible)
   await pg.keyboard.press('Tab');
   const tipSeen = await pg.evaluate(() => {
-    const t = document.querySelector('.gmtip'),
-      a = document.activeElement;
-    return `${a?.id} fv ${a?.matches(':focus-visible')} tip ${!!t} hidden ${t?.hidden} "${t?.textContent}"`;
+    const t = document.querySelector('#gm-tip'),
+      a = document.activeElement,
+      at = a?.getBoundingClientRect(),
+      r = t?.getBoundingClientRect(),
+      // the balloon 10 px under its control, or above it
+      beside = !!at && !!r && (Math.abs(r.top - at.bottom - 10) < 2 || Math.abs(at.top - r.bottom - 10) < 2);
+    return `${a?.id} fv ${a?.matches(':focus-visible')} tip ${!!t} hidden ${t?.hidden} beside ${beside} "${t?.textContent}"`;
   });
-  const tip = / tip true hidden false "Automatically search/.test(tipSeen);
+  const tip = / tip true hidden false beside true "Automatically search/.test(tipSeen);
   await pg.evaluate(() => /** @type {HTMLElement} */ (document.activeElement).blur());
   check('keyboard, tooltip: keyboard focus on a titled control shows its balloon', tip, tipSeen);
-  await expect.soft(pg.locator('.gmtip'), 'keyboard, tooltip: moving the focus away hides it').toBeHidden();
+  await expect.soft(pg.locator('#gm-tip'), 'keyboard, tooltip: moving the focus away hides it').toBeHidden();
   // Auto-search off first, so the settings changed below send no job (the status line asks for a Search instead)
   const stored = () => pg.evaluate(() => localStorage.getItem('llp:settings') || '');
   await switchKeys(pg, 'Auto-search', auto, async (on) => !on && /"auto":false/.test(await stored()));

@@ -6,7 +6,11 @@
 // never the element, so a title lifted and put back unchanged is invisible to it). The balloon is its own element in
 // <body>, shown in the top layer (a manual popover) so it stays over an open modal dialog without being put inside it.
 const tipEl = document.createElement('div');
-tipEl.className = 'gmtip';
+// the game's balloon: bold brown on white in a green rim, its arrow over the element (under it with data-up); fixed at
+// the place set below, so a popover's own centring (inset, margin) is undone
+tipEl.className =
+  'font-game text-note leading-title text-gm-ink bg-gm-panel border-gm-bright2 shadow-tip before:border-b-gm-bright2 data-up:before:border-t-gm-bright2 pointer-events-none fixed inset-auto z-1000 m-0 max-w-75 overflow-visible rounded-xl border-2 px-2.5 py-1.5 font-bold whitespace-pre-line before:absolute before:-top-2 before:left-[calc(50%-7px)] before:border-x-7 before:border-t-0 before:border-b-8 before:border-x-transparent data-up:before:top-auto data-up:before:-bottom-2 data-up:before:border-t-8 data-up:before:border-b-0';
+tipEl.id = 'gm-tip';
 tipEl.setAttribute('role', 'tooltip');
 tipEl.hidden = true;
 const popover = 'showPopover' in tipEl; // (a browser without popovers shows it under an open modal dialog)
@@ -40,7 +44,7 @@ function tipShow(target: HTMLElement) {
   const below = rect.bottom + GAP + height < innerHeight;
   tipEl.style.left = `${Math.max(EDGE, Math.min(rect.left + rect.width / 2 - width / 2, innerWidth - width - EDGE))}px`;
   tipEl.style.top = `${below ? rect.bottom + GAP : rect.top - height - GAP}px`;
-  tipEl.classList.toggle('up', !below);
+  tipEl.toggleAttribute('data-up', !below);
 }
 function tipHide() {
   clearTimeout(tipTimer);

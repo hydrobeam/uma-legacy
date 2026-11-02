@@ -649,8 +649,7 @@ export default async function career(b) {
     );
   }
   {
-    const name = 'career: the legacies carry no affinity numbers or labels; the trainee shows her total';
-    await expect.soft(pg.locator('#tree .gate'), `${name}: no labels`).toHaveCount(0);
+    const name = 'career: the legacies carry no affinity numbers; the trainee shows her total';
     await expect.soft(pg.locator('#tree').getByLabel(/^Affinity \d/), `${name}: no numbers`).toHaveCount(1);
     await expect
       .soft(pg.locator('#tree [data-node="trainee"]').getByLabel(/^Affinity \d/), `${name}: her total`)
@@ -779,7 +778,6 @@ export default async function career(b) {
     const name = 'career: the race schedule and the deck are buttons under the trainee, not sections of the page';
     await expect.soft(pg.locator('#tree [data-node="trainee"] #sched-open'), `${name}: the schedule`).toHaveCount(1);
     await expect.soft(pg.locator('#tree [data-node="trainee"] #deck-open'), `${name}: the deck`).toHaveCount(1);
-    await expect.soft(pg.locator('#tree .lraces, #tree .ldeck'), `${name}: no sections`).toHaveCount(0);
   }
   await pg.click('#sched-open');
   await dialog(pg, 'sched-dlg');
@@ -954,7 +952,7 @@ export default async function career(b) {
         !!document.querySelector('#lodds #odds-open') &&
         !!document.querySelector('#lodds #sim-try') &&
         t.nextElementSibling === r &&
-        !r.querySelector('#sim-top, #goal-note, .lhead') &&
+        !r.querySelector('#sim-top, #goal-note') &&
         !!dlg.querySelector('#sim-top #simulation #sim-compare') &&
         dlg.querySelector('#simulation > h3')?.textContent === 'Veteran analysis' &&
         !dlg.open

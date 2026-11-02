@@ -50,7 +50,7 @@ export default async function autosearch(b) {
   const n0 = await pg.evaluate(() => window.__runs.length);
   const off = 'switching auto-search off leaves the results as they are (not out of date)';
   await noteIs(done, off);
-  await expect.soft(pg.locator('#results'), `${off}: not dimmed`).not.toContainClass('stale');
+  await expect.soft(pg.locator('#results'), `${off}: not dimmed`).not.toHaveAttribute('data-stale');
   // P5: a card un-owned in the picker greys its card in the result on show at once, the same element (auto-search
   // off: that result stays); owned again, it is not greyed
   const tile = await pg.evaluate(() => {
@@ -64,13 +64,13 @@ export default async function autosearch(b) {
   });
   await openEditor(pg, 'cards');
   await pg.locator('#cards button[aria-pressed]').nth(tile).click();
-  const greyed = await pg.evaluate(() => window.__chip.isConnected && window.__chip.classList.contains('off'));
+  const greyed = await pg.evaluate(() => window.__chip.isConnected && window.__chip.hasAttribute('data-off'));
   await pg.locator('#cards button[aria-pressed]').nth(tile).click();
   check(
     'P5: un-owning a card in the picker greys it in the result on screen at once (the same element), owning it ungreys it',
     tile >= 0 &&
       greyed &&
-      (await pg.evaluate(() => window.__chip.isConnected && !window.__chip.classList.contains('off'))),
+      (await pg.evaluate(() => window.__chip.isConnected && !window.__chip.hasAttribute('data-off'))),
     `tile ${tile}, greyed ${greyed}`,
   );
   await pg.locator('#cards button[aria-pressed]').nth(6).click();

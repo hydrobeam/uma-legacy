@@ -50,7 +50,7 @@ export default async function fourloop(b) {
     afT.length === 4 &&
       new Set(afT).size === 4 &&
       (await pg.locator('#why-dlg').getByRole('radiogroup', { name: 'Parents' }).getByRole('radio').count()) === 3 &&
-      (await pg.locator('#why-dlg').getByRole('table', { name: 'Affinity' }).locator('tbody tr').count()) === 6 &&
+      (await pg.locator('#why-dlg').getByRole('table').locator('tbody tr').count()) === 6 &&
       !(await pg.locator('#why-dlg').getByText('her own earlier veteran').count()),
     afT.join(', '),
   );
