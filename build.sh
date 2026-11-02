@@ -6,17 +6,21 @@ set -euo pipefail
 R="$(cd "$(dirname "$0")" && pwd)"
 C="$R/pkg/loopopt"
 W="$R/webapp"
-# A linked worktree (git worktree add) uses the main checkout's cache/: Playwright's browsers, GameTora's files,
-# wasm-bindgen, the built wasm and checks' binary by their inputs' key, and the TLS certificate, through a symlink made
-# on first use, so a new worktree downloads nothing twice
+# A linked worktree (git worktree add) uses the main checkout's untracked inputs through symlinks made on first use:
+# cache/ (Playwright's browsers, GameTora's files, wasm-bindgen, the built wasm and checks' binary by their inputs' key,
+# the TLS certificate), game/ (master.mdb, which research reads) and webapp/img/ (the art, which the browser suite's
+# layout checks measure), so a new worktree downloads nothing twice and checks what the main checkout checks
 share_cache() {
-  local common main
+  local common main dir
   common=$(git -C "$R" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 0
   main=$(dirname "$common")
-  if [ "$main" != "$R" ] && [ ! -e "$R/cache" ] && [ -d "$main/cache" ]; then
-    ln -s "$main/cache" "$R/cache"
-    echo "cache: this worktree uses the main checkout's ($main/cache)"
-  fi
+  [ "$main" != "$R" ] || return 0
+  for dir in cache game webapp/img; do
+    if [ ! -e "$R/$dir" ] && [ -d "$main/$dir" ]; then
+      ln -s "$main/$dir" "$R/$dir"
+      echo "$dir: this worktree uses the main checkout's ($main/$dir)"
+    fi
+  done
 }
 share_cache
 BIN="$C/target/release/loopopt"
