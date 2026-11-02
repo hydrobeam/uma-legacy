@@ -15,7 +15,8 @@ import { browserStorage, readJson, updateJson } from '../storage.ts';
 import type { Backing } from '../storage.ts';
 import { gradesOfList, isGrades } from '../grades.ts';
 import type { Grades } from '../gen/solver.ts';
-import { jobNode, knownPinks } from './records.ts';
+import { jobLegacy, knownPinks } from './records.ts';
+import { must } from '../must.ts';
 import type { JobLegacy } from './records.ts';
 import { store } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';
@@ -54,6 +55,12 @@ export interface Lender {
   wins?: number;
   sparkStars?: number;
 }
+/** A parent place's record: her parent, or null where the record she came from lacks that parent (absent: a game
+ *  export's veteran, umadump.ts), whom the solver reads as no one. A parent with no uma is one not entered yet
+ *  (complete.ts). */
+export type ParentNode = LineageNode | null;
+/** a veteran's two parents, in their places */
+export type Parents = [ParentNode, ParentNode];
 /** A veteran of the pool: a lineage node with an identity, her source and her two parents. */
 export interface Veteran extends LineageNode {
   id: string;
@@ -61,7 +68,7 @@ export interface Veteran extends LineageNode {
    *  'sample' | 'entered' (older saves: 'simulated') */
   src: string;
   borrowed: boolean;
-  parents: LineageNode[];
+  parents: Parents;
   lender?: Lender;
   /** her rank score (her career-rank badge), when the import or uma.moe gives it */
   rank?: number | undefined;
@@ -127,7 +134,7 @@ function asAll(saved: any) {
 const loadAll = () => asAll(readJson(STORAGE_KEY, host.storage));
 /** a stored or pasted object, before it is checked */
 type Raw = Record<string, unknown>;
-/** a record the page can show and the solver can read: an id and two parent nodes (a damaged one is left out) */
+/** a record the page can show: an id and two parent places, each a node or null (absent); a damaged one is left out */
 export const isVeteran = (v: unknown): boolean => {
   const r = v as Raw | null;
   return (
@@ -135,7 +142,7 @@ export const isVeteran = (v: unknown): boolean => {
     typeof r.id === 'string' &&
     Array.isArray(r.parents) &&
     r.parents.length === 2 &&
-    r.parents.every((p: unknown) => !!p && typeof p === 'object')
+    r.parents.every((p: unknown) => p === null || (!!p && typeof p === 'object'))
   );
 };
 const isMap = (x: unknown) => !!x && typeof x === 'object' && !Array.isArray(x);
@@ -150,10 +157,20 @@ const asNode = (n: Raw): LineageNode => ({
   pinks: knownPinks(n.pinks).pinks, // (an aptitude the solver doesn't know is left out: records.ts)
   wins: Array.isArray(n.wins) ? n.wins : [],
 });
-/** a checked record (`isVeteran`) with its nodes' fields defaulted */
+// the sources of veterans entered here: a parent of theirs stored with no uma is one not entered (complete.ts: earlier
+// pages made a hand-entered veteran's parents up so); any other source's is one the record she came from lacks, absent
+const ENTERED_HERE = new Set(['hand', 'entered', 'simulated']);
+/** a checked record (`isVeteran`) with its nodes' fields defaulted, each parent place a node or absent */
 export const asVeteran = (v: unknown): Veteran => {
-  const r = v as Raw;
-  return { ...r, ...asNode(r), parents: (r.parents as Raw[]).map(asNode) } as Veteran;
+  const r = v as Raw,
+    enteredHere = ENTERED_HERE.has(r.src as string),
+    [first, second] = r.parents as [Raw | null, Raw | null]; // (two places: isVeteran)
+  const parent = (p: Raw | null): ParentNode => {
+    if (p === null) return null;
+    const node = asNode(p);
+    return node.chara === null && !enteredHere ? null : node;
+  };
+  return { ...r, ...asNode(r), parents: [parent(first), parent(second)] } as Veteran;
 };
 const isChosen = (c: unknown) => {
   const r = c as Raw | null;
@@ -253,19 +270,27 @@ function placesFor(list: readonly VetRecord[], plan: PlacesRecord): PlacesRecord
   const parents = plan.parents.map((id) => (id && list.some((v) => v.id === id) ? id : null));
   return parents.every((id, k) => id === plan.parents[k]) ? plan : { ...plan, parents };
 }
-// each veteran as the job takes her, made once per record
-const jobOf = new WeakMap<VetRecord, JobLegacy>();
-function jobLegacy(v: VetRecord) {
+// each veteran as the job takes her, made once per record (null: her record is not whole: records.ts `jobLegacy`, which
+// agrees with complete.ts `lacks`)
+const jobOf = new WeakMap<VetRecord, JobLegacy | null>();
+function jobOfVet(v: VetRecord): JobLegacy | null {
   let job = jobOf.get(v);
-  if (!job) {
-    job = { ...jobNode(v), borrowed: !!v.borrowed, parents: v.parents.map(jobNode) };
+  if (job === undefined) {
+    job = jobLegacy(v);
     jobOf.set(v, job);
   }
   return job;
 }
-const legacies = computed(() => vets.value.map(jobLegacy));
-/** every veteran as the job takes her: the same array until the veterans change (callers don't change it) */
-export const legaciesJob = () => legacies.value;
+// the veterans a job takes, in the pool's order, and each as the job takes her
+const jobPool = computed(() => {
+  const vetsIn = vets.value.filter((v) => jobOfVet(v) !== null);
+  return { vets: vetsIn, legacies: vetsIn.map((v) => must(jobOfVet(v), 'a veteran the job takes is whole')) };
+});
+/** the complete veterans (complete.ts): those a job takes, in the pool's order, legacy index i the i-th; the same
+ *  array until the veterans change */
+export const readyVets: ReadonlySignal<readonly VetRecord[]> = computed(() => jobPool.value.vets);
+/** every complete veteran as the job takes her: the same array until the veterans change (callers don't change it) */
+export const legaciesJob = () => jobPool.value.legacies;
 
 // ---------- the list
 // `list` with item `at` replaced
@@ -286,22 +311,14 @@ function commitList(list: readonly VetRecord[], plan = record.peek().plan) {
 export function addVets(list: readonly Veteran[]) {
   commitList(appended(record.peek().vets, list));
 }
-/** A new veteran by hand for a parent place: she gets `sparks`, and so do her parents (a looped parent's own parents
- *  carry the same sparks), whose umas are not known yet; `extra` over that (a veteran entered from the analysis).
- *  Returns her record. */
-export function newVet(chara: number | null, sparks: Sparks, extra: Partial<Veteran> = {}): VetRecord {
+/** A veteran entered here, one of yours, after the others: `src` 'hand' (the parent picker's A new one: entry.ts) or
+ *  'entered' (Try a run's Add to veterans: her record as entered, her parents the run's). Returns her record. */
+export function newVet(her: LineageNode & { parents: Parents }, src: 'hand' | 'entered'): VetRecord {
   const v: Veteran = {
+    ...her,
     id: `h${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
-    src: 'hand',
-    chara,
+    src,
     borrowed: false,
-    sparks,
-    pinks: {},
-    blues: {},
-    greens: {},
-    wins: [],
-    parents: [0, 1].map(() => ({ chara: null, sparks: { ...sparks }, pinks: {}, blues: {}, greens: {}, wins: [] })),
-    ...extra,
   };
   addVets([v]);
   return v;
@@ -396,31 +413,40 @@ function patched<T extends object>(node: T, patch: object): T {
   for (const [key, value] of Object.entries(patch)) if (value === undefined) delete next[key];
   return next as T;
 }
+// her record edited by `f` (none here, or `f` hands her back as she is: nothing is written)
 function editAt(id: string, f: (v: VetRecord) => VetRecord) {
-  const list = record.peek().vets;
-  if (list.some((v) => v.id === id)) commit({ vets: list.map((v) => (v.id === id ? f(v) : v)) });
+  const list = record.peek().vets,
+    next = list.map((v) => (v.id === id ? f(v) : v));
+  if (next.some((v, i) => v !== list[i])) commit({ vets: next });
 }
 /** a veteran's own fields (an edit of one no longer here does nothing) */
 export function editVet(id: string, f: (now: VetRecord) => NodePatch & { borrowed?: boolean }) {
   editAt(id, (v) => patched(v, f(v)));
 }
-/** a parent's place: a lineage node's parents are a pair (asNode checks a stored veteran's) */
+/** a parent's place: a lineage node's parents are a pair (isVeteran checks a stored veteran's) */
 export type ParentPlace = 0 | 1;
-/** a node's parents with their places, in order (none for a node shown without her parents) */
-export const parentsPlaced = <T>(parents: readonly T[]): [T, ParentPlace][] =>
+/** a node's parents with their places, in order, leaving out an absent one (none for a node shown without her
+ *  parents) */
+export const parentsPlaced = <T>(parents: readonly (T | null)[]): [T, ParentPlace][] =>
   ([0, 1] as const).flatMap((j): [T, ParentPlace][] => {
     const parent = parents[j];
-    return parent === undefined ? [] : [[parent, j]];
+    return parent === undefined || parent === null ? [] : [[parent, j]];
   });
-/** her parent j's fields */
+/** her parent j's fields (an absent one has none to edit) */
 function editParent(id: string, j: ParentPlace, f: (now: NodeRecord) => NodePatch) {
-  editAt(id, (v) => ({ ...v, parents: v.parents.map((p, i) => (i === j ? patched(p, f(p)) : p)) }));
+  editAt(id, (v) => {
+    const [first, second] = v.parents,
+      parent = j === 0 ? first : second;
+    if (!parent) return v;
+    const edited = patched(parent, f(parent));
+    return { ...v, parents: j === 0 ? [edited, second] : [first, edited] };
+  });
 }
 /** a veteran of the pool, for an editor */
 export const vetRef = (id: string): NodeRef => ({ node: () => vetById(id), edit: (f) => editVet(id, f) });
-/** her parent j, for an editor */
+/** her parent j, for an editor (absent: no node) */
 export const parentRef = (id: string, j: ParentPlace): NodeRef => ({
-  node: () => vetById(id)?.parents[j],
+  node: () => vetById(id)?.parents[j] ?? undefined,
   edit: (f) => editParent(id, j, f),
 });
 

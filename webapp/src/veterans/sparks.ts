@@ -2,11 +2,10 @@
 // (The sparks themselves are drawn by ui/Sparks.tsx, the picker by Editors.tsx.)
 import { signal } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
-import { careerTables, gameData } from '../data.ts';
-import { gradeOf, isAptitude } from '../grades.ts';
+import { careerTables } from '../data.ts';
+import { APTITUDES, gradeOf, isAptitude } from '../grades.ts';
 import { Grade } from '../gen/solver.ts';
 import type { Aptitude } from '../gen/solver.ts';
-import { SOLVER } from '../gen/constants.ts';
 import { pinkName, blueName, uniqueName } from './names.ts';
 import type { NodeRecord, NodeRef } from './store.ts';
 
@@ -39,41 +38,46 @@ export const KIND: Record<Colour, SparkKind> = {
     groups: (nd) => (nd.outfit && uniqueName(nd.outfit) ? [nd.outfit] : []),
   },
 };
-// the aptitudes a pink can come from: those she ends at A or S (a pink is drawn from them only): her end-of-career
-// grades when known (the veteran analysis), else her uma's base grades; the pink she has always stays a choice. Every
-// choice is an aptitude the solver knows, in code order (turf, dirt, the styles, the distances).
-const BY_CODE: readonly Aptitude[] = Object.keys(SOLVER.aptitude_kinds)
-  .map(Number)
-  .filter(isAptitude)
-  .sort((a, b) => a - b);
+// the aptitudes a pink can come from: those she ends at A or S (a pink is drawn from them only). Her end-of-career
+// grades are known for the veteran analysis' draft; a pool veteran's are not (her legacies' pinks raise her uma's base
+// grades, two steps from C to A at most per legacy pink), so every aptitude is a choice for her. The pink she has always
+// stays a choice. Every choice is an aptitude the solver knows, in code order (turf, dirt, the styles, the distances).
 function pinkChoices(nd: NodeRecord): Aptitude[] {
-  const grades = nd.apt || gameData().umas.find((u) => u.id === nd.chara)?.apt;
+  const grades = nd.apt;
   const have = Object.keys(nd.pinks || {})
     .map(Number)
     .filter(isAptitude);
-  if (!grades) return [...BY_CODE];
-  return BY_CODE.filter((aptitude) => gradeOf(grades, aptitude) >= Grade.A || have.includes(aptitude));
+  if (!grades) return [...APTITUDES];
+  return APTITUDES.filter((aptitude) => gradeOf(grades, aptitude) >= Grade.A || have.includes(aptitude));
 }
 // her spark of one kind, as [group (an object key: a string), stars], or undefined (none)
 export const currentSpark = (nd: NodeRecord, kind: Colour): [string, number] | undefined =>
   Object.entries(nd[KIND[kind].field] || {}).find(([, stars]) => stars > 0);
 // the picker (game style, Editors.tsx ColourDialog): the choices as bars of the spark's colour, its stars (click one),
 // Done (no remove: every veteran has one blue and one pink). Each pick lands on her record as it is then (`at`).
-/** the colour picker's subject: her node, the kind, whether it is open, and its openings (`n`) */
+/** what an opener adds: whose spark it is (named in the title), and what runs once the picker has closed */
+interface ColourOpts {
+  who?: string;
+  onClose?: () => void;
+}
+/** the colour picker's subject: her node, the kind, its opener's options, whether it is open, and its openings (`n`) */
 export interface ColourEdit {
   at: NodeRef;
   kind: Colour;
+  opts: ColourOpts;
   open: boolean;
   n: number;
 }
 const colour = signal<ColourEdit | null>(null);
 /** the colour picker's node and kind (null: never opened) */
 export const colourEditing: ReadonlySignal<ColourEdit | null> = colour;
-export function openColour(at: NodeRef, kind: Colour): void {
-  colour.value = { at, kind, open: true, n: (colour.peek()?.n ?? 0) + 1 };
+export function openColour(at: NodeRef, kind: Colour, opts: ColourOpts = {}): void {
+  colour.value = { at, kind, opts, open: true, n: (colour.peek()?.n ?? 0) + 1 };
 }
 /** the picker has closed (Done, Escape, the backdrop) */
 export function colourClosed(): void {
   const now = colour.peek();
-  if (now?.open) colour.value = { ...now, open: false };
+  if (!now?.open) return;
+  colour.value = { ...now, open: false };
+  now.opts.onClose?.();
 }

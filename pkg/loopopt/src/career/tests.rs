@@ -60,7 +60,9 @@ pub(super) fn with_env(hook: Hook) {
     for (i, legacy) in job["career"]["legacies"].as_array_mut().unwrap().iter_mut().enumerate() {
         legacy["wins"] = json!([(i % 5) as u64, 7 + (i % 3) as u64, 20]);
         for (j, grandparent) in legacy["parents"].as_array_mut().unwrap().iter_mut().enumerate() {
-            grandparent["wins"] = json!([(i + j) % 5]);
+            if !grandparent.is_null() {
+                grandparent["wins"] = json!([(i + j) % 5]);
+            }
         }
     }
     ENV_HOOK.with(|cell| *cell.borrow_mut() = Some(hook));

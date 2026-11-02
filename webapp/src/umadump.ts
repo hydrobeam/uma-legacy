@@ -7,7 +7,7 @@
 // career start screen's borrow list); use_type is 0 on both.
 import { careerTables } from './data.ts';
 import { isAptitude } from './grades.ts';
-import type { LineageNode, Sparks, Veteran } from './veterans/store.ts';
+import type { LineageNode, ParentNode, Parents, Sparks, Veteran } from './veterans/store.ts';
 
 // The files are the game's JSON (or uma.moe's), typed below by the fields read: their shape is trusted once a record
 // is found (`records`, `parseTree`'s type check, uma.moe's `inheritance_id`).
@@ -114,8 +114,9 @@ const node = (record: ExportNode): LineageNode => ({
   greens: bestStars(record.factor_info_array, kept(isGreen)),
   wins: winsOf(record.win_saddle_id_array),
 });
-// a parent the export doesn't have
-const unknownParent = (): LineageNode => ({ chara: null, sparks: {}, pinks: {}, wins: [] });
+// her parent in place j (0 or 1) as `parentAt` reads it, each absent (null) where the record lacks her
+// (veterans/complete.ts: absent is no one, and no lack)
+const parentsOf = (parentAt: (j: 0 | 1) => ParentNode): Parents => [parentAt(0), parentAt(1)];
 
 // the list of veterans in an export: the file's array, or the first array of veteran records inside an object
 function records(json: unknown): ExportVeteran[] {
@@ -155,9 +156,9 @@ export function parseTree(text: string): VeteransRead | null {
       id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
       src: 'tree',
       borrowed: false,
-      parents: [1, 2].map((j) => {
-        const parent = at.get(`${x.position}-${j}`);
-        return parent ? treeNode(parent) : unknownParent();
+      parents: parentsOf((j) => {
+        const parent = at.get(`${x.position}-${j + 1}`);
+        return parent ? treeNode(parent) : null;
       }),
     }));
   return { veterans, unknownPinks: unknownPinksOf(json.payload.map(record)) };
@@ -182,9 +183,10 @@ export function parseExport(text: string): VeteransRead {
     id:
       (r.owner_viewer_id ? `tr${r.owner_viewer_id}-` : 'tc') +
       (r.trained_chara_id ?? Math.random().toString(36).slice(2)),
-    parents: [10, 20].map((position) => {
-      const parent = (r.succession_chara_array || []).find((x) => x.position_id === position);
-      return parent ? node(parent) : unknownParent();
+    // (the export places her parents at positions 10 and 20)
+    parents: parentsOf((j) => {
+      const parent = (r.succession_chara_array || []).find((x) => x.position_id === (j + 1) * 10);
+      return parent ? node(parent) : null;
     }),
   }));
   const parents = found.flatMap((r) => r.succession_chara_array || []);

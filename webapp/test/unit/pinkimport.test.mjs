@@ -1,13 +1,13 @@
 // A pink spark of an aptitude the solver doesn't know never reaches a job: the game's export (umadump.ts `parseExport`)
 // leaves it out of her record and counts it, a stored or pasted veteran's pink map keeps only the solver's aptitudes
 // with 1 to 3 stars (veterans/records.ts `knownPinks`, read by veterans/store.ts `asVeteran`), and a job carries her
-// pinks as the solver's records (`jobNode`). A stored veteran's grades saved as a list read as the solver's `Grades`.
+// pink as the solver's record (`jobLegacy`). A stored veteran's grades saved as a list read as the solver's `Grades`.
 // npx vitest run (in webapp)
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
 import { loadData } from '../../src/data.ts';
 import { parseExport } from '../../src/umadump.ts';
-import { jobNode, knownPinks, unknownPinksIn } from '../../src/veterans/records.ts';
+import { jobLegacy, knownPinks, unknownPinksIn } from '../../src/veterans/records.ts';
 import { asVeteran } from '../../src/veterans/store.ts';
 import { Aptitude } from '../../src/gen/solver.ts';
 
@@ -50,7 +50,9 @@ test('a stored or pasted pink map keeps the solver aptitudes with 1 to 3 stars',
   assert.deepEqual(knownPinks('not a map'), { pinks: {}, unknown: 0 }, 'no map: none');
   const raw = {
     id: 'h1',
-    src: 'hand',
+    // (an import: her parent with no uma is one the record lacks, absent; on a veteran entered here she would be one
+    // not entered, which no job takes: complete.test.mjs)
+    src: 'import',
     borrowed: false,
     chara: 1001,
     sparks: {},
@@ -68,5 +70,15 @@ test('a stored or pasted pink map keeps the solver aptitudes with 1 to 3 stars',
   assert.deepEqual(v.pinks, { [Aptitude.Mile]: 1 }, 'her known pink kept');
   assert.deepEqual(v.parents[0].pinks, {}, 'the unknown left out');
   assert.deepEqual(v.apt, { distance: [7, 6, 5, 4], surface: [8, 1], style: [2, 3, 4, 5] }, 'grades by kind');
-  assert.deepEqual(jobNode(v).pinks, [{ aptitude: Aptitude.Mile, stars: 1 }], 'the job carries the solver record');
+  // a job takes a whole record: her pink, each parent entered with hers or absent
+  assert.equal(jobLegacy(v), null, "a parent whose pink was left out: the record isn't whole, no job takes her");
+  const [first, unknown] = v.parents,
+    whole = { ...v, parents: [{ ...first, pinks: { [Aptitude.Turf]: 2 } }, unknown] };
+  const job = jobLegacy(whole);
+  assert.deepEqual(job?.pink, { aptitude: Aptitude.Mile, stars: 1 }, 'the job carries the solver record');
+  assert.deepEqual(job?.parents[0]?.pink, { aptitude: Aptitude.Turf, stars: 2 }, "her parent's");
+  assert.equal(job?.parents[1], null, 'an absent parent: null');
+  assert.equal(jobLegacy({ ...whole, pinks: {} }), null, 'a veteran without her pink: no job takes her');
+  const phantom = { ...whole, parents: [whole.parents[0], { chara: null, sparks: { 7: 1 }, pinks: {}, wins: [] }] };
+  assert.equal(jobLegacy(phantom), null, 'a parent with sparks but no uma: not whole');
 });

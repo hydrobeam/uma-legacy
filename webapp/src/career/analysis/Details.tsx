@@ -25,7 +25,7 @@ import { Aptitude, Grade } from '../../gen/solver.ts';
 import { CardAv, GradeBadge, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import type { DeepReadonly } from '../../store.ts';
 import type { CareerReport } from '../job.ts';
-import { draftRef } from '../../veterans/store.ts';
+import { draftRef, parentsPlaced } from '../../veterans/store.ts';
 import type { Draft, VetRecord } from '../../veterans/store.ts';
 import { detailsTab as tab, racesShown, showTab, toggleRaces } from './state.ts';
 import type { DetailsTab } from './state.ts';
@@ -362,8 +362,7 @@ function Legacy({ v, label, open, j }: DetailsSpec['legacies'][number] & { j: nu
           {v.borrowed && <span class="bg-legacy-pink text-caption rounded-full px-2 font-black text-white">Guest</span>}
         </button>
         <div class={GRANDPARENTS}>
-          {v.parents.map((g, k) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places
+          {parentsPlaced(v.parents).map(([g, k]) => (
             <div key={k} class="text-note flex min-w-0 items-center gap-1.5 font-bold">
               <UmaAv
                 key={`${g.chara}:${g.outfit}`}

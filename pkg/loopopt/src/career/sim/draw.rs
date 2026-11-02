@@ -103,10 +103,16 @@ impl Sim<'_, '_> {
             .map(|(race_index, _)| race_index)
             .collect();
         let mut pink_item = 0;
-        let pinks = self.env.setup.draw_veteran_pink(&path.pool, career.lineage, career.record.outfit, || {
-            pink_item += 1;
-            keys.uniform(career_index, STREAM_PINK, pink_item - 1)
-        });
+        // (every trained uma has a pink: the data gives every outfit grades with one at A or better, which a career only
+        // raises, so a draw finds one)
+        let pink = self
+            .env
+            .setup
+            .draw_veteran_pink(&path.pool, career.lineage, career.record.outfit, || {
+                pink_item += 1;
+                keys.uniform(career_index, STREAM_PINK, pink_item - 1)
+            })
+            .expect("a veteran's grades reach A, so a pink is drawn (data.json gives every outfit's grades)");
         let Lineage { trainee, first_parent, second_parent } = career.lineage;
         let legacies = &path.legacies;
         Legacy {
@@ -114,8 +120,11 @@ impl Sim<'_, '_> {
             borrowed: false,
             sparks,
             wins,
-            pinks,
-            parents: vec![Ancestor::of_legacy(&legacies[first_parent]), Ancestor::of_legacy(&legacies[second_parent])],
+            pink,
+            parents: [
+                Some(Ancestor::of_legacy(&legacies[first_parent])),
+                Some(Ancestor::of_legacy(&legacies[second_parent])),
+            ],
         }
     }
 }

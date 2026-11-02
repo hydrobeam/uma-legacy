@@ -42,6 +42,11 @@ export function withGrade(grades: DeepReadonly<Grades>, aptitude: Aptitude, grad
 const isGrade = (x: unknown): x is Grade => typeof x === 'number' && Grade[x] !== undefined;
 /** whether `code` (a pink spark's factor group, read from a file, a save or uma.moe) is an aptitude the solver knows */
 export const isAptitude = (code: number): code is Aptitude => Object.hasOwn(SOLVER.aptitude_kinds, code);
+/** every aptitude the solver knows, in code order (turf, dirt, the styles, the distances) */
+export const APTITUDES: readonly Aptitude[] = Object.keys(SOLVER.aptitude_kinds)
+  .map(Number)
+  .filter(isAptitude)
+  .sort((a, b) => a - b);
 /** how many grades of each kind a `Grades` holds: as many as the solver has aptitudes of that kind */
 const KIND_SIZES = { distance: 0, surface: 0, style: 0 };
 for (const at of Object.values(SOLVER.aptitude_kinds)) KIND_SIZES[at.kind]++;

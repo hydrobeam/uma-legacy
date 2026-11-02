@@ -7,6 +7,7 @@ import type { ComponentChildren } from 'preact';
 import { useRef } from 'preact/hooks';
 import { vets, places, parentsPlaced } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
+import { isComplete } from '../../veterans/complete.ts';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffHeart } from '../../ui/AffTable.tsx';
 import { openTryRun } from '../analysis/view.tsx';
@@ -188,7 +189,7 @@ function Family({ k, r }: { k: 0 | 1; r: CareerReport | null }) {
           sub={
             v.lender
               ? `uma.moe · ${v.lender.name || 'trainer'}`
-              : `Veteran #${idxOf(v.id) + 1}${v.borrowed ? ' · borrowed' : v.src === 'hand' ? ', made here' : ''}`
+              : `Veteran #${idxOf(v.id) + 1}${v.borrowed ? ' · borrowed' : v.src === 'hand' ? ', made here' : ''}${isComplete(v) ? '' : ', incomplete'}`
           }
           label={`Parent ${k + 1}: ${umaName(v.chara)}. Details`}
         />
@@ -212,8 +213,8 @@ function Family({ k, r }: { k: 0 | 1; r: CareerReport | null }) {
               kind="gp"
               k={`node:p${k}g${j}`}
               face={<UmaAv key={`${g.chara}:${g.outfit}`} uma={g.chara || 0} outfit={g.outfit} size={36} ring="node" />}
-              name={g.chara ? umaName(g.chara) : 'Unknown: pick her'}
-              label={`Grandparent: ${g.chara ? umaName(g.chara) : 'unknown'}. Details`}
+              name={g.chara ? umaName(g.chara) : 'Not entered'}
+              label={`Grandparent: ${g.chara ? umaName(g.chara) : 'not entered'}. Details`}
             />
           ))}
         </div>

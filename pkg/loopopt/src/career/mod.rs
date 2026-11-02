@@ -175,7 +175,7 @@ impl TryFrom<PinkFields> for Pink {
 }
 
 /// A veteran's parent as her record names it.
-#[derive(Serialize, Deserialize, Clone, Default, ts_rs::TS)]
+#[derive(Serialize, Deserialize, Clone, ts_rs::TS)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Ancestor {
     #[serde(rename = "chara")]
@@ -188,21 +188,19 @@ pub(crate) struct Ancestor {
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     pub wins: Vec<usize>,
-    /// its pink sparks: reported (inheritance chance per aptitude), and they raise her children's grades (their
-    /// schedules); not part of the skill odds
-    #[serde(default)]
-    #[ts(as = "Option<_>", optional)]
-    pub pinks: Vec<Pink>,
+    /// its pink spark (every trained uma has one): reported (inheritance chance per aptitude), and it raises her
+    /// children's grades (their schedules); not part of the skill odds
+    pub pink: Pink,
 }
 
 impl Ancestor {
-    /// A legacy as her child's record of a parent: her character, white sparks, G1 wins and pink sparks.
+    /// A legacy as her child's record of a parent: her character, white sparks, G1 wins and pink spark.
     fn of_legacy(legacy: &Legacy) -> Self {
         Self {
             character_id: legacy.character_id,
             sparks: legacy.sparks.clone(),
             wins: legacy.wins.clone(),
-            pinks: legacy.pinks.clone(),
+            pink: legacy.pink,
         }
     }
 }
@@ -223,7 +221,7 @@ struct IdentityRecord<'legacy> {
     chara: u32,
     parents: Vec<IdentityParent<'legacy>>,
     #[serde(serialize_with = "pink_pairs")]
-    pinks: &'legacy [Pink],
+    pinks: &'legacy Pink,
     #[serde(serialize_with = "spark_pairs")]
     sparks: &'legacy [Spark],
     wins: &'legacy [usize],
@@ -234,7 +232,7 @@ struct IdentityRecord<'legacy> {
 struct IdentityParent<'legacy> {
     chara: u32,
     #[serde(serialize_with = "pink_pairs")]
-    pinks: &'legacy [Pink],
+    pinks: &'legacy Pink,
     #[serde(serialize_with = "spark_pairs")]
     sparks: &'legacy [Spark],
     wins: &'legacy [usize],
@@ -246,9 +244,10 @@ fn spark_pairs<S: serde::Serializer>(sparks: &&[Spark], serializer: S) -> Result
     serializer.collect_seq(sparks.iter().map(|spark| (spark.group, spark.stars)))
 }
 
-/// Pink sparks in an identity's text as `[aptitude code, stars]` pairs (`spark_pairs`).
-fn pink_pairs<S: serde::Serializer>(pinks: &&[Pink], serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.collect_seq(pinks.iter().map(|pink| (pink.aptitude, pink.stars)))
+/// A pink spark in an identity's text as a list of one `[aptitude code, stars]` pair (`spark_pairs`: as records held
+/// a list of pinks when the identities were first taken).
+fn pink_pairs<S: serde::Serializer>(pink: &&Pink, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.collect_seq([(pink.aptitude, pink.stars)])
 }
 
 impl Legacy {
@@ -262,14 +261,15 @@ impl Legacy {
             parents: self
                 .parents
                 .iter()
+                .flatten()
                 .map(|parent| IdentityParent {
                     chara: parent.character_id,
-                    pinks: &parent.pinks,
+                    pinks: &parent.pink,
                     sparks: &parent.sparks,
                     wins: &parent.wins,
                 })
                 .collect(),
-            pinks: &self.pinks,
+            pinks: &self.pink,
             sparks: &self.sparks,
             wins: &self.wins,
         };
@@ -278,22 +278,9 @@ impl Legacy {
     }
 }
 
-/// A legacy's recorded parents (the trainee's grandparents under her): at most two. More would count a target's
-/// carriers n past six (a gold spark's chance, 0.4 x 1.1^n, passes 1 at n = 10).
-fn recorded_parents<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<Ancestor>, D::Error> {
-    let parents = Vec::<Ancestor>::deserialize(deserializer)?;
-    if parents.len() > 2 {
-        return Err(serde::de::Error::custom(format!(
-            "a veteran has at most 2 parents on record, not {}",
-            parents.len()
-        )));
-    }
-    Ok(parents)
-}
-
 /// A veteran as a job sends her: her record (character, sparks, G1 wins, pinks) and her recorded parents. A veteran
 /// the planner imagines is not one (`imagined::ImaginedVeteran`).
-#[derive(Serialize, Deserialize, Clone, Default, ts_rs::TS)]
+#[derive(Serialize, Deserialize, Clone, ts_rs::TS)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Legacy {
     #[serde(rename = "chara")]
@@ -307,13 +294,13 @@ pub(crate) struct Legacy {
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     pub wins: Vec<usize>,
+    /// her pink spark (every trained uma has one)
+    pub pink: Pink,
+    /// her two parents (the new trainee's grandparents under her), each None where her record has none (an unknown
+    /// parent, which counts for nothing)
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
-    pub pinks: Vec<Pink>,
-    /// its own parents (the new trainee's grandparents), at most two; empty when unknown
-    #[serde(default, deserialize_with = "recorded_parents")]
-    #[ts(as = "Option<_>", optional)]
-    pub parents: Vec<Ancestor>,
+    pub parents: [Option<Ancestor>; 2],
 }
 
 const fn d_top() -> usize {

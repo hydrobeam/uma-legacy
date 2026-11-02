@@ -52,21 +52,14 @@ export interface SkillsAsk {
   /** she has sparks to keep ("Keep her current skills" is offered) */
   hasSparks: boolean;
   onChoice: (sparks: Sparks | null) => void;
-  /** the same choice goes on her two parents */
-  withParents: boolean;
   open: boolean;
   n: number;
 }
 const ask = signal<SkillsAsk | null>(null);
 /** the skills prompt's question (null: never asked) */
 export const skillsAsked: ReadonlySignal<SkillsAsk | null> = ask;
-export function askSkills(
-  name: string,
-  hasSparks: boolean,
-  onChoice: (sparks: Sparks | null) => void,
-  withParents = false,
-): void {
-  ask.value = { name, hasSparks, onChoice, withParents, open: true, n: (ask.peek()?.n ?? 0) + 1 };
+export function askSkills(name: string, hasSparks: boolean, onChoice: (sparks: Sparks | null) => void): void {
+  ask.value = { name, hasSparks, onChoice, open: true, n: (ask.peek()?.n ?? 0) + 1 };
 }
 /** the prompt is dismissed (Escape): nothing chosen */
 export function askClosed(): void {

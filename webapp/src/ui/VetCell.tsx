@@ -121,15 +121,16 @@ export interface VetCellProps {
   onClick: () => void;
   /** a role tab over her ("Parent 1") */
   tab?: string | undefined;
-  /** a line under her name */
-  sub?: string;
+  /** a line under her name, and its tooltip */
+  sub?: string | undefined;
+  subTitle?: string | undefined;
   /** the pool's: her card's id, data-k, chosen mark and aria-current */
   id?: string;
   k?: string;
   sel?: boolean;
   current?: boolean;
 }
-export function VetCell({ v, name, label, onClick, tab, sub, id, k, sel, current }: VetCellProps) {
+export function VetCell({ v, name, label, onClick, tab, sub, subTitle, id, k, sel, current }: VetCellProps) {
   // her career-rank badge, top right of her portrait (the last rank whose minimum her score reaches)
   const rank = v.rank,
     rankId = rank
@@ -173,7 +174,11 @@ export function VetCell({ v, name, label, onClick, tab, sub, id, k, sel, current
       <span class="text-caption text-gm-ink max-w-full truncate font-black" data-part="name">
         {name}
       </span>
-      {sub && <span class="text-ui text-gm-ink2">{sub}</span>}
+      {sub && (
+        <span class="text-ui text-gm-ink2 max-w-full truncate" title={subTitle}>
+          {sub}
+        </span>
+      )}
     </button>
   );
 }

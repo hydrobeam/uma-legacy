@@ -15,7 +15,8 @@ vi.mock('#page-data', () => import('./fakepage.mjs'));
 
 await loadData();
 
-const node = (chara) => ({ chara, sparks: {}, pinks: {}, blues: {}, greens: {}, wins: [] });
+// (each with the one pink a complete veteran has: the job takes her)
+const node = (chara) => ({ chara, sparks: {}, pinks: { 11: 1 }, blues: {}, greens: {}, wins: [] });
 const vet = (id) => ({ id, src: 'import', borrowed: false, ...node(1001), parents: [node(1002), node(1003)] });
 
 test('an edit searches again; a new pool drops the answer; a held search waits for its window to close', () => {

@@ -12,6 +12,7 @@
 import { batch } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import { deepFreeze, store } from '../../store.ts';
+import { assert } from '../../must.ts';
 import type { DeepReadonly } from '../../store.ts';
 import { clearPlaces, draft, newVet, setDraft, setDraftParents } from '../../veterans/store.ts';
 import type { Draft } from '../../veterans/store.ts';
@@ -133,15 +134,18 @@ export function draftChanged() {
   if (draft.peek() && r && !stale) patch({ stale: true });
 }
 /** she joins the veterans (Add to veterans): her record as entered, without what only her roll knows (`apt`, `bought`),
+ *  her parents the run's two (copies of their records as they were when she was drawn: analysis/view.tsx `draftOf`),
  *  the places back to the planner, and no draft (the next answer starts a new one even for the same career). Returns
  *  her uma (null: no draft) */
 export function draftJoins() {
   const now = draft.peek();
   if (!now) return null;
-  const { apt: _apt, bought: _bought, ...entered } = structuredClone(now) as Draft;
+  const { apt: _apt, bought: _bought, parents, ...entered } = structuredClone(now) as Draft,
+    [first, second] = parents;
+  assert(!!first && !!second && parents.length === 2, "her draft's parents are the run's two");
   batch(() => {
     setDraft(null);
-    newVet(entered.chara, entered.sparks, { ...entered, src: 'entered', borrowed: false });
+    newVet({ ...entered, parents: [first, second] }, 'entered');
     clearPlaces();
   });
   return entered.chara;

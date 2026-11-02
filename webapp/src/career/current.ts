@@ -9,7 +9,9 @@ import { settings } from '../settings.ts';
 import { run as engineRun } from '../engine.ts';
 import { goldGiven } from '../job.ts';
 import { srcFor } from '../images.ts';
-import { vets, places, chosen, setChosen, vetById, addVets, legaciesJob } from '../veterans/store.ts';
+import { APTITUDES } from '../grades.ts';
+import { pinkAmong } from '../pink.ts';
+import { vets, places, chosen, setChosen, vetById, addVets, legaciesJob, readyVets } from '../veterans/store.ts';
 import { targetGroups } from '../veterans/names.ts';
 import { answer, answerCareer, answerPool, choiceDropped, dropAnswer, reference } from './state.ts';
 import { on } from '../store.ts';
@@ -59,6 +61,7 @@ export const currentJob = (): CareerJob =>
     {
       settings: settings.peek(),
       vets: vets.peek(),
+      ready: readyVets.peek(),
       legacies: legaciesJob(),
       places: places.peek(),
       chosen: chosen.peek(),
@@ -116,7 +119,10 @@ export function parentAt(
 // portrait), six veterans with two mob parents each, the bare minimum to start a loop: each veteran carries, at 1 star,
 // only the targets nothing but inheritance gives (no card hints or events them, no outfit has them, the scenario
 // doesn't hand them out); her parents carry nothing. No relation points with anyone (the solver knows no mob), no G1
-// wins. Marked as samples; Remove all clears them.
+// wins. Each, parents too, has the one pink every veteran has, drawn by the model's rule (pink.ts `pinkAmong`: uniform
+// over the aptitudes she ends at A or S, then her stars), with the same random source as the umas, after them. A mob's
+// grades are not in the game's data (master.mdb `mob_data` holds her looks and running style), so every aptitude is
+// taken as one she may end at A or S (assumed). Marked as samples; Remove all clears them.
 function sampleVets(): Veteran[] {
   const all = careerTables().mobs || [],
     withArt = all.filter(([id]) => srcFor('mob', id)),
@@ -128,7 +134,7 @@ function sampleVets(): Veteran[] {
   const node = (id: number, sparks: Sparks): LineageNode => ({
     chara: id,
     sparks,
-    pinks: {},
+    pinks: pinkAmong(APTITUDES, Math.random),
     blues: {},
     greens: {},
     wins: [],
@@ -202,14 +208,15 @@ function asTableRows(m: SolverAnswer<Gen.CareerReply>): CareerAnswer {
 }
 
 // ---------- the veterans and places, followed
-// A result names parents by their place in the veteran list: adding, removing or importing veterans changes the places,
-// so the answer on screen goes; an edit to a veteran or a place keeps it on screen, dimmed, until the new one is ready.
-// While a pool veteran's G1 wins window or a skills prompt is open its edits are saved, and the search waits for it to
-// close (veterans/pickers.ts `searchHeld`). The entry calls it once, with its run machine and comparison.
+// A result names parents by their place among the complete veterans (the job's legacies): adding, removing or importing
+// veterans, or one becoming complete or incomplete, changes the places, so the answer on screen goes; an edit to a
+// veteran or a place keeps it on screen, dimmed, until the new one is ready. While a pool veteran's G1 wins window or a
+// skills prompt is open its edits are saved, and the search waits for it to close (veterans/pickers.ts `searchHeld`).
+// The entry calls it once, with its run machine and comparison.
 export function followPool(run: { schedule: () => void }, comparison: { clear: () => void }) {
-  const idsOf = (list: typeof vets.value) => list.map((v) => v.id).join(',');
-  let ids = idsOf(vets.peek());
-  return on([vets, places, searchHeld], (list, _places, held) => {
+  const idsOf = (list: typeof readyVets.value) => list.map((v) => v.id).join(',');
+  let ids = idsOf(readyVets.peek());
+  return on([readyVets, places, searchHeld], (list, _places, held) => {
     if (held) return;
     if (idsOf(list) !== ids) {
       ids = idsOf(list);

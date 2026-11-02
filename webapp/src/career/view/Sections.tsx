@@ -164,14 +164,18 @@ function cardsGiving(r: CareerReport, g: number) {
   }
   return out;
 }
-// her six legacies (each parent, then her two parents), and whether each carries target group g
+// her six legacies (each parent, then her two parents; an absent one no one, character 0), and whether each carries
+// target group g
 function legaciesCarrying(r: CareerReport, g: number) {
   const out = [];
   for (const ix of r.parents) {
     const v = legacyVet(ix);
     if (!v) continue; // (she has left the pool under the answer on show)
     out.push({ chara: v.chara || 0, outfit: v.outfit, carries: starsOf(v.sparks, g) > 0 });
-    for (const p of v.parents) out.push({ chara: p.chara || 0, outfit: p.outfit, carries: starsOf(p.sparks, g) > 0 });
+    for (const p of v.parents)
+      out.push(
+        p ? { chara: p.chara || 0, outfit: p.outfit, carries: starsOf(p.sparks, g) > 0 } : { chara: 0, carries: false },
+      );
   }
   return out;
 }

@@ -1515,10 +1515,14 @@ def legacy_tree(r: Run, M: Model, wins: RaceWins) -> list[dict[str, Any]]:
     """the job's two legacies, each with its two recorded parents, sparks and laid-out race wins"""
 
     def ancestor(a: dict[str, Any], won: list[int]) -> dict[str, Any]:
+        pinks = M.pinks(a["factors"])
+        if len(pinks) != 1:  # (every trained uma has one: a record without hers, or with two, is not one)
+            raise ValueError(f"run {r['id']}: legacy {a['chara']} has {len(pinks)} pink sparks, not 1")
+        [(aptitude, stars)] = pinks
         return {
             "chara": a["chara"],
             "sparks": [{"group": g, "stars": s} for g, s in M.sparks(a["factors"])],
-            "pinks": [{"aptitude": g, "stars": s} for g, s in M.pinks(a["factors"])],
+            "pink": {"aptitude": aptitude, "stars": stars},
             "wins": won,
         }
 

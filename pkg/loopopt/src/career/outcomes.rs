@@ -9,7 +9,7 @@ use crate::career::reply::{
 };
 use crate::career::schedule::{ExpectedRecord, PinkOutcome, ScheduleOutfits, pink_p};
 use crate::career::search::Found;
-use crate::career::{CareerSetup, DeckSearchMemo, SearchState, Spark};
+use crate::career::{CareerSetup, DeckSearchMemo, Pink, SearchState, Spark};
 use crate::codes::{Aptitude, Grades};
 use crate::deck::joint::exact::{JointScratch, joint_eval_in, joint_prep};
 use crate::deck::joint::{JointExt, JointOptions};
@@ -145,7 +145,7 @@ impl CareerSetup<'_> {
                 race: slot.race,
                 aff: slot.relation_points + slot.race,
                 stars: std::rc::Rc::clone(&slot.stars),
-                pinks: std::rc::Rc::clone(&slot.pinks),
+                pink: slot.pink,
             })
             .collect();
         // per target, buying it and landing it (MODEL.md, skills): bought as gold (her outfit's gold, or a deck gold hint)
@@ -205,7 +205,7 @@ impl CareerSetup<'_> {
         // pink sparks: per aptitude the chance at least one of the two inheritance rolls passes it on (1/3/5% per star)
         // (in code order; a pink's stars are 1..=3: `Pink`)
         let mut pink_aptitudes: Vec<Aptitude> =
-            legacy_slots.iter().flat_map(|slot| slot.pinks.iter().map(|pink| pink.aptitude)).collect();
+            legacy_slots.iter().filter_map(|slot| slot.pink.map(|pink| pink.aptitude)).collect();
         pink_aptitudes.sort_unstable();
         pink_aptitudes.dedup();
         let pinks = pink_aptitudes
@@ -213,8 +213,7 @@ impl CareerSetup<'_> {
             .map(|&aptitude| {
                 let (mut miss, mut n) = (1.0f64, 0);
                 for slot in &legacy_slots {
-                    let stars = slot.pinks.iter().filter(|pink| pink.aptitude == aptitude).map(|pink| pink.stars).max();
-                    if let Some(stars) = stars {
+                    if let Some(Pink { stars, .. }) = slot.pink.filter(|pink| pink.aptitude == aptitude) {
                         n += 1;
                         miss *= 1.0 - pink_p(stars, aff_factor(slot.relation_points, slot.race));
                     }

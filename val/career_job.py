@@ -50,13 +50,16 @@ def sparks(factors):
 pink_groups = {int(k) for k in tables.get("pinks", {})}
 
 
-def pinks(factors):
-    by_aptitude = {
-        factor["factor_id"] // 100: factor["factor_id"] % 100
+def pink(factors):
+    """her one pink spark (every trained uma has one)"""
+    found = [
+        {"aptitude": factor["factor_id"] // 100, "stars": factor["factor_id"] % 100}
         for factor in factors
         if factor["factor_id"] // 100 in pink_groups
-    }
-    return [{"aptitude": aptitude, "stars": stars} for aptitude, stars in sorted(by_aptitude.items())]
+    ]
+    if len(found) != 1:
+        raise SystemExit(f"a veteran has one pink spark, not {len(found)}: {found}")
+    return found[0]
 
 
 def wins(saddles):
@@ -67,7 +70,7 @@ def ancestor(veteran):
     return {
         "chara": veteran["card_id"] // 100,
         "sparks": sparks(veteran["factor_info_array"]),
-        "pinks": pinks(veteran["factor_info_array"]),
+        "pink": pink(veteran["factor_info_array"]),
         "wins": wins(veteran["win_saddle_id_array"]),
     }
 
@@ -76,11 +79,9 @@ legacies = []
 for veteran in veterans:
     legacy = ancestor(veteran)
     legacy["borrowed"] = bool(veteran.get("owner_viewer_id"))
-    legacy["parents"] = [
-        ancestor(parent)
-        for parent in sorted(veteran["succession_chara_array"], key=lambda parent: parent["position_id"])
-        if parent["position_id"] in (10, 20)
-    ]
+    # her parents at positions 10 and 20, each null where the export has none
+    by_position = {parent["position_id"]: parent for parent in veteran["succession_chara_array"]}
+    legacy["parents"] = [ancestor(by_position[p]) if p in by_position else None for p in (10, 20)]
     legacies.append(legacy)
 job = json.load(open(base_path))
 job["job"] = {**job["job"], "cmd": "career", "career": {"legacies": legacies}}

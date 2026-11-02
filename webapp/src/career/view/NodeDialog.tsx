@@ -20,6 +20,7 @@ import {
   parentsPlaced,
 } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
+import { lacks, lacksSaid } from '../../veterans/complete.ts';
 import { openWins, winsText, changeUma, openUmaPicker } from '../../veterans/pickers.ts';
 import type { NodeRecord, NodeRef, ParentPlace, VetRecord } from '../../veterans/store.ts';
 import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle, anyDialogOpen } from '../../ui/Dialog.tsx';
@@ -163,6 +164,20 @@ function NameCover({ v, look }: { v: NodeRecord; look: string }) {
     </div>
   );
 }
+/** her "Incomplete" tag, what she lacks in its tooltip (complete.ts); none when she is complete */
+function Incomplete({ v }: { v: VetRecord }) {
+  const lacking = lacks(v);
+  if (!lacking.length) return null;
+  return (
+    <span
+      class="border-out text-out font-data text-caption rounded-xs border px-1.75 py-0.75 font-bold"
+      data-incomplete=""
+      title={`Missing ${lacksSaid(lacking)}: the planner leaves her out`}
+    >
+      Incomplete
+    </span>
+  );
+}
 // (her trainer's followers too: at 1,000 the veteran can't be borrowed by following)
 const lenderText = (l: NonNullable<VetRecord['lender']>) =>
   `uma.moe · ${l.name || 'trainer'} · ${l.followers >= 1000 ? 'max followers' : `${l.followers} follower${l.followers === 1 ? '' : 's'}`}`;
@@ -212,6 +227,7 @@ function VeteranView({ id, pane = false }: { id: string; pane?: boolean }) {
           </span>
         )}
         {v.lender && <CopyId v={v} />}
+        <Incomplete v={v} />
       </div>
       {edit && (
         <div class="mt-0.5 mb-2 flex flex-wrap items-center gap-2.5">
@@ -260,7 +276,7 @@ function VeteranView({ id, pane = false }: { id: string; pane?: boolean }) {
           return (
             <div key={j} class="flex items-center gap-2">
               <Face nd={g} at={parentRef(id, j)} size={36} label={lab} change={edit} />
-              <span class={nameLook}>{g.chara ? umaName(g.chara) : 'Unknown parent'}</span>
+              <span class={nameLook}>{g.chara ? umaName(g.chara) : 'Not entered'}</span>
               <Wins nd={g} at={parentRef(id, j)} who={`${lab}, ${umaName(g.chara)}`} k={`v${v.id}g${j}`} edit={edit} />
             </div>
           );
@@ -380,6 +396,7 @@ function parentNode(k: number, r: CareerReport | null): NodeShown {
           </div>
           <Wins nd={v} at={vetRef(v.id)} who={umaName(v.chara)} k={`p${k}`} edit={!listed(v)} />
           {v.lender && <CopyId key={v.id} v={v} />}
+          <Incomplete v={v} />
         </div>
         <InspView
           nd={v}
@@ -399,8 +416,8 @@ function parentNode(k: number, r: CareerReport | null): NodeShown {
 // A grandparent (parent k's parent j): who she is, her sparks and G1 wins.
 function grandparentNode(k: number, j: ParentPlace, r: CareerReport | null): NodeShown | null {
   const at = parentAt(k, r),
-    g: NodeRecord | undefined = at?.v.parents[j];
-  if (!at || !g) return null;
+    g: NodeRecord | null | undefined = at?.v.parents[j];
+  if (!at || !g) return null; // (no parent place, or her parent is absent)
   const edit = !listed(at.v),
     gAt = parentRef(at.v.id, j);
   return {
@@ -409,7 +426,7 @@ function grandparentNode(k: number, j: ParentPlace, r: CareerReport | null): Nod
       <>
         <div class={WHO}>
           <Face nd={g} at={gAt} size={56} label="Grandparent" change={edit} />
-          <div class={NAME}>{g.chara ? umaName(g.chara) : 'Unknown: pick her'}</div>
+          <div class={NAME}>{g.chara ? umaName(g.chara) : 'Not entered'}</div>
           <Wins nd={g} at={gAt} who={umaName(g.chara)} k={`p${k}g${j}`} edit={edit} />
         </div>
         <InspView

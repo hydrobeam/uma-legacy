@@ -34,9 +34,9 @@ const node = (chara, sparks = {}) => ({ chara, sparks, pinks: {}, blues: {}, gre
 test('a node popup that throws while drawing: the dialog stays, the status line says so, a new subject draws (review-8c 3)', async () => {
   const frames = [];
   vs.initVets({ storage: () => memory(), hidden: () => false, afterFrame: (f) => frames.push(f) });
-  // a malformed record (one parent missing, as a hand-edited file could make it) and a good one
+  // a malformed record (a parent's G1 wins not a list, as a hand-edited file could make it) and a good one
   vs.addVets([
-    { id: 'bad', src: 'hand', borrowed: false, ...node(1001), parents: [node(1002), null] },
+    { id: 'bad', src: 'hand', borrowed: false, ...node(1001), parents: [node(1002), { ...node(1004), wins: null }] },
     { id: 'good', src: 'hand', borrowed: false, ...node(1003), parents: [node(1002), node(1004)] },
   ]);
   // the page's own status write (main.tsx), which must not draw the view again (a few at most here: a loop would not end)

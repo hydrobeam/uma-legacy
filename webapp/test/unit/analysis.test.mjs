@@ -39,13 +39,16 @@ function fakeEngine() {
   };
   return engine;
 }
+// her grades: A at every aptitude, so her roll draws a pink (every veteran has one), turf here
+const allA = { distance: [7, 7, 7, 7], surface: [7, 7], style: [7, 7, 7, 7] };
 const career = (name, parents = [0, 1], p_all = 0.01) => ({
   trainee: { id: 1001, name, outfits: [] },
   parents,
   career: name,
   p_all,
+  aptitudes: { base: allA, pink_gen: [{ aptitude: 11, p: 1 }], start: { kind: 'known', start: allA, fire: [] } },
 });
-const node = (sparks = {}) => ({ chara: 7, sparks, pinks: {}, wins: [] });
+const node = (sparks = {}) => ({ chara: 7, sparks, pinks: { 11: 1 }, wins: [] });
 // the page: the career on show `shown` (its search job `job`, `fix` set when a parent is fixed), and the plan for it
 function page({ fix = [], planFor = 'shown' } = {}) {
   store.analysisClears(); // (the store is the module's: no test sees the last one's draft)
