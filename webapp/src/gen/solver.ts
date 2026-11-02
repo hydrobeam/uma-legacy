@@ -40,15 +40,15 @@ sparks?: Array<Spark>,
  */
 wins?: Array<number>, 
 /**
- * its pink sparks: reported (inheritance chance per aptitude), and they raise her children's grades (their
- * schedules); not part of the skill odds
+ * its pink spark (every trained uma has one): reported (inheritance chance per aptitude), and it raises her
+ * children's grades (their schedules); not part of the skill odds
  */
-pinks?: Array<Pink>, };
+pink: Pink, };
 
 /**
  * A recorded parent of a veteran.
  */
-export type AncestorRecord = { chara: number, sparks: Array<Spark>, wins: Array<number>, pinks: Array<Pink>, };
+export type AncestorRecord = { chara: number, sparks: Array<Spark>, wins: Array<number>, pink: Pink, };
 
 /**
  * One of a uma's ten aptitudes, as the game's aptitude factor group codes it (master.mdb `succession_factor`,
@@ -398,9 +398,9 @@ aff: number,
  */
 stars: Array<number>, 
 /**
- * her pink sparks
+ * her pink spark (null: a veteran the planner imagines, whose pink is not known)
  */
-pinks: Array<Pink>, };
+pink: Pink | null, };
 
 /**
  * One target of a career.
@@ -873,11 +873,16 @@ export type Key = string;
  * A veteran as a job sends her: her record (character, sparks, G1 wins, pinks) and her recorded parents. A veteran
  * the planner imagines is not one (`imagined::ImaginedVeteran`).
  */
-export type Legacy = { chara: number, borrowed?: boolean, sparks?: Array<Spark>, wins?: Array<number>, pinks?: Array<Pink>, 
+export type Legacy = { chara: number, borrowed?: boolean, sparks?: Array<Spark>, wins?: Array<number>, 
 /**
- * its own parents (the new trainee's grandparents), at most two; empty when unknown
+ * her pink spark (every trained uma has one)
  */
-parents?: Array<Ancestor>, };
+pink: Pink, 
+/**
+ * her two parents (the new trainee's grandparents under her), each None where her record has none (an unknown
+ * parent, which counts for nothing)
+ */
+parents?: [Ancestor | null, Ancestor | null], };
 
 /**
  * Whose legacy a slot is.
@@ -888,7 +893,7 @@ export type LegacyKind = "parent" | "grandparent";
  * A veteran as a job records her (`legacies`): what the simulator's pool holds at a run's end, and what it sends its
  * in-process jobs (a copy: the pool changes as the path goes on).
  */
-export type LegacyRecord = { chara: number, borrowed: boolean, sparks: Array<Spark>, wins: Array<number>, pinks: Array<Pink>, parents: Array<AncestorRecord>, };
+export type LegacyRecord = { chara: number, borrowed: boolean, sparks: Array<Spark>, wins: Array<number>, pink: Pink, parents: [AncestorRecord | null, AncestorRecord | null], };
 
 /**
  * One legacy slot of a career.

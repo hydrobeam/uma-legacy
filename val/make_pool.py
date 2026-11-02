@@ -5,14 +5,14 @@ reach. It is a scale test: its veterans are recombined from real records, not dr
 Templates: the distinct veterans of the hand-built Global pools (val/plan's, at most HAND_BUILT veterans, so no
 pool this script wrote, and val/jobs' career jobs). Each veteran takes
 - a character drawn from the Global roster, and two parent characters drawn apart from hers and from each other (an
-  unknown parent, character 0, stays unknown);
-- one template's sparks and her parents' records (sparks, pinks, wins: inherited together, so kept together). FULL
+  unknown parent, null, stays unknown);
+- one template's sparks and her parents' records (sparks, pink, wins: inherited together, so kept together). FULL
   veterans (default 1) take a full template, every base target sparked; the others a template short of at least one
   target, a borrowed one's from the strong ones (at least STRONG_SPARKS sparked; assumed: lent veterans are strong
   ones). The hand-built pools hold many full records: drawn freely they gave 101 full veterans of 360, and with 8
   V's trio still stood on two of them (V about 78, the finish alone), so the plan had nothing to build; the real
   roster above had V's trio on one real side and one still building;
-- another template's G1 wins and a third's pinks.
+- another template's G1 wins and a third's pink.
 Seeded: the same arguments and templates write the same job.
 
 usage: uv run val/make_pool.py [--size N] [--borrowed K] [--full F] [--seed S] [--base JOB] [--plain] OUT
@@ -65,7 +65,7 @@ def templates(base_targets):
         if len(pool) > HAND_BUILT:
             continue
         for veteran in pool:
-            record = {key: veteran[key] for key in ("sparks", "pinks", "wins", "parents")}
+            record = {key: veteran[key] for key in ("sparks", "pink", "wins", "parents")}
             key = json.dumps(record, sort_keys=True)
             if key not in seen:
                 seen.add(key)
@@ -82,19 +82,17 @@ def templates(base_targets):
 
 def veteran(sparks_from, wins_from, pinks_from, roster, rng, borrowed):
     """a veteran of a fresh character: `sparks_from`'s sparks and parents' records (her parents under fresh characters
-    apart from hers), `wins_from`'s wins, `pinks_from`'s pinks"""
+    apart from hers; an unknown one, null, stays unknown), `wins_from`'s wins, `pinks_from`'s pink"""
     chara = rng.choice(roster)
-    others = rng.sample(
-        [c for c in roster if c != chara], len(sparks_from["parents"])
-    )  # (a record may list fewer than two)
+    others = rng.sample([c for c in roster if c != chara], 2)
     parents = [
-        {**parent, "chara": parent["chara"] and other}
+        None if parent is None else {**parent, "chara": other}
         for parent, other in zip(sparks_from["parents"], others, strict=True)
     ]
     return {
         "chara": chara,
         "sparks": sparks_from["sparks"],
-        "pinks": pinks_from["pinks"],
+        "pink": pinks_from["pink"],
         "wins": wins_from["wins"],
         "borrowed": borrowed,
         "parents": parents,

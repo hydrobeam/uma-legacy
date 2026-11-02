@@ -226,8 +226,8 @@ pub(crate) struct CareerSlot {
     pub(crate) aff: f64,
     /// her spark's stars per target, in the job's order
     pub(crate) stars: std::rc::Rc<Vec<u8>>,
-    /// her pink sparks
-    pub(crate) pinks: std::rc::Rc<Vec<Pink>>,
+    /// her pink spark (null: a veteran the planner imagines, whose pink is not known)
+    pub(crate) pink: Option<Pink>,
 }
 
 /// One target of a career.

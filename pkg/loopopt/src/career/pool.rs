@@ -13,29 +13,24 @@ struct VeteranTraits<'veteran> {
     wins: &'veteran [usize],
     /// An imagined veteran's win chance per race index (empty: `wins` are certain).
     win_chances: &'veteran [f64],
-    /// A record's pink sparks.
-    pinks: &'veteran [Pink],
-    /// An imagined veteran's possible pinks, one at most (empty: `pinks` are hers).
+    /// A record's pink spark (None: an imagined veteran's, whose pink is `pink_chances`).
+    pink: Option<Pink>,
+    /// An imagined veteran's possible pinks, one at most (empty: none modelled).
     pink_chances: &'veteran [PinkChance],
     /// The star mix her sparks are drawn from (None: fixed stars).
     star_mix: Option<[f64; 3]>,
 }
 
 impl<'veteran> VeteranTraits<'veteran> {
-    /// A record's: fixed stars, certain wins, her pinks.
-    const fn of_record(
-        character_id: u32,
-        sparks: &'veteran [Spark],
-        wins: &'veteran [usize],
-        pinks: &'veteran [Pink],
-    ) -> Self {
-        Self { character_id, sparks, wins, win_chances: &[], pinks, pink_chances: &[], star_mix: None }
+    /// A record's: fixed stars, certain wins, her pink.
+    const fn of_record(character_id: u32, sparks: &'veteran [Spark], wins: &'veteran [usize], pink: Pink) -> Self {
+        Self { character_id, sparks, wins, win_chances: &[], pink: Some(pink), pink_chances: &[], star_mix: None }
     }
     fn of_legacy(legacy: &'veteran Legacy) -> Self {
-        Self::of_record(legacy.character_id, &legacy.sparks, &legacy.wins, &legacy.pinks)
+        Self::of_record(legacy.character_id, &legacy.sparks, &legacy.wins, legacy.pink)
     }
     fn of_ancestor(ancestor: &'veteran Ancestor) -> Self {
-        Self::of_record(ancestor.character_id, &ancestor.sparks, &ancestor.wins, &ancestor.pinks)
+        Self::of_record(ancestor.character_id, &ancestor.sparks, &ancestor.wins, ancestor.pink)
     }
     /// An imagined veteran's: her win chances, her star mix where her stars are drawn, her possible pinks.
     fn of_imagined(her: &'veteran Imagined) -> Self {
@@ -44,7 +39,7 @@ impl<'veteran> VeteranTraits<'veteran> {
             sparks: &her.sparks,
             wins: &[],
             win_chances: &her.win_chances,
-            pinks: &[],
+            pink: None,
             pink_chances: &her.pink_chances,
             star_mix: her.star_mix,
         }
@@ -63,9 +58,9 @@ pub(crate) struct Who {
     pub(crate) wins: Vec<RaceWin>,
     /// Stars (0..=3) of her spark of each job target, in job-target order.
     pub(crate) stars: std::rc::Rc<Vec<u8>>,
-    /// Her pink sparks.
-    pub(crate) pinks: std::rc::Rc<Vec<Pink>>,
-    /// A veteran before her result is known: the pinks she may carry, one at most (empty: `pinks` are hers).
+    /// Her pink spark (None: an imagined veteran's, whose pink is `pink_chances`).
+    pub(crate) pink: Option<Pink>,
+    /// An imagined veteran: the pinks she may carry, one at most (empty: none modelled).
     pub(crate) pink_chances: std::rc::Rc<Vec<PinkChance>>,
     /// The star mix her sparks are drawn from (a veteran before her result is known); None: `stars` are fixed.
     pub(crate) star_mix: Option<[f64; 3]>,
@@ -281,8 +276,8 @@ fn who_words(who: &Who) -> Vec<u64> {
     words.extend(who.star_mix.map_or([u64::MAX; 3], |mix| mix.map(f64::to_bits)));
     words.push(who.wins.len() as u64);
     words.extend(who.wins.iter().flat_map(|win| [win.race as u64, win.chance.to_bits()]));
-    words.push(who.pinks.len() as u64);
-    words.extend(who.pinks.iter().map(|&pink| pink_word(pink)));
+    words.push(u64::from(who.pink.is_some()));
+    words.extend(who.pink.map(pink_word));
     words.push(who.pink_chances.len() as u64);
     words.extend(who.pink_chances.iter().flat_map(|possible| [pink_word(possible.pink), possible.chance.to_bits()]));
     words
@@ -351,7 +346,7 @@ impl CareerSetup<'_> {
             character_id: traits.character_id,
             wins,
             stars: std::rc::Rc::new(self.job_target_stars(traits.sparks)),
-            pinks: std::rc::Rc::new(traits.pinks.to_vec()),
+            pink: traits.pink,
             pink_chances: std::rc::Rc::new(traits.pink_chances.to_vec()),
             star_mix: traits.star_mix,
         }
@@ -364,7 +359,7 @@ impl CareerSetup<'_> {
     pub(crate) fn pool_push(&self, pool: &mut Pool, legacy: &Legacy) {
         let veteran = self.who(&VeteranTraits::of_legacy(legacy));
         let parents: Vec<Who> =
-            legacy.parents.iter().map(|parent| self.who(&VeteranTraits::of_ancestor(parent))).collect();
+            legacy.parents.iter().flatten().map(|parent| self.who(&VeteranTraits::of_ancestor(parent))).collect();
         Self::push_entry(pool, veteran, parents, legacy.borrowed);
     }
     /// `pool` plus the imagined veteran `veteran`, her own (pop with `Pool::pop_veteran`)
@@ -411,7 +406,7 @@ mod tests {
             character_id,
             wins: wins.iter().map(|&race| RaceWin { race, chance: 1.0 }).collect(),
             stars: Rc::new(stars),
-            pinks: Rc::new(vec![]),
+            pink: None,
             pink_chances: Rc::new(vec![]),
             star_mix: None,
         }
@@ -459,14 +454,21 @@ mod tests {
     }
 
     #[test]
-    fn a_legacy_records_at_most_two_parents() {
-        let legacy = |parent_count: usize| {
-            serde_json::from_value::<Legacy>(
-                json!({"chara": 1001, "parents": vec![json!({"chara": 1002}); parent_count]}),
-            )
+    /// A record has two parent places, each a parent or null (unknown), and one pink: a third parent, a record without
+    /// a pink, and a pink of stars outside 1..=3 do not parse.
+    fn a_legacy_records_two_parent_places_and_one_pink() {
+        let pink = json!({"aptitude": 11, "stars": 1});
+        let parent = json!({"chara": 1002, "pink": pink});
+        let legacy = |parents: serde_json::Value| {
+            serde_json::from_value::<Legacy>(json!({"chara": 1001, "pink": pink, "parents": parents}))
         };
-        assert_eq!(legacy(2).unwrap().parents.len(), 2);
-        let Err(error) = legacy(3) else { panic!("three parents accepted") };
-        assert!(error.to_string().contains("at most 2 parents"), "{error}");
+        let read = legacy(json!([parent, null])).unwrap();
+        assert!(read.parents[0].is_some() && read.parents[1].is_none(), "a parent and an unknown one");
+        assert!(legacy(json!([parent, parent, parent])).is_err(), "three parents accepted");
+        assert!(serde_json::from_value::<Legacy>(json!({"chara": 1001})).is_err(), "a record without her pink");
+        let starless = json!({"chara": 1001, "pink": {"aptitude": 11, "stars": 4}});
+        assert!(serde_json::from_value::<Legacy>(starless).is_err(), "a pink of 4 stars");
+        let unknown = json!({"chara": 1001, "pink": {"aptitude": 15, "stars": 1}});
+        assert!(serde_json::from_value::<Legacy>(unknown).is_err(), "a pink of an unknown aptitude");
     }
 }

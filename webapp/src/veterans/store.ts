@@ -15,7 +15,8 @@ import { browserStorage, readJson, updateJson } from '../storage.ts';
 import type { Backing } from '../storage.ts';
 import { gradesOfList, isGrades } from '../grades.ts';
 import type { Grades } from '../gen/solver.ts';
-import { jobNode, knownPinks } from './records.ts';
+import { jobLegacy, knownPinks } from './records.ts';
+import { must } from '../must.ts';
 import type { JobLegacy } from './records.ts';
 import { store } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';
@@ -253,19 +254,26 @@ function placesFor(list: readonly VetRecord[], plan: PlacesRecord): PlacesRecord
   const parents = plan.parents.map((id) => (id && list.some((v) => v.id === id) ? id : null));
   return parents.every((id, k) => id === plan.parents[k]) ? plan : { ...plan, parents };
 }
-// each veteran as the job takes her, made once per record
-const jobOf = new WeakMap<VetRecord, JobLegacy>();
-function jobLegacy(v: VetRecord) {
+// each veteran as the job takes her, made once per record (null: her record is not whole: records.ts `jobLegacy`)
+const jobOf = new WeakMap<VetRecord, JobLegacy | null>();
+function jobOfVet(v: VetRecord): JobLegacy | null {
   let job = jobOf.get(v);
-  if (!job) {
-    job = { ...jobNode(v), borrowed: !!v.borrowed, parents: v.parents.map(jobNode) };
+  if (job === undefined) {
+    job = jobLegacy(v);
     jobOf.set(v, job);
   }
   return job;
 }
-const legacies = computed(() => vets.value.map(jobLegacy));
-/** every veteran as the job takes her: the same array until the veterans change (callers don't change it) */
-export const legaciesJob = () => legacies.value;
+// the veterans a job takes, in the pool's order, and each as the job takes her
+const jobPool = computed(() => {
+  const vetsIn = vets.value.filter((v) => jobOfVet(v) !== null);
+  return { vets: vetsIn, legacies: vetsIn.map((v) => must(jobOfVet(v), 'a veteran the job takes is whole')) };
+});
+/** the veterans a job takes (a whole record: her pink, each parent known with hers or not known at all), in the pool's
+ *  order: legacy index i is the i-th; the same array until the veterans change; read without subscribing */
+export const jobVetsNow = () => jobPool.peek().vets;
+/** every veteran a job takes, as the job takes her: the same array until the veterans change (callers don't change it) */
+export const legaciesJob = () => jobPool.value.legacies;
 
 // ---------- the list
 // `list` with item `at` replaced

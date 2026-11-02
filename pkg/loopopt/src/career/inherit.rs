@@ -217,7 +217,7 @@ pub(crate) struct Slot {
     pub(crate) relation_points: f64,
     pub(crate) race: f64,
     pub(crate) stars: std::rc::Rc<Vec<u8>>,
-    pub(crate) pinks: std::rc::Rc<Vec<Pink>>,
+    pub(crate) pink: Option<Pink>,
     /// A veteran before her result is known: the pinks she may carry (`Who::pink_chances`).
     pub(crate) pink_chances: std::rc::Rc<Vec<crate::career::schedule::PinkChance>>,
     pub(crate) mix: Option<[f64; 3]>,
@@ -385,7 +385,7 @@ impl CareerSetup<'_> {
                     relation_points,
                     race,
                     stars: std::rc::Rc::clone(&who.stars),
-                    pinks: std::rc::Rc::clone(&who.pinks),
+                    pink: who.pink,
                     pink_chances: std::rc::Rc::clone(&who.pink_chances),
                     mix: who.star_mix,
                 });

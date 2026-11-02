@@ -128,7 +128,8 @@ export const borrowChoice = (s: SettingsView): keyof typeof BORROW_CHOICES =>
 export interface JobFrom {
   settings: SettingsView;
   vets: readonly VetRecord[];
-  /** every veteran as the job takes her (veterans/store.ts `legaciesJob`: the same array until the veterans change) */
+  /** every veteran a job takes (veterans/store.ts `jobVetsNow`: those with a whole record), and each as the job takes her
+   *  (`legaciesJob`: the same arrays until the veterans change) */
   legacies: readonly JobLegacy[];
   places: PlacesRecord;
   chosen: DeepReadonly<ChosenCareer> | null;
@@ -143,6 +144,9 @@ export function buildJob(from: JobFrom, acts: PoolActs): CareerJob {
   const { settings: s, vets: pool, places: plan } = from;
   if (!s.targets.length) throw new Blocked('empty', 'No target skills: add them with Target skills above.');
   const vetById = (id: string) => pool.find((v) => v.id === id);
+  // (a placed parent whose record is not whole is no veteran a job takes: `jobVetsNow`)
+  if (plan.parents.some((id) => id && !vetById(id)))
+    throw new Blocked('error', "A parent placed needs her pink spark, and her parents' (or none), to plan.");
   const fixed = (plan.parents.filter(Boolean) as string[]).map(vetById);
   if (pool.length < 2 || !pool.some((v) => !v.borrowed)) {
     const importVets = { label: 'Import veterans', run: acts.importVets };

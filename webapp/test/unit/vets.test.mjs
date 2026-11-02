@@ -13,7 +13,8 @@ import { memory } from './fakes.mjs';
 
 const KEY = 'llp:career',
   OTHER = ERA === 'gm' ? 'global' : 'gm';
-const node = (chara, sparks = {}) => ({ chara, sparks, pinks: {}, blues: {}, greens: {}, wins: [] });
+// (each with her pink: a job takes only a whole record)
+const node = (chara, sparks = {}) => ({ chara, sparks, pinks: { 11: 1 }, blues: {}, greens: {}, wins: [] });
 const vet = (id, extra = {}) => ({
   id,
   src: 'import',

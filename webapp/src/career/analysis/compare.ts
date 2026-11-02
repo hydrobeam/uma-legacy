@@ -17,7 +17,8 @@ import { planIn, rollIn, searchIn } from '../reply.ts';
 import type { CareerAnswer as Answer } from '../job.ts';
 import type { CareerAnswer, CareerJob, CareerReport, PlanReport } from '../job.ts';
 import type { Draft, NodeRecord } from '../../veterans/store.ts';
-import { jobNode } from '../../veterans/records.ts';
+import { jobLegacy } from '../../veterans/records.ts';
+import { must } from '../../must.ts';
 import type { JobLegacy } from '../../veterans/records.ts';
 import { keyOf } from '../keys.ts';
 import { PLAN_NEXT } from '../run.ts';
@@ -69,10 +70,10 @@ export interface ComparisonDeps {
 /** how long a roll's quick figures stand before the exact comparison checks them, ms */
 export const STAND_MS = 800;
 
-// the draft as a legacy of the comparison's jobs (a veteran's job record: veterans/records.ts `jobNode`)
-function draftJob(v: DeepReadonly<Draft>): JobLegacy {
-  return { ...jobNode(v), borrowed: false, parents: v.parents.map(jobNode) };
-}
+// the draft as a legacy of the comparison's jobs (a veteran's job record: veterans/records.ts `jobLegacy`): her rolled
+// pink, her parents the career's (veterans a job took)
+const draftJob = (v: DeepReadonly<Draft>): JobLegacy =>
+  must(jobLegacy({ ...v, borrowed: false }), 'a rolled veteran has her pink and her parents are whole');
 
 // where a comparison's saving lands: the next career when she is one of its parents; else a later career, named (the
 // step of V's route, A, B or C, whose careers fell most) only where both plans' cheapest routes are the same trio, on

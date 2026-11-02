@@ -77,9 +77,12 @@ comes first and the setup under it.
   carrying only the targets that inheritance alone gives, the minimum to start a loop; importing your own veterans
   retires the samples. The Umas and Support cards buttons show how many you own (all, until you say otherwise).
 - Each veteran's sparks, parents and G1 wins can be edited; *Yours / Guest* marks a friend's.
-- Enter a veteran's pink (aptitude) sparks too: imports carry them, a veteran added by hand starts without. The
+- Every veteran has one pink (aptitude) spark: imports carry it, a veteran added by hand starts without, and the planner
+  plans only with veterans whose record is whole (her pink, and each parent known with hers or not known at all). The
   trainee's race chances use her grades raised by her legacies' pinks, with an extra cost at the lowest aptitudes that
-  was fitted on raised grades; without the pinks her grades read low, and her chances at those races low with them.
+  was fitted on raised grades. A pink of an aptitude the planner doesn't know is left out at import, and the import
+  says how many. Sample veterans are mobs, whose grades the data doesn't have: each gets a pink drawn as if A at every
+  aptitude (assumed).
 
 **Borrowed parent** (in Career setup, saved with the other settings): you can borrow only a few veterans a day.
 *Allowed* (the default) lets a career use one borrowed parent, and the plan counts on borrowing in the careers after it

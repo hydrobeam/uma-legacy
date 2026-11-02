@@ -37,7 +37,7 @@ impl ImaginedVeteran {
             character_id: 0,
             wins: vec![],
             stars: std::rc::Rc::new(vec![]),
-            pinks: std::rc::Rc::new(vec![]),
+            pink: None,
             pink_chances: std::rc::Rc::new(vec![]),
             star_mix: None,
         };

@@ -9,7 +9,12 @@ import { settings } from '../settings.ts';
 import { run as engineRun } from '../engine.ts';
 import { goldGiven } from '../job.ts';
 import { srcFor } from '../images.ts';
-import { vets, places, chosen, setChosen, vetById, addVets, legaciesJob } from '../veterans/store.ts';
+import { isAptitude } from '../grades.ts';
+import { drawPink } from '../pink.ts';
+import { SOLVER } from '../gen/constants.ts';
+import { Grade } from '../gen/solver.ts';
+import type { AptitudeStart, Grades } from '../gen/solver.ts';
+import { vets, places, chosen, setChosen, vetById, addVets, legaciesJob, jobVetsNow } from '../veterans/store.ts';
 import { targetGroups } from '../veterans/names.ts';
 import { answer, answerCareer, answerPool, choiceDropped, dropAnswer, reference } from './state.ts';
 import { on } from '../store.ts';
@@ -58,7 +63,7 @@ export const currentJob = (): CareerJob =>
   buildJob(
     {
       settings: settings.peek(),
-      vets: vets.peek(),
+      vets: jobVetsNow(),
       legacies: legaciesJob(),
       places: places.peek(),
       chosen: chosen.peek(),
@@ -112,11 +117,26 @@ export function parentAt(
   const v = legacyVet(other >= 0 ? (first !== other ? first : second) : k === 0 ? first : second);
   return v ? { v, pick: true } : null;
 }
+// a sample mob's pink spark: the data has no grades for a mob, so she is drawn as if A at every aptitude (assumed),
+// with the roll's draw (pink.ts drawPink): one aptitude uniform, stars 20/70/10
+const SAMPLE_GRADES: Grades = {
+  distance: [Grade.A, Grade.A, Grade.A, Grade.A],
+  surface: [Grade.A, Grade.A],
+  style: [Grade.A, Grade.A, Grade.A, Grade.A],
+};
+function samplePink(): Sparks {
+  const pinkGen = Object.keys(SOLVER.aptitude_kinds)
+    .map(Number)
+    .filter(isAptitude)
+    .map((aptitude) => ({ aptitude, p: 0 }));
+  const start: AptitudeStart = { kind: 'known', start: SAMPLE_GRADES, fire: [] };
+  return drawPink({ base: SAMPLE_GRADES, pink_gen: pinkGen, start }).pinks;
+}
 // sample veterans to try the planner with (no veterans yet): 18 mob umas drawn at random from the game's (those with a
 // portrait), six veterans with two mob parents each, the bare minimum to start a loop: each veteran carries, at 1 star,
 // only the targets nothing but inheritance gives (no card hints or events them, no outfit has them, the scenario
-// doesn't hand them out); her parents carry nothing. No relation points with anyone (the solver knows no mob), no G1
-// wins. Marked as samples; Remove all clears them.
+// doesn't hand them out); her parents carry nothing but their pinks (`samplePink`, every veteran has one). No
+// relation points with anyone (the solver knows no mob), no G1 wins. Marked as samples; Remove all clears them.
 function sampleVets(): Veteran[] {
   const all = careerTables().mobs || [],
     withArt = all.filter(([id]) => srcFor('mob', id)),
@@ -128,7 +148,7 @@ function sampleVets(): Veteran[] {
   const node = (id: number, sparks: Sparks): LineageNode => ({
     chara: id,
     sparks,
-    pinks: {},
+    pinks: samplePink(),
     blues: {},
     greens: {},
     wins: [],
