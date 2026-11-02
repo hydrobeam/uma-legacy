@@ -35,8 +35,10 @@ test("the built wasm in the page's worker answers its first search as the native
   if (!first?.answer.result) throw new Error('the page sent its worker a job and had its answer');
   // (the scenario's deck job is the one its loop page sends first: the reply test answered that job)
   const jobs: { jobs: { kind: string; job: unknown }[] } = read('loop-small.jobs.json');
-  expect(sorted(first.job), "loop-small's deck job").toBe(sorted(jobs.jobs.find((j) => j.kind === 'deck')?.job));
-  expect(zeroed(first.answer)).toEqual((read('loop-small.snap.json') as Record<string, unknown>).deck);
+  expect(sorted(first.job), "loop-small's deck job").toBe(
+    sorted(jobs.jobs.find((j) => j.kind === 'deck@below_ss')?.job),
+  );
+  expect(zeroed(first.answer)).toEqual((read('loop-small.snap.json') as Record<string, unknown>)['deck@below_ss']);
 });
 
 // (runs in the page) the page's workers, recording each job one is sent and its answer

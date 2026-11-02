@@ -1,6 +1,7 @@
 // The page's solver in the browser flows: a stand-in for the page's Worker answers each job with its scenario's canned
 // reply for that kind of job (test/fixtures/solver/<scenario>.snap.json: a deck search; a career search, plan,
-// robustness-check step, comparison and its plan, roll, per pool size; the kept work out and in), which web.rs
+// robustness-check step, comparison and its plan, roll, a career with places fixed and one with every place chosen (Use this: scored), per pool size; the kept
+// work out and in), which web.rs
 // `fixtures` computes natively through the worker's own `Solver` from one job of each kind (<scenario>.jobs.json). The
 // page's wasm compile is handed an empty module, so the solver never runs here. A job of a kind the scenario has no
 // reply for fails the flow, naming it; a background one (the state store, a check step) is left unanswered, as one
@@ -34,8 +35,10 @@ export interface SolverTally {
  * job's names its pool's size too (`plan@4`): its reply names legacies by their place in the pool, which the page
  * checks, so a flow that removes a veteran or adds a borrowed one needs that pool's replies. */
 export function jobKind(job: Request): string {
+  // (a deck search by its rank class too: a flow that changes it sees another answer)
+  if (job.cmd === 'deck') return `deck@${job.skills.rank_class}`;
   if (job.cmd !== 'career') return job.cmd;
-  const { next, compare, legacies } = job.career;
+  const { next, compare, legacies, fix, trainees } = job.career;
   const kind = next
     ? next.robust
       ? 'check'
@@ -46,7 +49,11 @@ export function jobKind(job: Request): string {
           : 'plan'
     : compare
       ? 'compare'
-      : 'search';
+      : trainees?.length && fix?.length === 2
+        ? 'scored'
+        : fix?.length
+          ? 'fixed'
+          : 'search';
   return `${kind}@${legacies.length}`;
 }
 /** A scenario's canned replies, by job kind (none for a flow without a scenario). */

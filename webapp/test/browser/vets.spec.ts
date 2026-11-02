@@ -166,7 +166,9 @@ test('veterans: places chosen and handed back, Use this and the pick again, a se
   await expect(page.locator('[data-sec="options"] tbody tr[aria-current="true"]')).toHaveText(/shown above/);
   await expect(page.locator('[data-sec="options"] [data-tag="pick"]')).toHaveCount(1);
   const saves = await page.locator('[data-sec="options"] tbody [data-extra]').allTextContents();
-  expect(saves.some((s) => /^[+−]\d/.test(s.trim()))).toBe(true);
+  // (each row's extra careers against the pick: on career-small they may all be within the tie tolerance)
+  expect(saves.length).toBeGreaterThan(0);
+  for (const s of saves) expect(s.trim()).toMatch(/^(–|≈0|[+−]\d)/);
   // back to the plan's places: an answer seen before is drawn with no run
   const jobs0 = await careerJobs(page);
   await page.click('#opt-back');

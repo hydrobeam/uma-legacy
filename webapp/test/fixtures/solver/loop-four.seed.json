@@ -18,9 +18,9 @@
   },
   "global": {
    "roster": {
+    "1003": "out",
     "1005": "out",
     "1006": "out",
-    "1007": "out",
     "1008": "out",
     "1009": "out",
     "1010": "out",
@@ -87,7 +87,8 @@
    "outfits": {
     "100102": false,
     "100103": false,
-    "100302": false
+    "100402": false,
+    "100702": false
    },
    "cardsOff": {
     "10001": false,

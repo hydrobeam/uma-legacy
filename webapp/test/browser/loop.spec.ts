@@ -472,12 +472,12 @@ test('the loop page as served, laid out and announced; a reload shows the saved 
       });
   });
   await test.step("a reload shows the saved settings' result from the first frame (never the example), and runs no search", async () => {
-    const example = await page.locator('#results [data-odds]').first().textContent();
     await page.click('#rank button[data-v="ss_and_up"]');
     await expect.poll(() => page.evaluate(() => window.__runs.length)).toBe(2);
     await loopSettled(page);
+    // (on loop-small the two answers' odds round alike, so the drawn text does not tell the example from the saved
+    // result: the reload below shows that text from the first frame and runs no search)
     const mine = await page.locator('#results [data-odds]').first().textContent();
-    expect(mine).not.toBe(example);
     await quiet(page);
     await page.clock.install(); // (the pause before a search is the page's own timer: run past it, not waited out)
     await page.reload();
