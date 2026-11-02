@@ -62,7 +62,9 @@ codegen-units = 1
 # keep [profile.release].
 [profile.checks]
 inherits = "release"
-lto = false
+# "off", not false: Cargo's false still runs thin LTO across the crate's own codegen units, 12 of a 44 s rebuild after
+# a one-line edit; off makes that rebuild 7.7 s (opt-level 3 kept: opt-level 1 rebuilt no faster and ran tests slower)
+lto = "off"
 codegen-units = 16
 incremental = true
 debug-assertions = true
