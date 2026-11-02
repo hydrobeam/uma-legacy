@@ -89,16 +89,15 @@ export const Ribbon = ({ fold = false, children }: { fold?: boolean; children: C
   </h2>
 );
 
-/** a count on an Enhance button: its badge and its tooltip (none until the entry has counted) */
+/** a count on an Enhance button, as its tooltip (none until the entry has counted) */
 export interface Badge {
-  n: string;
   title: string;
 }
 // ---------- the game's Enhance menu buttons: the game's art (its frame and white lower band, the art spilling over its
 // top edge; the drop shadow follows that shape), the label on the band with a ▶ beside its first line, the count owned
-// under it in small type. Umas and Support cards are square, one size on both pages (the label's margins a little wider
-// on the career page); Veteran Umamusume is wide, its two-line label right of the art, as wide as the row of Enhance
-// buttons
+// in its tooltip (the band holds one line: a count under the label pushed the label onto the art). Umas and Support
+// cards are square, one size on both pages (the label's margins a little wider on the career page); Veteran Umamusume
+// is wide, its two-line label right of the art, as wide as the row of Enhance buttons
 const ENH_ART = { umas: 'art-enh-umas', cards: 'art-enh-cards', vets: 'art-enh-vets' } as const;
 const ENH = {
   career: {
@@ -156,10 +155,7 @@ export function EnhButton({
         )}
         aria-hidden="true"
       />
-      <span class={ENH[size].label}>
-        {label}
-        {badge && <span class="text-caption block font-bold tabular-nums opacity-85">{badge.n}</span>}
-      </span>
+      <span class={ENH[size].label}>{label}</span>
     </button>
   );
 }

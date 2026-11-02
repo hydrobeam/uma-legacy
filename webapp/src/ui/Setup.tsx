@@ -101,8 +101,8 @@ export function setupBadges(): { umas: Badge; cards: Badge } {
   const u = rosterCounts.value,
     c = cardsOwned.value;
   return {
-    umas: { n: `${u.outfitsOwned}/${u.outfits}`, title: `${u.outfitsOwned} of ${u.outfits} outfits owned` },
-    cards: { n: `${c.owned}/${c.all}`, title: `${c.owned} of ${c.all} support cards owned` },
+    umas: { title: `${u.outfitsOwned} of ${u.outfits} outfits owned` },
+    cards: { title: `${c.owned} of ${c.all} support cards owned` },
   };
 }
 /** the era switch pressed: the page reloads into `era` with this tab's settings (and the scenario it opens on), after
