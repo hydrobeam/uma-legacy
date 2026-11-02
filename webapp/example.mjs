@@ -22,6 +22,7 @@ const call = (job) => JSON.parse(solver.call(JSON.stringify(job)));
 // what the data holds ahead of its start (export/upcoming.py: dated after the export): left out, as the page leaves it
 // out until then. Taken as of the export rather than today, so the example changes only with the data or the solver.
 const later = (kind) => readJson('upcoming.json')[kind].map(([id]) => id);
+const cards = readJson('web_cards.json').cards;
 // the page's defaults (settings.ts PRESET and DEFAULTS, job.ts EXTRA, jobTargets, skillsPart and deckPart)
 const r = call({
   cmd: 'deck',
@@ -45,15 +46,11 @@ const r = call({
     ],
   },
   deck: {
+    owned_cards: cards.map((c) => c.id),
     borrow: true,
     top_decks: 1,
     per_uma: true,
-    exclude_cards: [
-      ...readJson('web_cards.json')
-        .cards.filter((c) => c.rarity === 1 && !c.pal)
-        .map((c) => c.id),
-      ...later('cards'),
-    ],
+    exclude_cards: [...cards.filter((c) => c.rarity === 1 && !c.pal).map((c) => c.id), ...later('cards')],
   },
 });
 fs.writeFileSync('example.json', JSON.stringify(r));

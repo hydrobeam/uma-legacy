@@ -292,7 +292,10 @@ fn scenario_bans_exported() {
         assert!(!cards.restrict.get(sc).is_some_and(|v| v.contains(&30081)));
     }
 }
-fn job_with(job: Value) -> DeckJob {
+/// The deck job `job`, owning every card of the Global fixture where `job` does not list its own `owned_cards`.
+fn job_with(mut job: Value) -> DeckJob {
+    let every_card: Vec<u32> = fixture_cards().cards.iter().map(|card| card.id).collect();
+    job.as_object_mut().unwrap().entry("owned_cards").or_insert_with(|| json!(every_card));
     serde_json::from_value(job).unwrap()
 }
 /// The card rule: of two running cards with 1 and 3 links left, each takes the next event half the time (the slots

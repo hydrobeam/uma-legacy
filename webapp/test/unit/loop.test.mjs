@@ -464,7 +464,7 @@ test('status text: cut short, the exact check caveats; the headline from the res
 });
 
 // ---------- the job (P9's golden jobs, P12)
-test("golden jobs: each fixture's job byte-identical to 9307950's, the blocked ones' statuses the same", () => {
+test("golden jobs: each fixture's job byte-identical to the recorded one, the blocked ones' statuses the same", () => {
   for (const [name, saved] of Object.entries(FIXTURES)) {
     page({ saved });
     const record = settings.peek();

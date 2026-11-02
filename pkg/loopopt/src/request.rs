@@ -149,8 +149,10 @@ mod tests {
         let request = |text: &str| serde_json::from_str::<Request>(text);
         assert!(request(r#"{"cmd": "dock"}"#).is_err(), "an unknown command");
         assert!(matches!(request(r#"{"cmd": "state_out"}"#), Ok(Request::StateOut)));
-        let deck = r#"{"cmd": "deck", "skills": {"targets": [{"group": 20159}]}, "deck": {}"#;
+        let deck = r#"{"cmd": "deck", "skills": {"targets": [{"group": 20159}]}, "deck": {"owned_cards": []}"#;
         assert!(request(&format!("{deck}}}")).is_ok(), "a deck job");
+        let unowned = r#"{"cmd": "deck", "skills": {"targets": [{"group": 20159}]}, "deck": {}}"#;
+        assert!(request(unowned).is_err(), "a deck job that does not list the cards owned");
         assert!(request(&format!("{deck}, \"star_dist\": [0.5, 0.45, 0.05]}}")).is_err(), "an unknown field");
     }
 }

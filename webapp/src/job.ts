@@ -19,15 +19,11 @@ export const goldGiven = (scen: string, group: number): boolean => (SCEN_GOLDS[s
 // only the scenario guarantees anything
 export const jobTargets = (s: SettingsView) =>
   s.targets.map((t) => ({ group: t.group, guaranteed: goldGiven(s.scen, t.group) ? 2 : 0 }));
-// the solver reads an empty list as "no restriction", so with every card not owned it gets [0], an id no card has
-function ownedCards(s: SettingsView) {
-  const notOwned = gameData().cards.filter((c) => s.cardsOff[c.id] === false).length;
-  if (!notOwned) return [];
-  if (notOwned === gameData().cards.length) return [0];
-  return gameData()
+// the cards owned, each listed (empty: none): every card but those marked not owned (`cardsOff`)
+const ownedCards = (s: SettingsView): number[] =>
+  gameData()
     .cards.filter((c) => s.cardsOff[c.id] !== false)
     .map((c) => c.id);
-}
 // every outfit of hers is marked not owned in `outfits` (the settings' marks)
 const noOutfit = (u: Uma, outfits: SettingsView['outfits']): boolean =>
   (u.outfits || []).length > 0 && u.outfits.every((o) => outfits[o.id] === false);

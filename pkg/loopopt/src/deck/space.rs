@@ -755,9 +755,6 @@ pub(crate) fn deck_space<'data>(
     target_groups: &[u32],
     entries: &Entries<'data>,
 ) -> DeckSpace<'data> {
-    let is_owned = |id: u32| {
-        deck_job.owned_cards.is_empty() || deck_job.owned_cards.contains(&id) || deck_job.lock_cards.contains(&id)
-    };
     let card_of: HashMap<u32, &Card> = card_data.cards.iter().map(|card| (card.id, card)).collect();
     let kinds_all = kinds_all(&entries.kind);
     DeckSpace {
@@ -770,7 +767,7 @@ pub(crate) fn deck_space<'data>(
         end_links: entries.end_links.clone(),
         variants: entries.variants.clone(),
         sources: entries.sources.clone(),
-        borrowed: entries.card_indices.iter().map(|&card_index| !is_owned(entries.cards[card_index].id)).collect(),
+        borrowed: entries.card_indices.iter().map(|&card_index| !deck_job.owns(entries.cards[card_index].id)).collect(),
         class_masks: entries.sources.iter().map(TargetSources::cv_mask).collect(),
         nested_chains: crate::deck::nested::NestedChains::new(&entries.sources, &entries.kind, target_groups.len()),
         plain_pals: entries

@@ -22,7 +22,7 @@ export const placesKey = (p: PlacesRecord): string => JSON.stringify({ trainee: 
  *  has the fields `buildJob` always writes (the solver has a default for each). */
 export type CareerJob = Omit<SolverCareerJob, 'skills' | 'deck' | 'career'> & {
   skills: Gen.SkillJob & Required<Pick<Gen.SkillJob, 'rank_class' | 'exclude' | 'exclude_outfits' | 'extra'>>;
-  deck: Gen.DeckJob & Required<Pick<Gen.DeckJob, 'owned_cards' | 'borrow' | 'scenario'>>;
+  deck: Gen.DeckJob & Required<Pick<Gen.DeckJob, 'borrow' | 'scenario'>>;
   career: Omit<Gen.CareerJob, 'legacies'> &
     Required<Pick<Gen.CareerJob, 'trainees' | 'fix' | 'per_trainee' | 'top'>> & { legacies: readonly JobLegacy[] };
 };

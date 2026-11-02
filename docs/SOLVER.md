@@ -266,7 +266,7 @@ The deck search's settings (`deck`, beside `skills` above; scenario-guaranteed s
 
 | Field | Meaning | Default |
 |---|---|---|
-| `owned_cards` | card ids you own (empty = all) | `[]` |
+| `owned_cards` | card ids you own, each one listed (empty: none); a job without it is refused | required |
 | `borrow` | allow at most one card you don't own (friend card); does not require a borrowed card | `false` |
 | `exclude_cards` / `lock_cards` | cards never / always used; more locked cards than `deck_size` is refused | `[]` |
 | `deck_size` | cards per deck, 1 to 6 (the search counts each chain kind's cards as a base-7 digit) | 6 |

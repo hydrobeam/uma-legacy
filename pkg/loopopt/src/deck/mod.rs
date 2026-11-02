@@ -174,8 +174,7 @@ pub(crate) struct DeckJob {
     #[serde(rename = "alt_w")]
     #[ts(as = "Option<_>", optional)]
     pub choice_weights: Vec<(u32, u8, Vec<Vec<f64>>)>,
-    #[serde(default)]
-    #[ts(as = "Option<_>", optional)]
+    /// the cards the player owns, each listed (empty: none); a locked card counts as owned too (`DeckJob::owns`)
     pub owned_cards: Vec<u32>,
     /// allow one card the player does not own (a friend's card) in the deck
     #[serde(default)]
@@ -229,6 +228,11 @@ pub(crate) struct DeckJob {
     pub cap_free: bool,
 }
 impl DeckJob {
+    /// Whether the player owns card `id`: it is in `owned_cards` or locked into the deck. A card she does not own can
+    /// still be the deck's one borrowed card (`borrow`).
+    pub(crate) fn owns(&self, id: u32) -> bool {
+        self.owned_cards.contains(&id) || self.lock_cards.contains(&id)
+    }
     /// The job's chain-event law: `chain_events` for every deck, else the pal-count rate at `chain_budget` or
     /// (CHAIN_A, CHAIN_B); events pick cards by `chain_pick_rule`. A job setting both laws, or an unknown rule, is refused
     /// where its entries are built (`deck_entries`).

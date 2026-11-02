@@ -81,13 +81,6 @@ pub(super) fn run_deck_relaxed(data: &Data, skills: &SkillsRaw, cards: &CardsRaw
     run_multi(inputs, stats)
 }
 
-impl DeckJob {
-    /// Whether the player owns a card (a locked card counts as owned).
-    fn is_owned(&self, id: u32) -> bool {
-        self.owned_cards.is_empty() || self.owned_cards.contains(&id) || self.lock_cards.contains(&id)
-    }
-}
-
 /// Calls `out` on every multiset of at most `left` values from `values[start..]` (as index-ordered lists)
 fn multisets(
     values: &[ChainKind],
@@ -177,7 +170,7 @@ impl Entries<'_> {
                     {
                         continue;
                     }
-                    if deck_job.is_owned(candidate_card.id) && !deck_job.is_owned(dominator_card.id) {
+                    if deck_job.owns(candidate_card.id) && !deck_job.owns(dominator_card.id) {
                         continue;
                     }
                     if !(0..target_count).all(|k| {
@@ -477,7 +470,7 @@ impl<'env> DeckEnumerator<'env> {
         }
         let character_bits: Vec<u128> =
             relevant.iter().map(|&card| 1u128 << character_index[&cards[card].character_id]).collect();
-        let borrowed_entries: Vec<bool> = relevant.iter().map(|&card| !deck_job.is_owned(cards[card].id)).collect();
+        let borrowed_entries: Vec<bool> = relevant.iter().map(|&card| !deck_job.owns(cards[card].id)).collect();
         let mut chain_kinds: Vec<ChainKind> =
             (0..entry_count).filter(|&j| kind[j] != ChainKind::NONE).map(|j| kind[j]).collect();
         chain_kinds.push(ChainKind::FILLER);

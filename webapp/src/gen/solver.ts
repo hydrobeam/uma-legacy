@@ -575,7 +575,11 @@ alts?: Array<ChoiceEvent>,
  * measured outcome weights for `choice_events` events: (card, link, [choice][outcome] -> share); an event not
  * listed here keeps equally likely outcomes (event_shares.json, applied by the event builders)
  */
-alt_w?: Array<[number, number, Array<Array<number>>]>, owned_cards?: Array<number>, 
+alt_w?: Array<[number, number, Array<Array<number>>]>, 
+/**
+ * the cards the player owns, each listed (empty: none); a locked card counts as owned too (`DeckJob::owns`)
+ */
+owned_cards: Array<number>, 
 /**
  * allow one card the player does not own (a friend's card) in the deck
  */
