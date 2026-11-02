@@ -1,5 +1,5 @@
-// uma.moe stood in for: listings made from the umadump test file's veterans (val/umadump/U_trained_chara_data.json), as
-// uma.moe's search (api/v3/search, `inheritance`) answers them. Shared by the node test of the sync
+// uma.moe stood in for: listings made from career-small's made-up veterans as the game exports them
+// (test/fixtures/solver/export-small.json), as uma.moe's search (api/v3/search, `inheritance`) answers them. Shared by the node test of the sync
 // (test/unit/umamoe.test.ts) and the browser flow that routes uma.moe's requests (vets.spec.ts).
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -24,13 +24,15 @@ interface ExportRecord {
   win_saddle_id_array?: number[];
   succession_chara_array?: ExportRecord[];
 }
-/** The test file's 12 veterans, as the game exports them. */
-export const RECORDS: ExportRecord[] = JSON.parse(readFileSync(repo('val/umadump/U_trained_chara_data.json'), 'utf8'));
-/** The test file's text, for a page's file input. */
-export const DUMP_PATH = repo('val/umadump/U_trained_chara_data.json');
+/** The export file's four veterans. */
+export const RECORDS: ExportRecord[] = JSON.parse(
+  readFileSync(repo('webapp/test/fixtures/solver/export-small.json'), 'utf8'),
+);
+/** The export file, for a page's file input. */
+export const EXPORT_PATH = repo('webapp/test/fixtures/solver/export-small.json');
 
 /** Veteran `rec` as uma.moe's k-th result: herself at main_*, her parents (positions 10, 20) at left_* and right_*.
- * The first listing also carries a white spark of a skill none of the test file's veterans carry (not a target). */
+ * The first listing also carries a white spark of a skill none of the file's veterans carry (not a target). */
 export function listing(rec: ExportRecord, k: number): UmamoeListing {
   const parent = (position: number): ExportRecord => {
     const found = rec.succession_chara_array?.find((x) => x.position_id === position);

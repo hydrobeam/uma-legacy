@@ -1,6 +1,5 @@
 // The career page in the browser flows (career.spec.ts): the hooks on its solver's messages, what it shows as it
-// changes, and the steps the flows share (the umadump file in, the veterans dialog, the node popup, Try a run).
-import fs from 'node:fs';
+// changes, and the steps the flows share (the scenario's export in, the veterans dialog, the node popup, Try a run).
 import path from 'node:path';
 import { expect, type Page } from 'playwright/test';
 import type { CareerReply, Request } from '../../src/gen/solver.ts';
@@ -30,8 +29,8 @@ declare global {
   }
 }
 
-export const DUMP = path.resolve(import.meta.dirname, '../../../val/umadump/U_trained_chara_data.json');
-export const DUMP_ROWS: Record<string, unknown>[] = JSON.parse(fs.readFileSync(DUMP, 'utf8'));
+/** career-small's four veterans as the game exports them (test/fixtures/solver/export-small.json: made up) */
+export const EXPORT = path.resolve(import.meta.dirname, '../fixtures/solver/export-small.json');
 
 /** (runs in the page) the hooks: the jobs and results, the patches, the snapshots of what shows */
 export function careerHooks() {
@@ -129,11 +128,11 @@ export const resetSeq = (page: Page) =>
 export const planned = (page: Page) =>
   expect(page.locator('#run-note')).toHaveText(/Planned in/, { timeout: SOLVER_WAIT });
 
-/** umadump's test file of 12 veterans, imported through the veterans dialog's file button. */
-export async function importDump(page: Page) {
+/** The export of career-small's four veterans, imported through the veterans dialog's file button. */
+export async function importExport(page: Page) {
   await openEditor(page, 'vets');
-  await page.locator('#v-file').setInputFiles(DUMP);
-  await expect(page.locator('#v-msg')).toHaveText(/Imported 12 veterans/);
+  await page.locator('#v-file').setInputFiles(EXPORT);
+  await expect(page.locator('#v-msg')).toHaveText(/Imported 4 veterans/);
 }
 export const vetsShut = (page: Page) => closeEditor(page, 'vets');
 
@@ -163,11 +162,10 @@ export async function simStars(page: Page, n: number) {
     await spark.click();
   }
 }
-/** The career page with the 12 veterans of umadump's test file, their first plan on show. */
+/** The career page of career-small (its four veterans seeded: `test.use({ scenario: 'career-small' })`), their
+ * first plan on show. */
 export async function withPlan(page: Page) {
   await page.goto('/');
-  await careerDone(page);
-  await importDump(page);
   await careerDone(page);
   await planned(page);
   await vetsShut(page);
