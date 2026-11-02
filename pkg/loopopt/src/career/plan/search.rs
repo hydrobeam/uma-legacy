@@ -1,11 +1,12 @@
 //! Candidate searches, rotation setup and proxy limits.
 use crate::career::evaluator::DeckRequest;
+use crate::career::imagined::{Imagined, ImaginedVeteran};
 use crate::career::plan::report::UmaName;
 use crate::career::plan::{ParentPool, PlanJob};
 use crate::career::pool::Pool;
 use crate::career::search::{Bar, Found, RankedPair};
 use crate::career::sim::{Sim, SimJob, SimulationOptions, SimulationRoster};
-use crate::career::{Ancestor, CareerSetup, Env, JobInputs, Legacy, Lineage};
+use crate::career::{CareerSetup, Env, JobInputs, Lineage, Spark};
 use crate::data::Data;
 use crate::refusal::Refusal;
 use crate::skills::SkillJob;
@@ -350,8 +351,8 @@ struct SurrogateBest {
 }
 
 /// a full veteran (a spark of every job target), yours or borrowed
-pub(crate) fn is_full(skill_job: &SkillJob, sparks: &[(u32, u8)]) -> bool {
-    skill_job.targets.iter().all(|target| sparks.iter().any(|spark| spark.0 == target.group && spark.1 > 0))
+pub(crate) fn is_full(skill_job: &SkillJob, sparks: &[Spark]) -> bool {
+    skill_job.targets.iter().all(|target| sparks.iter().any(|spark| spark.group == target.group && spark.stars > 0))
 }
 
 /// `searches` under the plan's career-search work cap `work` (`PlanJob::search_work`; 0: none), the env's own budget
@@ -393,38 +394,28 @@ pub(crate) struct FullLoop {
 }
 
 /// A hypothetical full veteran of a character: every job target at the rank's star mix, G1 wins at `win_chances` (as
-/// `CareerSetup::veteran` makes the fresh ones), no pinks; as a legacy with `parents`, or as an ancestor
+/// `CareerSetup::veteran` makes the fresh ones), no pinks; imagined, with hypothetical parents of her own
 struct HypotheticalVeteran<'veteran> {
     character_id: u32,
-    full: &'veteran [(u32, u8)],
+    full: &'veteran [Spark],
     star_mix: [f64; 3],
     win_chances: Vec<f64>,
 }
 
 impl HypotheticalVeteran<'_> {
-    fn ancestor(&self) -> Ancestor {
-        Ancestor {
+    fn imagined(&self) -> Imagined {
+        Imagined {
             character_id: self.character_id,
             sparks: self.full.to_vec(),
-            wins: vec![],
-            pinks: vec![],
+            star_mix: Some(self.star_mix),
             win_chances: self.win_chances.clone(),
-            mix: Some(self.star_mix),
             pink_chances: vec![],
         }
     }
-    fn legacy(&self, parents: [Ancestor; 2]) -> Legacy {
-        Legacy {
-            character_id: self.character_id,
-            borrowed: false,
-            sparks: self.full.to_vec(),
-            wins: vec![],
-            pinks: vec![],
-            parents: parents.to_vec(),
-            win_chances: self.win_chances.clone(),
-            mix: Some(self.star_mix),
-            pink_chances: vec![],
-        }
+    /// Her as an imagined veteran whose parents are the hypothetical `parents`, as the pool holds them.
+    fn veteran(&self, setup: &CareerSetup, parents: [&Self; 2]) -> ImaginedVeteran {
+        let [first, second] = parents.map(|parent| setup.imagined_who(&parent.imagined()));
+        ImaginedVeteran { her: self.imagined(), parents: [first, second] }
     }
 }
 
@@ -442,21 +433,24 @@ pub(crate) fn loop_ceiling(
     let data = simulator.data;
     let skill_job = simulator.env.setup.skill_job;
     let star_mix = simulator.env.setup.skill_job.star_mix();
-    let full: Vec<(u32, u8)> = skill_job.targets.iter().map(|target| (target.group, 2)).collect();
+    let full: Vec<Spark> = skill_job.targets.iter().map(|target| Spark { group: target.group, stars: 2 }).collect();
     let hypothetical = |uma: crate::uma::UmaIndex| HypotheticalVeteran {
         character_id: data.umas[uma].id,
         full: &full,
         star_mix,
         win_chances: wins(uma),
     };
+    let setup = &simulator.env.setup;
     let veteran =
         |uma: crate::uma::UmaIndex, first_parent: crate::uma::UmaIndex, second_parent: crate::uma::UmaIndex| {
-            hypothetical(uma).legacy([hypothetical(first_parent).ancestor(), hypothetical(second_parent).ancestor()])
+            hypothetical(uma).veteran(setup, [&hypothetical(first_parent), &hypothetical(second_parent)])
         };
+    let (first, second) =
+        (veteran(first_builder, second_builder, trainee), veteran(second_builder, first_builder, trainee));
     // (`CareerSetup::pool` of the legacies and the two: the working copy of `pool` with them pushed, then popped)
     let mut working_pool = simulator.evaluator.take_pool(pool);
-    simulator.env.setup.pool_push(&mut working_pool, &veteran(first_builder, second_builder, trainee));
-    simulator.env.setup.pool_push(&mut working_pool, &veteran(second_builder, first_builder, trainee));
+    simulator.env.setup.pool_push_imagined(&mut working_pool, &first);
+    simulator.env.setup.pool_push_imagined(&mut working_pool, &second);
     let n = working_pool.veterans.len();
     let lineage = Lineage { trainee, first_parent: n - 2, second_parent: n - 1 };
     let value =
@@ -494,7 +488,7 @@ pub(crate) fn hint_umas(
     let data = setup.data;
     let skill_job = setup.skill_job;
     let star = skill_job.star_mix();
-    let full: Vec<(u32, u8)> = skill_job.targets.iter().map(|target| (target.group, 2)).collect();
+    let full: Vec<Spark> = skill_job.targets.iter().map(|target| Spark { group: target.group, stars: 2 }).collect();
     let mut sides: Vec<u32> = vec![];
     for &candidate in candidates {
         let id = data.umas[candidate].id;
@@ -512,8 +506,7 @@ pub(crate) fn hint_umas(
     let hypothetical =
         |character_id: u32| HypotheticalVeteran { character_id, full: &full, star_mix: star, win_chances: vec![] };
     let veteran = |character_id: u32, first_parent: u32, second_parent: u32| {
-        hypothetical(character_id)
-            .legacy([hypothetical(first_parent).ancestor(), hypothetical(second_parent).ancestor()])
+        hypothetical(character_id).veteran(setup, [&hypothetical(first_parent), &hypothetical(second_parent)])
     };
     let mut out: Vec<HintUma> = vec![];
     // (`CareerSetup::pool` of the legacies and the two: one copy of `pool`, `CareerSetup::pool(legacies)`, the two pushed
@@ -528,8 +521,8 @@ pub(crate) fn hint_umas(
         {
             continue;
         }
-        setup.pool_push(&mut working_pool, &veteran(first_side, second_side, id));
-        setup.pool_push(&mut working_pool, &veteran(second_side, first_side, id));
+        setup.pool_push_imagined(&mut working_pool, &veteran(first_side, second_side, id));
+        setup.pool_push_imagined(&mut working_pool, &veteran(second_side, first_side, id));
         let n = working_pool.veterans.len();
         let lineage = Lineage { trainee, first_parent: n - 2, second_parent: n - 1 };
         if legal_pair(data, &working_pool, lineage) {

@@ -1,4 +1,5 @@
 //! The routes through a scored career's veteran (`routes`): each trio taken with her in it, on its own lineage.
+use crate::career::imagined::{Imagined, ImaginedVeteran};
 use crate::career::inherit::{ExactOptions, Inheritance, inherit};
 use crate::career::plan::ScoringContext;
 use crate::career::plan::cont::{ScoreBase, SideStep, TrioSlot};
@@ -7,16 +8,16 @@ use crate::career::plan::score::build::{Setup, setup_entries};
 use crate::career::plan::score::{FinisherChoice, FinisherParents, best_finisher};
 use crate::career::plan::search::legal_pair;
 use crate::career::plan::step::{LiftRead, MAX_ROUTES, NO_SLOT, Route, ShadowRoute, WhileBuilding};
-use crate::career::pool::Pool;
+use crate::career::pool::{Pool, Who};
 use crate::career::schedule::ScheduleOutfits;
 use crate::career::sim::Sim;
-use crate::career::{Legacy, Lineage};
+use crate::career::{Lineage, Spark};
 
 /// What `routes` reads of the scored career beyond the scoring's context.
 pub(super) struct RouteInputs<'route> {
     /// Her veteran as the extended pool holds her (`CareerSetup::veteran`: every target at the rank's mix, her
     /// schedule's wins and possible pinks); her stars in any slot are the outcome's (`CareerSetup::her_slots`).
-    pub(super) her: &'route Legacy,
+    pub(super) her: &'route ImaginedVeteran,
     /// Her index in the extended pool.
     pub(super) new_veteran: usize,
     /// The scoring's partner setups (`prepare_setups`): per candidate her veteran can lift, one per kept partner.
@@ -80,7 +81,7 @@ struct RouteDraft {
 /// other, with this career).
 pub(super) struct LiftSide {
     pub(super) setup: Setup,
-    veteran: Legacy,
+    veteran: ImaginedVeteran,
     side: TrioSlot,
 }
 
@@ -174,24 +175,18 @@ pub(super) fn routes(
             match *parent {
                 RouteParent::Side(slot) => {
                     let veteran = &score_base.trio_sides[slot.candidate.0][slot.side];
-                    places[index] = match veteran.step {
-                        SideStep::Existing(legacy) => legacy,
-                        SideStep::Current | SideStep::Alternative(_) => {
-                            simulator.env.setup.pool_push(extended_pool, &veteran.legacy);
-                            extended_pool.veterans.len() - 1
-                        }
-                    };
+                    places[index] = veteran.place_in(&simulator.env.setup, extended_pool);
                     excluded[index] = character(slot.candidate.0);
                 }
                 RouteParent::Lifted(lift) => {
-                    simulator.env.setup.pool_push(extended_pool, &lifts[lift].veteran);
+                    simulator.env.setup.pool_push_imagined(extended_pool, &lifts[lift].veteran);
                     places[index] = extended_pool.veterans.len() - 1;
                     // (her the lifted side's second parent: that side's second grandparent slot of C's)
                     positions.push((places[index], Some(1)));
                     excluded[index] = character(lifts[lift].setup.candidate);
                 }
                 RouteParent::Her => {
-                    simulator.env.setup.pool_push(extended_pool, &her_at_most);
+                    simulator.env.setup.pool_push_imagined(extended_pool, &her_at_most);
                     places[index] = extended_pool.veterans.len() - 1;
                     positions.push((places[index], None));
                     excluded[index] = her_character;
@@ -340,12 +335,10 @@ impl RouteSet {
 
 /// Her veteran as a route's C sees her: every target at 3 stars, the most any outcome gives (so the C chosen on it, and
 /// its ceiling, bound C's odds at every outcome: C's odds only rise with her stars); her slots take the outcome's
-fn her_at_most(simulator: &Sim, her: &Legacy) -> Legacy {
-    Legacy {
-        sparks: simulator.env.setup.skill_job.targets.iter().map(|target| (target.group, 3)).collect(),
-        mix: None,
-        ..her.clone()
-    }
+fn her_at_most(simulator: &Sim, her: &ImaginedVeteran) -> ImaginedVeteran {
+    let sparks =
+        simulator.env.setup.skill_job.targets.iter().map(|target| Spark { group: target.group, stars: 3 }).collect();
+    ImaginedVeteran { her: Imagined { sparks, star_mix: None, ..her.her.clone() }, parents: her.parents.clone() }
 }
 
 /// The lift slots of a career whose veteran `inputs.her` is the last of `extended_pool` (`routes`): her Current side's
@@ -358,8 +351,8 @@ pub(super) fn lift_slots(
     inputs: &RouteInputs,
 ) -> Vec<LiftSide> {
     let score_base = context.score_base;
-    let mut legacies_with_her = context.legacies.to_vec();
-    legacies_with_her.push(her_at_most(simulator, inputs.her));
+    // (each lifted veteran's parents: the partner as the pool holds her, and her veteran as C sees her)
+    let her_parent = simulator.env.setup.imagined_who(&her_at_most(simulator, inputs.her).her);
     let current_lineages = inputs.partner_setups.iter().filter_map(|partner_setup| {
         let side = score_base.current_side(partner_setup.candidate)?;
         let place = LiftPlace {
@@ -374,7 +367,7 @@ pub(super) fn lift_slots(
         current_lineages.chain(own_parent_places(simulator, score_base, extended_pool, inputs)).collect();
     lifted_lineages
         .into_iter()
-        .filter_map(|lineage| lift_side(simulator, context, extended_pool, inputs, lineage, &legacies_with_her))
+        .filter_map(|lineage| lift_side(simulator, context, extended_pool, inputs, lineage, &her_parent))
         .collect()
 }
 
@@ -855,7 +848,7 @@ fn lift_side(
     extended_pool: &Pool,
     inputs: &RouteInputs,
     lifted: LiftedLineage,
-    legacies_with_her: &[Legacy],
+    her_parent: &Who,
 ) -> Option<LiftSide> {
     let score_base = context.score_base;
     let LiftedLineage { side, place } = lifted;
@@ -882,7 +875,8 @@ fn lift_side(
         lineage,
         ScheduleOutfits::DeckOption(outfit.unwrap_or(0)),
     );
-    let veteran = simulator.env.setup.veteran(legacies_with_her, lineage, &record);
+    let parents = [extended_pool.veterans[place.partner].clone(), her_parent.clone()];
+    let veteran = simulator.env.setup.veteran(trainee, parents, &record);
     #[cfg(test)]
     LIFTED.with(|lifted| {
         if let Some(lifted) = lifted.borrow_mut().as_mut() {
@@ -893,8 +887,8 @@ fn lift_side(
                 side_parents: side_veteran.parents,
                 lineage,
                 parents: veteran.parents.iter().map(|parent| parent.character_id).collect(),
-                partner_chara: legacies_with_her[place.partner].character_id,
-                her_chara: legacies_with_her[inputs.new_veteran].character_id,
+                partner_chara: extended_pool.veterans[place.partner].character_id,
+                her_chara: her_parent.character_id,
             });
         }
     });
@@ -1227,7 +1221,7 @@ mod alternative_tests {
             outfit: None,
             odds_below: base.side_odds(slot),
         };
-        let lifts = [LiftSide { setup, veteran: Legacy::default(), side: slot }];
+        let lifts = [LiftSide { setup, veteran: ImaginedVeteran::unread(), side: slot }];
         // (the least step V after her reads of the slot: her step at the lifted odds, the one outcome lifting it)
         let reads = [LiftRead { least_step: base.step_plan(0, lifted_odds).0, grinds: false }];
         let drafts = route_drafts(&base, DraftLifts { lifts: &lifts, reads: &reads }, None);
@@ -1258,18 +1252,18 @@ mod alternative_tests {
     }
 
     fn real_side() -> TrioSideVeteran {
-        TrioSideVeteran {
-            step: SideStep::Existing(0),
-            legacy: Legacy::default(),
-            odds: 0.0,
-            parents: None,
-            deck: None,
-            proven: true,
-        }
+        TrioSideVeteran { step: SideStep::Existing(0), fresh: None, odds: 0.0, parents: None, deck: None, proven: true }
     }
 
     fn fresh_side(step: SideStep, odds: f64) -> TrioSideVeteran {
-        TrioSideVeteran { step, legacy: Legacy::default(), odds, parents: Some((1, 3)), deck: None, proven: true }
+        TrioSideVeteran {
+            step,
+            fresh: Some(ImaginedVeteran::unread()),
+            odds,
+            parents: Some((1, 3)),
+            deck: None,
+            proven: true,
+        }
     }
 
     /// Astra's acceptance test for Alternative sides (astra-mono.out, 4): V's trio takes candidate 0's Alternative side

@@ -39,6 +39,7 @@
 //! - `decks`: the exact career deck searches and their kept memos.
 //! - `inherit`: legacy slots, affinity and inheritance chances.
 //! - `pool`: veteran pools and legal parent pairs.
+//! - `imagined`: the veterans the planner imagines (a career's before her result is known, synthetic full ones).
 //! - `outcomes`: career reports, outcome sets and corner tables.
 //! - `schedule`: aptitude sparks and career race schedules.
 //! - `cache`: the deck cache the simulator and the plan value careers through.
@@ -63,6 +64,7 @@ use crate::career::run::{
 use crate::career::search::{Ref, solve_kept};
 use crate::career::setup::{CareerBuild, career_setup};
 use crate::career::state::{KeptState, ProductProof};
+use crate::codes::Aptitude;
 use crate::data::Data;
 use crate::deck::space::{DeckSpace, SelectedDeck};
 use crate::deck::{CardsRaw, d_true};
@@ -73,6 +75,7 @@ use crate::uma::{UmaIndex, UmaTable};
 use serde::{Deserialize, Serialize};
 mod clock;
 mod decks;
+pub(crate) mod imagined;
 mod inherit;
 mod outcomes;
 mod pool;
@@ -134,50 +137,72 @@ pub(crate) struct JobInputs<'data> {
     pub(crate) job: &'data CareerRequest,
 }
 
+/// A white (skill) spark on a record: its skill group and stars.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, ts_rs::TS)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Spark {
+    pub(crate) group: u32,
+    pub(crate) stars: u8,
+}
+
+/// A pink (aptitude) spark: the aptitude it raises and its stars, 1 to 3 as the game's (master.mdb `succession_factor`'s
+/// rarity); other stars do not parse, nor does an aptitude outside `Aptitude`. Ordered by aptitude code, then stars.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, ts_rs::TS)]
+#[serde(try_from = "PinkFields")]
+pub(crate) struct Pink {
+    pub(crate) aptitude: Aptitude,
+    pub(crate) stars: u8,
+}
+
+/// A pink spark as read, before its stars are checked (`Pink`).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PinkFields {
+    aptitude: Aptitude,
+    stars: u8,
+}
+
+impl TryFrom<PinkFields> for Pink {
+    type Error = String;
+
+    fn try_from(PinkFields { aptitude, stars }: PinkFields) -> Result<Self, Self::Error> {
+        if (1..=3).contains(&stars) {
+            Ok(Self { aptitude, stars })
+        } else {
+            Err(format!("a pink spark has 1 to 3 stars, not {stars} ({aptitude:?})"))
+        }
+    }
+}
+
 /// A veteran's parent as her record names it.
 #[derive(Serialize, Deserialize, Clone, Default, ts_rs::TS)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Ancestor {
     #[serde(rename = "chara")]
     pub character_id: u32,
-    /// (skill group, stars 1..=3) of its white skill sparks
+    /// its white skill sparks
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
-    pub sparks: Vec<(u32, u8)>,
+    pub sparks: Vec<Spark>,
     /// race indices (data.json `races`) of the single-race G1s it won
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     pub wins: Vec<usize>,
-    /// (aptitude factor group, stars) of its pink sparks: 11 turf, 12 dirt, 21-24 front runner .. end closer, 31-34
-    /// sprint .. long; reported (inheritance chance per aptitude), not part of the odds
+    /// its pink sparks: reported (inheritance chance per aptitude), and they raise her children's grades (their
+    /// schedules); not part of the skill odds
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
-    pub pinks: Vec<(u32, u8)>,
-    /// internal (the parent of a veteran before her result is known is such a veteran): the pinks it may carry
-    /// (`Legacy::pink_chances`)
-    #[serde(skip)]
-    pub(crate) pink_chances: Vec<crate::career::schedule::PinkChance>,
-    /// internal (a hypothetical ancestor: the planner's synthetic lineages, or a fresh veteran's parent that is itself
-    /// fresh): win chance per race index in place of `wins`, and the star mix her sparks are drawn from in place of
-    /// fixed stars, as `Legacy`'s. A recorded parent has neither.
-    #[serde(skip)]
-    win_chances: Vec<f64>,
-    #[serde(skip)]
-    mix: Option<[f64; 3]>,
+    pub pinks: Vec<Pink>,
 }
 
 impl Ancestor {
-    /// A legacy as her child's record of a parent: her character, white sparks, G1 wins and pink sparks (or the pinks
-    /// she may carry).
+    /// A legacy as her child's record of a parent: her character, white sparks, G1 wins and pink sparks.
     fn of_legacy(legacy: &Legacy) -> Self {
         Self {
             character_id: legacy.character_id,
             sparks: legacy.sparks.clone(),
             wins: legacy.wins.clone(),
             pinks: legacy.pinks.clone(),
-            pink_chances: legacy.pink_chances.clone(),
-            win_chances: legacy.win_chances.clone(),
-            mix: legacy.mix,
         }
     }
 }
@@ -197,8 +222,10 @@ struct IdentityRecord<'legacy> {
     borrowed: bool,
     chara: u32,
     parents: Vec<IdentityParent<'legacy>>,
-    pinks: &'legacy [(u32, u8)],
-    sparks: &'legacy [(u32, u8)],
+    #[serde(serialize_with = "pink_pairs")]
+    pinks: &'legacy [Pink],
+    #[serde(serialize_with = "spark_pairs")]
+    sparks: &'legacy [Spark],
     wins: &'legacy [usize],
 }
 
@@ -206,15 +233,28 @@ struct IdentityRecord<'legacy> {
 #[derive(Serialize)]
 struct IdentityParent<'legacy> {
     chara: u32,
-    pinks: &'legacy [(u32, u8)],
-    sparks: &'legacy [(u32, u8)],
+    #[serde(serialize_with = "pink_pairs")]
+    pinks: &'legacy [Pink],
+    #[serde(serialize_with = "spark_pairs")]
+    sparks: &'legacy [Spark],
     wins: &'legacy [usize],
+}
+
+/// Sparks in an identity's text as `[group, stars]` pairs, as the records were written when the identities were first
+/// taken (the identities order the pairs, `plan::pair_bound`, so their text stays).
+fn spark_pairs<S: serde::Serializer>(sparks: &&[Spark], serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.collect_seq(sparks.iter().map(|spark| (spark.group, spark.stars)))
+}
+
+/// Pink sparks in an identity's text as `[aptitude code, stars]` pairs (`spark_pairs`).
+fn pink_pairs<S: serde::Serializer>(pinks: &&[Pink], serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.collect_seq(pinks.iter().map(|pink| (pink.aptitude, pink.stars)))
 }
 
 impl Legacy {
     /// Her identity as a record, for orders that must not read the pool's order (`plan::pair_bound`): the canonical
     /// text of her recorded fields and her recorded parents' (character, borrowed, sparks, wins, pinks), and its hash.
-    /// Two identical records have one identity. The internal fields are not in it: a job's legacies, as read, have none
+    /// Two identical records have one identity.
     pub(crate) fn identity(&self) -> RecordIdentity {
         let record = IdentityRecord {
             borrowed: self.borrowed,
@@ -236,32 +276,6 @@ impl Legacy {
         let text = serde_json::to_string(&record).expect("a record's text");
         RecordIdentity { hash: crate::career::state::hash_text(&text), text }
     }
-    /// Her record as a job sends it (`legacies`): the internal fields left out (a veteran whose result was drawn
-    /// keeps only what was drawn).
-    pub(crate) fn recorded(&self) -> Self {
-        Self {
-            character_id: self.character_id,
-            borrowed: self.borrowed,
-            sparks: self.sparks.clone(),
-            wins: self.wins.clone(),
-            pinks: self.pinks.clone(),
-            parents: self.parents.iter().map(Ancestor::recorded).collect(),
-            ..Self::default()
-        }
-    }
-}
-
-impl Ancestor {
-    /// Her record as a job sends it (`Legacy::recorded`).
-    fn recorded(&self) -> Self {
-        Self {
-            character_id: self.character_id,
-            sparks: self.sparks.clone(),
-            wins: self.wins.clone(),
-            pinks: self.pinks.clone(),
-            ..Self::default()
-        }
-    }
 }
 
 /// A legacy's recorded parents (the trainee's grandparents under her): at most two. More would count a target's
@@ -277,7 +291,8 @@ fn recorded_parents<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result
     Ok(parents)
 }
 
-/// A veteran as a job sends her: her record (character, sparks, G1 wins, pinks) and her recorded parents.
+/// A veteran as a job sends her: her record (character, sparks, G1 wins, pinks) and her recorded parents. A veteran
+/// the planner imagines is not one (`imagined::ImaginedVeteran`).
 #[derive(Serialize, Deserialize, Clone, Default, ts_rs::TS)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Legacy {
@@ -288,26 +303,17 @@ pub(crate) struct Legacy {
     pub borrowed: bool,
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
-    pub sparks: Vec<(u32, u8)>,
+    pub sparks: Vec<Spark>,
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     pub wins: Vec<usize>,
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
-    pub pinks: Vec<(u32, u8)>,
+    pub pinks: Vec<Pink>,
     /// its own parents (the new trainee's grandparents), at most two; empty when unknown
     #[serde(default, deserialize_with = "recorded_parents")]
     #[ts(as = "Option<_>", optional)]
     pub parents: Vec<Ancestor>,
-    /// internal (a veteran before her result is known, `CareerSetup::veteran`): win chance per race index in place of
-    /// `wins`, the star mix her sparks are drawn from in place of fixed stars, and the pinks she may carry in place of
-    /// `pinks` (one at most: `CareerSetup::pink_chances`)
-    #[serde(skip)]
-    win_chances: Vec<f64>,
-    #[serde(skip)]
-    mix: Option<[f64; 3]>,
-    #[serde(skip)]
-    pink_chances: Vec<crate::career::schedule::PinkChance>,
 }
 
 const fn d_top() -> usize {

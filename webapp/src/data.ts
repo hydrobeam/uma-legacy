@@ -3,6 +3,8 @@
 import * as page from '#page-data';
 import { ERA } from './saved.ts';
 import { assert, must } from './must.ts';
+import { Distance, Surface } from './gen/solver.ts';
+import type { Grades } from './gen/solver.ts';
 /** Fingerprinted files of the build (vite/pagedata.mjs): the wasm, each era's solver data, the GM era's page data. */
 export interface Assets {
   wasm: string;
@@ -61,18 +63,18 @@ export interface Uma {
   name: string;
   /** GameTora's slug for her page */
   gt: string | null;
-  /** her base aptitude grades (codes 1..8 = G..S, in the solver data's `apt` order), when known */
-  apt?: number[];
+  /** her base aptitude grades (the first outfit's), when known */
+  apt?: Grades;
   outfits: Outfit[];
 }
-/** a race's distance: 0-3, sprint to long */
-export type Distance = 0 | 1 | 2 | 3;
-/** a G1's distance and ground (1 turf, 2 dirt), from the career tables' `race_cat` and `race_ground` */
+/** a G1's distance and surface, from the career tables' `race_cat` and `race_ground` (the solver's codes) */
 export interface RaceTrack {
   cat: Distance;
-  ground: 1 | 2;
+  ground: Surface;
 }
-const isDistance = (x: unknown): x is Distance => x === 0 || x === 1 || x === 2 || x === 3;
+// the solver's codes, checked on a value read from the data
+const isDistance = (x: unknown): x is Distance => typeof x === 'number' && Distance[x] !== undefined,
+  isSurface = (x: unknown): x is Surface => typeof x === 'number' && Surface[x] !== undefined;
 // each G1's track by name. export_page.py stops on a race without a distance and a ground (`check_race_tracks`); the check here
 // repeats it for a data file the build did not make (stale or hand-edited), and fails the data load (the status line
 // says so) rather than give a race a wrong figure
@@ -84,10 +86,7 @@ function tracksOf(career: CareerTables | null): Map<string, RaceTrack> {
     career.races.map((name, ix): [string, RaceTrack] => {
       const cat = cats[ix],
         ground = grounds[ix];
-      assert(
-        isDistance(cat) && (ground === 1 || ground === 2),
-        `export_page.py checks race ${ix}'s distance and ground`,
-      );
+      assert(isDistance(cat) && isSurface(ground), `export_page.py checks race ${ix}'s distance and ground`);
       return [name, { cat, ground }];
     }),
   );
@@ -109,9 +108,9 @@ export interface CareerTables {
   uniques?: Record<number, string>;
   /** the G1 races by index */
   races: string[];
-  /** each race's distance (0-3, sprint to long) */
+  /** each race's distance (the solver's `Distance`, checked at load: `tracksOf`) */
   race_cat?: number[];
-  /** each race's ground (1 turf, 2 dirt) */
+  /** each race's ground (the solver's `Surface`, checked at load) */
   race_ground?: number[];
   /** each race's turns */
   race_turns?: number[][];

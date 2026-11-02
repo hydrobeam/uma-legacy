@@ -9,7 +9,8 @@ import { must } from '../must.ts';
 import type { SolverAnswer } from '../solver.ts';
 import type * as Gen from '../gen/solver.ts';
 import type { SettingsView } from '../settings.ts';
-import type { ChosenCareer, JobLegacy, LineageNode, PlacesRecord, VetRecord } from '../veterans/store.ts';
+import type { ChosenCareer, LineageNode, PlacesRecord, VetRecord } from '../veterans/store.ts';
+import type { JobLegacy } from '../veterans/records.ts';
 import type { DeepReadonly } from '../store.ts';
 
 // the places as a key: the trainee and the two parents (not how they were set, `fromTable`)

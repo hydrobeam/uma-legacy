@@ -13,10 +13,10 @@ fn looped_career_is_offered() {
         job["job"]["skills"]["targets"].as_array().unwrap().iter().map(|t| t["group"].as_u64().unwrap()).collect();
     for i in [5, 15] {
         let sp = job["job"]["career"]["legacies"][i]["sparks"].as_array_mut().unwrap();
-        let have: Vec<u64> = sp.iter().map(|s| s[0].as_u64().unwrap()).collect();
+        let have: Vec<u64> = sp.iter().map(|spark| spark["group"].as_u64().unwrap()).collect();
         for &g in &targets {
             if !have.contains(&g) {
-                sp.push(serde_json::json!([g, 1]));
+                sp.push(serde_json::json!({"group": g, "stars": 1}));
             }
         }
     }

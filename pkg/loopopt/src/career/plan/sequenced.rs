@@ -7,6 +7,7 @@
 //! values read the cached decks only (`aside`), but its career searches (`env.solve`) can keep proofs and set class
 //! flags as any search does (as the lift audit's do), and the output reads the flags.
 use crate::career::clock::now_ms;
+use crate::career::imagined::ImaginedVeteran;
 use crate::career::plan::combine::PlanScores;
 use crate::career::plan::cont::{ScoreBase, SideStep, Trio, TrioSlot, Want};
 use crate::career::plan::robust::{aside, aside_complete};
@@ -16,7 +17,7 @@ use crate::career::plan::search::{capped, legal_pair, val};
 use crate::career::plan::{Oracle, PlanContext, found_career};
 use crate::career::search::SearchRequest;
 use crate::career::sim::Sim;
-use crate::career::{Career, Legacy, Lineage};
+use crate::career::{Career, Lineage};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -170,14 +171,11 @@ fn sequence(
     }
     let env_budget = simulator.env.state.budget;
     let mut working_pool = simulator.evaluator.take_pool(input.pool);
-    // her fresh full veteran in the pool (and among the legacies a new veteran's parents are read from)
-    simulator.env.setup.pool_push(&mut working_pool, &first_side.legacy);
-    let first_place = working_pool.veterans.len() - 1;
-    let mut legacies: Vec<Legacy> = input.legacies.to_vec();
-    legacies.push(first_side.legacy.clone());
+    // her fresh full veteran in the pool (where a new veteran's parents are read from)
+    let first_place = first_side.place_in(&simulator.env.setup, &mut working_pool);
     // the second side: as today, or her best career with the first's veteran as a parent where her step there is less
     let today_second = base.side_cost(second);
-    let (mut second_careers, mut moved_veteran) = (today_second, None::<Legacy>);
+    let (mut second_careers, mut moved_veteran) = (today_second, None::<ImaginedVeteran>);
     if !matches!(second_side.step, SideStep::Existing(_)) {
         let trainee = context.candidates[second.candidate];
         let searched = capped(simulator, input.settings.search_work, env_budget, |simulator| {
@@ -200,19 +198,17 @@ fn sequence(
                     &working_pool,
                     career,
                 );
-                (second_careers, moved_veteran) =
-                    (step, Some(simulator.env.setup.veteran(&legacies, lineage, &record)));
+                let parents = working_pool.lineage_parents(lineage);
+                (second_careers, moved_veteran) = (step, Some(simulator.env.setup.veteran(trainee, parents, &record)));
             }
         }
     }
     let second_moved = moved_veteran.is_some();
-    let second_veteran = moved_veteran.as_ref().unwrap_or(&second_side.legacy);
-    let second_place = match second_side.step {
-        SideStep::Existing(legacy) => legacy,
-        SideStep::Current | SideStep::Alternative(_) => {
-            simulator.env.setup.pool_push(&mut working_pool, second_veteran);
-            working_pool.veterans.len() - 1
-        }
+    let second_place = if let Some(veteran) = &moved_veteran {
+        simulator.env.setup.pool_push_imagined(&mut working_pool, veteran);
+        working_pool.veterans.len() - 1
+    } else {
+        second_side.place_in(&simulator.env.setup, &mut working_pool)
     };
     // C: the allowed uma, not of A's or B's, at her best odds on the two
     let (first_id, second_id) =

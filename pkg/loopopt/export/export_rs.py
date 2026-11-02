@@ -12,10 +12,21 @@ from rel import relation_points
 
 
 class RaceAttributes(NamedTuple):
-    """A race's distance class (0 short .. 3 long) and surface (1 turf, 2 dirt)."""
+    """A race's distance class (0 short .. 3 long) and surface (the solver's `Surface`: 0 turf, 1 dirt)."""
 
     distance_class: int
     ground: int
+
+
+# master.mdb's course ground (1 turf, 2 dirt) -> the solver's `Surface` (src/codes.rs: 0 turf, 1 dirt)
+SURFACE = {1: 0, 2: 1}
+
+
+def grades(aptitudes):
+    """the solver's `Grades` (src/codes.rs) of base.json's ten aptitude codes (master.mdb's proper_distance_short ..
+    long, proper_ground_turf and dirt, proper_running_style_nige .. oikomi): each kind's grades in its codes' order"""
+    assert len(aptitudes) == 10, aptitudes
+    return {"distance": list(aptitudes[0:4]), "surface": list(aptitudes[4:6]), "style": list(aptitudes[6:10])}
 
 
 def collect_races(model):
@@ -65,17 +76,17 @@ def export_uma(model, character, *, races, race_indices):
                 key = (choice["race"], turn <= 48)
                 assert key not in seen, (model.name[character], model.race_names[races[choice["race"]]])
                 seen[key] = turn
-    # Ten aptitude codes in base.json order; bp above uses the first six. `outfit_apt`: [card id, aptitudes] of each
+    # Her grades (`grades`); bp above uses the distances' and the surfaces'. `outfit_apt`: [card id, grades] of each
     # outfit whose own differ (the career planner's grades for a career in that outfit; bp stays the first outfit's)
     exported = {
         "id": character,
         "name": model.name[character],
         "turns": turns,
         "goals": groups,
-        "apt": list(model.apt[character]),
+        "apt": grades(model.apt[character]),
     }
     if character in model.outfit_apt:
-        exported["outfit_apt"] = model.outfit_apt[character]
+        exported["outfit_apt"] = [[card, grades(aptitudes)] for card, aptitudes in model.outfit_apt[character]]
     return exported
 
 
@@ -109,7 +120,7 @@ def main():
     race_attributes = {}
     for program in model.programs.values():
         race_attributes.setdefault(
-            program.race, RaceAttributes(distance_class=cat(program.distance), ground=program.ground)
+            program.race, RaceAttributes(distance_class=cat(program.distance), ground=SURFACE[program.ground])
         )
     output_path = os.path.join(model.era.out, "data.json") if arguments.out is None else arguments.out
     json.dump(

@@ -345,9 +345,8 @@ pub(super) fn evaluate_career(
     // out past it are the ones with the highest lower bounds, `routes`)
     let route_set = builds_routes.then(|| {
         let routes_started = now_ms();
-        let her = simulator.env.setup.veteran(context.legacies, career.lineage, &current.record);
         let inputs = RouteInputs {
-            her: &her,
+            her: &extended_pool.veteran,
             new_veteran,
             partner_setups: &setups,
             full_possible,

@@ -5,7 +5,7 @@ use crate::deck::hints::{hint_base, hint_miss, hint_spec};
 use crate::deck::space::{MAX_DECK, MAX_KINDS, MAX_UNCERTAIN, kinds_all};
 use crate::deck::{Card, CardsRaw, ChoiceEvent, DeckJob};
 use crate::refusal::Refusal;
-use crate::skills::SkillsRaw;
+use crate::skills::{Reward, SkillsRaw};
 use serde::Deserialize;
 /// Mutually exclusive outcomes of one event firing. Probabilities sum to at most 1; the remainder gives no hint.
 /// Each outcome's rewards occur together, using hint levels 1 (white) and 2 (gold).
@@ -507,7 +507,7 @@ pub(crate) fn event_lists(skills: &SkillsRaw, event_cache: CardEventCache) -> Ev
         for &(link, ref rewards) in &card.chain {
             for reward in rewards {
                 let (name, probability) = reward.name_and_chance();
-                if let Some((group, level)) = lookup_skill(name) {
+                if let Some(Reward { group, level }) = lookup_skill(name) {
                     if probability >= 1.0 {
                         lists.events.push((id, group, level, link));
                     } else {
@@ -520,7 +520,7 @@ pub(crate) fn event_lists(skills: &SkillsRaw, event_cache: CardEventCache) -> Ev
             lists.end_links.push((id, link));
             for reward in rewards {
                 let (name, probability) = reward.name_and_chance();
-                if let Some((group, level)) = lookup_skill(name) {
+                if let Some(Reward { group, level }) = lookup_skill(name) {
                     lists.ends.push((id, link, group, level, probability));
                 }
             }
@@ -529,7 +529,7 @@ pub(crate) fn event_lists(skills: &SkillsRaw, event_cache: CardEventCache) -> Ev
             lists.event_stop_risk.push((id, link, k, n));
         }
         for (link, choices) in &card.alts {
-            let choices: Vec<Vec<Vec<(u32, u8)>>> = choices
+            let choices: Vec<Vec<Vec<Reward>>> = choices
                 .iter()
                 .map(|choice| {
                     choice
@@ -544,12 +544,12 @@ pub(crate) fn event_lists(skills: &SkillsRaw, event_cache: CardEventCache) -> Ev
             lists.choice_weights.push((id, link, weights));
         }
         for name in &card.always {
-            if let Some((group, level)) = lookup_skill(name) {
+            if let Some(Reward { group, level }) = lookup_skill(name) {
                 lists.events.push((id, group, level, 0));
             }
         }
         for &(ref name, chance) in &card.chance {
-            if let Some((group, level)) = lookup_skill(name) {
+            if let Some(Reward { group, level }) = lookup_skill(name) {
                 lists.odds_events.push((id, group, level, chance));
             }
         }
@@ -732,7 +732,7 @@ impl Sources<'_> {
                     .map(|(outcome_index, outcome)| {
                         let mut rewards: Vec<TargetReward> = outcome
                             .iter()
-                            .filter_map(|&(group, level)| {
+                            .filter_map(|&Reward { group, level }| {
                                 self.target_groups
                                     .iter()
                                     .position(|&target| target == group)

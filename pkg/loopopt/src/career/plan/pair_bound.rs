@@ -154,11 +154,15 @@ mod tests {
     #[test]
     fn the_bound_keeps_the_same_pairs_in_any_pool_order() {
         let records: Vec<Legacy> = (0..9u32)
-            .map(|k| serde_json::from_value(serde_json::json!({"chara": 1001 + k, "sparks": [[20000 + k, 1 + k % 3]]})))
+            .map(|k| {
+                serde_json::from_value(
+                    serde_json::json!({"chara": 1001 + k, "sparks": [{"group": 20000 + k, "stars": 1 + k % 3}]}),
+                )
+            })
             .collect::<Result<_, _>>()
             .unwrap();
         // a ceiling of the two records alone, with many exact ties (it reads only the sparks' stars)
-        let stars = |legacy: &Legacy| f64::from(legacy.sparks[0].1);
+        let stars = |legacy: &Legacy| f64::from(legacy.sparks[0].stars);
         let kept = |pool: &[Legacy]| {
             let identities: Vec<RecordIdentity> = pool.iter().map(Legacy::identity).collect();
             let ranks = identity_ranks(&identities);

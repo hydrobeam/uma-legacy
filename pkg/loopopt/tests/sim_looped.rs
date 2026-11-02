@@ -18,7 +18,7 @@ fn simulate(goal: &str, max_careers: usize) -> Value {
     let mut legacies: Vec<Value> =
         [0, 3, 6, 9].iter().map(|&i| career_job["job"]["career"]["legacies"][i].clone()).collect();
     for legacy in &mut legacies[1..] {
-        legacy["sparks"].as_array_mut().unwrap().retain(|spark| spark[0] != TARGET_ONE_VETERAN_LACKS);
+        legacy["sparks"].as_array_mut().unwrap().retain(|spark| spark["group"] != TARGET_ONE_VETERAN_LACKS);
     }
     let mut job = career_job;
     job["job"]["skills"]["targets"] = json!([{"group": 20049, "guaranteed": 2}, {"group": TARGET_ONE_VETERAN_LACKS}]);

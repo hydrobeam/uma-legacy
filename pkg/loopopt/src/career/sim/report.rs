@@ -1,5 +1,6 @@
 //! The simulator's report (`simulate` on a career job: native only; val/simval.py and the research read it), and a
 //! veteran as a job records her (`LegacyRecord`).
+use crate::career::{Pink, Spark};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use ts_rs::TS;
@@ -223,9 +224,9 @@ pub(crate) struct ArgmaxCheck {
 pub(crate) struct LegacyRecord {
     pub(crate) chara: u32,
     pub(crate) borrowed: bool,
-    pub(crate) sparks: Vec<(u32, u8)>,
+    pub(crate) sparks: Vec<Spark>,
     pub(crate) wins: Vec<usize>,
-    pub(crate) pinks: Vec<(u32, u8)>,
+    pub(crate) pinks: Vec<Pink>,
     pub(crate) parents: Vec<AncestorRecord>,
 }
 
@@ -233,7 +234,7 @@ pub(crate) struct LegacyRecord {
 #[derive(Serialize, TS)]
 pub(crate) struct AncestorRecord {
     pub(crate) chara: u32,
-    pub(crate) sparks: Vec<(u32, u8)>,
+    pub(crate) sparks: Vec<Spark>,
     pub(crate) wins: Vec<usize>,
-    pub(crate) pinks: Vec<(u32, u8)>,
+    pub(crate) pinks: Vec<Pink>,
 }

@@ -44,20 +44,19 @@ def sparks(factors):
         group = factor_groups.get(factor["factor_id"] // 100)
         if group is not None:
             sparks_by_group[group] = max(sparks_by_group.get(group, 0), factor["factor_id"] % 100)
-    return sorted(sparks_by_group.items())
+    return [{"group": group, "stars": stars} for group, stars in sorted(sparks_by_group.items())]
 
 
 pink_groups = {int(k) for k in tables.get("pinks", {})}
 
 
 def pinks(factors):
-    return sorted(
-        {
-            factor["factor_id"] // 100: factor["factor_id"] % 100
-            for factor in factors
-            if factor["factor_id"] // 100 in pink_groups
-        }.items()
-    )
+    by_aptitude = {
+        factor["factor_id"] // 100: factor["factor_id"] % 100
+        for factor in factors
+        if factor["factor_id"] // 100 in pink_groups
+    }
+    return [{"aptitude": aptitude, "stars": stars} for aptitude, stars in sorted(by_aptitude.items())]
 
 
 def wins(saddles):

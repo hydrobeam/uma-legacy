@@ -41,6 +41,7 @@ fn constants_prints_the_model_constants() {
     assert_eq!(
         keys,
         [
+            "aptitude_kinds",
             "ceil_share",
             "chain_a",
             "chain_b",
@@ -49,6 +50,7 @@ fn constants_prints_the_model_constants() {
             "exact_builders_targets",
             "gen_gold",
             "gen_white",
+            "grade_cost",
             "insp_per_star",
             "lam_decay",
             "star_mix"

@@ -20,8 +20,9 @@ import { usePopOpener } from '../../ui/CardPop.tsx';
 import { chip, FRIENDS_TAG } from '../../ui/deckChip.ts';
 import { skillTile } from '../../ui/skillTile.ts';
 import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
-import { GRADE_LETTER, gradeAt } from '../../grades.ts';
-import { CardAv, Grade, SkillIcon, UmaAv } from '../../ui/Images.tsx';
+import { gradeOf } from '../../grades.ts';
+import { Aptitude, Grade } from '../../gen/solver.ts';
+import { CardAv, GradeBadge, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import type { DeepReadonly } from '../../store.ts';
 import type { CareerReport } from '../job.ts';
 import { draftRef } from '../../veterans/store.ts';
@@ -33,31 +34,31 @@ import { cx } from 'tailwind-variants/lite';
 
 type Career = DeepReadonly<CareerReport>;
 
-// aptitude rows; `at` indexes the solver's `apt` order: short, mile, middle, long, turf, dirt, front, pace, late, end
+// aptitude rows, as the game lays them out
 const APT_ROWS = [
   {
     label: 'Track',
     cells: [
-      { at: 4, name: 'Turf' },
-      { at: 5, name: 'Dirt' },
+      { aptitude: Aptitude.Turf, name: 'Turf' },
+      { aptitude: Aptitude.Dirt, name: 'Dirt' },
     ],
   },
   {
     label: 'Distance',
     cells: [
-      { at: 0, name: 'Sprint' },
-      { at: 1, name: 'Mile' },
-      { at: 2, name: 'Medium' },
-      { at: 3, name: 'Long' },
+      { aptitude: Aptitude.Sprint, name: 'Sprint' },
+      { aptitude: Aptitude.Mile, name: 'Mile' },
+      { aptitude: Aptitude.Medium, name: 'Medium' },
+      { aptitude: Aptitude.Long, name: 'Long' },
     ],
   },
   {
     label: 'Style',
     cells: [
-      { at: 6, name: 'Front' },
-      { at: 7, name: 'Pace' },
-      { at: 8, name: 'Late' },
-      { at: 9, name: 'End' },
+      { aptitude: Aptitude.FrontRunner, name: 'Front' },
+      { aptitude: Aptitude.PaceChaser, name: 'Pace' },
+      { aptitude: Aptitude.LateSurger, name: 'Late' },
+      { aptitude: Aptitude.EndCloser, name: 'End' },
     ],
   },
 ];
@@ -143,13 +144,13 @@ export function Details({
               <span class={APT_LABEL} role="rowheader">
                 {label}
               </span>
-              {cells.map(({ at, name }) => {
-                const grade = gradeAt(apt, at);
+              {cells.map(({ aptitude, name }) => {
+                const grade = gradeOf(apt, aptitude);
                 return (
                   // biome-ignore lint/a11y/useSemanticElements: (its cells)
-                  <span key={at} class={APT_CELL} role="cell" title={`${name} ${GRADE_LETTER[grade]}`}>
+                  <span key={aptitude} class={APT_CELL} role="cell" title={`${name} ${Grade[grade]}`}>
                     <span class="truncate">{name}</span>
-                    <Grade g={grade} />
+                    <GradeBadge g={grade} />
                   </span>
                 );
               })}

@@ -35,7 +35,7 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 | `src/checks.rs` | The environment switches, read once into `Checks` (`checks::get`), and their thread-local counters |
 | `src/data.rs` | Race data, schedule choices, relation and ceiling tables, win probabilities and feasibility |
 | `src/hex.rs` | Floats and 64-bit keys as hex text, bit for bit (the kept state's, data.json's `pb` table) |
-| `src/codes.rs` | The game's integer codes as enums written as their integers (`Grade`, `Distance`, `Surface`: data.json's `apt`, `race_cat`, `race_ground`, the replies' grades) |
+| `src/codes.rs` | The game's integer codes as enums written as their integers (`Grade`, `Distance`, `Surface`, `Style`, `Aptitude`: data.json's grades, `race_cat`, `race_ground`, a pink spark's aptitude), what an aptitude is of (`Kind`) and a uma's grades by kind (`Grades`) |
 | `src/key.rs` | Content keys: a typed value hashed through its serde encoding (`content_key`), what kept work is keyed by |
 | `src/uma.rs` | Roster indices and per-uma tables (`UmaIndex`, `UmaTable`) |
 | `src/schedule.rs` | Exact single-uma best responses (`Uma::dp_exact`, `Data::best_response`), scratch buffers and scoped memo |
@@ -83,6 +83,7 @@ folder, open `mod.rs` first: its header maps the children, and it holds the fold
 | `src/career/decks.rs` | Exact career deck searches (`Env::best_deck`, `best_deck_run`, `best_deck_cf`) and their kept memos |
 | `src/career/inherit.rs` | Legacy slots, affinity, inheritance chances, their folding (`set_ews`) and `rise`; a lineage's slots taken in one order wherever the veterans stand (`Pool::product_order`, `Pool::grandparent_order`: the lower character id first, indices kept), in `walk_slots` and `gen_cands` alike, so a pair's f64s do not depend on the pool's order (tests/plan_order.rs). Ties: the main career search's candidate order, the planner's ranked pairs (`ranked_pairs`, and the careers kept from them in arrival order) and a scoring's partners break equal ceilings and values by a veteran's content rank (`Pool::content_ranks`: her character, stars, star mix, wins, pinks, borrowed, then her recorded parents', compared in full, no hash) before the indices, so the legacy index only orders veterans equal in all of it, which are interchangeable (tests/career_order.rs: val career_U2 reversed gives the same careers, its fifth result's exact tie between legacies 9 and 10 included) |
 | `src/career/pool.rs` | Veteran pools and legal parent pairs |
+| `src/career/imagined.rs` | The veterans the planner imagines (a career's before her result is known, the synthetic full veterans of a ceiling or a hint ranking, an audit's at one outcome): what the pool reads of her and her parents as the pool holds them; a real veteran is a record (`Legacy`) |
 | `src/career/outcomes.rs` | Career reports, outcome sets, corner tables and the veteran a career leaves |
 | `src/career/schedule.rs` | Aptitude sparks and career race schedules |
 | `src/career/cache.rs` | The deck cache (`Cache`) the simulator and the plan value careers through |
@@ -149,7 +150,7 @@ every pair's overlap 20 times over a loop's 12 lineages (`docs/RESEARCH.md` §6)
 weight for every pair, so both rank schedules identically; a three-uma rotation likewise weights its three pairs
 equally. Test `score_matches_per_legacy_sum` checks the closed form against a direct sum over every lineage and slot.
 
-- Aptitudes: each uma carries `apt` (ten codes 1..8 = G..S: short, mile, middle, long, turf, dirt, front runner, pace chaser, late surger, end closer; from her first outfit unless overridden at export) and `outfit_apt` ([card id, codes] of each outfit whose own differ); `race_cat` / `race_ground` give each race's distance class (0 short .. 3 long) and surface (1 turf, 2 dirt). The loop scheduler reads exported base win chances (the first outfit's); the career schedule reads the aptitudes of the outfit the career runs, with the legacies' pink sparks (`CareerSetup::pink_career`).
+- Aptitudes: each uma carries `apt`, her grades (codes 1..8 = G..S) by kind: `{distance: [short, mile, medium, long], surface: [turf, dirt], style: [front runner, pace chaser, late surger, end closer]}` (`Grades`; from her first outfit unless overridden at export), and `outfit_apt` ([card id, grades] of each outfit whose own differ); `race_cat` / `race_ground` give each race's distance class (0 short .. 3 long) and surface (0 turf, 1 dirt), the places of its grades in `distance` and `surface`. The loop scheduler reads exported base win chances (the first outfit's); the career schedule reads the aptitudes of the outfit the career runs, with the legacies' pink sparks (`CareerSetup::pink_career`).
 - `pair(a,b)` / `tri(a,b,c)`: the sum of `succession_relation.relation_point` over the relation groups shared by all of them. `data.json` stores the groups (`relations`: `[points, [roster indices]]`, groups with at least two roster members) and the solver builds both tables at load.
 - **Fixed rules** (race options from the exporter; affinity in the solver):
   - G1 only, +3 per shared G1.
@@ -555,7 +556,7 @@ the career named at a tie from depending on what the worker ran before on anothe
 
 | Field | Meaning | Default |
 |---|---|---|
-| `legacies` | veterans: `{chara, borrowed, sparks: [[skill group, stars], ...], pinks: [[aptitude group, stars], ...], wins: [race index], parents: [{chara, sparks, pinks, wins}, ...]}`; race index = position in data.json `races`; aptitude groups 11 turf, 12 dirt, 21-24 front runner to end closer, 31-34 sprint to long; a parent with `chara` 0 is unknown (no relation points, its sparks still count) | required |
+| `legacies` | veterans: `{chara, borrowed, sparks: [{group, stars}, ...], pinks: [{aptitude, stars}, ...], wins: [race index], parents: [{chara, sparks, pinks, wins}, ...]}`; race index = position in data.json `races`; a pink's aptitude is the game's factor group (11 turf, 12 dirt, 21-24 front runner to end closer, 31-34 sprint to long; another does not parse) and its stars 1 to 3; a parent with `chara` 0 is unknown (no relation points, its sparks still count) | required |
 | `trainees` | chara ids to consider (empty: every owned uma) | `[]` |
 | `fix` | legacy indices that must be among the two parents (0, 1 or 2) | `[]` |
 | `borrowed_parent` | `"allow"`: at most one borrowed parent per career, now and in the plan's look-ahead. `"later"`: the career picked has none (the search's `results`, the plan's rows and the check's pair search and recommendation, a check answered from the worker's kept state included: `tests/plan_borrowed.rs`), while the plan's V and V' allow later careers to borrow; a `next` job searches without and with borrowing, reusing kept searches when available. `"never"`: `Pool::max_borrowed` is 0 in every pool the job builds (`tests/plan_borrowed.rs`). This pair rule is excluded from the setup key, so kept proofs and decks are shared across settings; it is included in the kept main search's key and the kept plans' (`bests_key`). Simulator policies `greedy`, `loop` and `trace` take "later" as "allow"; `greedy_exact` and `index` pass it through to their career jobs | `"allow"` |
@@ -633,9 +634,9 @@ the deck's chain states, from a second evaluation at q = 1, where the landing ma
 part is the rest of p) with its sources `deck_gold`, `deck_white` (the deck's per-target hint chances, its sources'
 product at their marginal chances), `own_event`, `inherit`, `outfit` (0, 1 her white, 2 her gold), or `scenario`), `pinks` (per aptitude among the six legacies: `q` = chance at least one of
 the two inheritance rolls passes it on, 1/3/5% for 1/2/3 stars × (1 + affinity/100), capped at 1 per roll, and `carriers`; reported only: aptitudes
-do not enter the skill odds), `aptitudes` (her grades and pink spark, MODEL.md: `base` and `start` codes in `apt` order,
-`fire` = each legacy pink with its chance to fire at one April inspiration, `pink_gen` = per aptitude the chance her
-veteran's pink is that one; `start` is `{kind: "known", start, fire}`, or, with a veteran before her result is known
+do not enter the skill odds), `aptitudes` (her grades and pink spark, MODEL.md: `base` and `start` grades by kind as
+data.json's `apt`, `fire` = each legacy pink (`aptitude`, `stars`, `slot`) with its chance `p` to fire at one April
+inspiration, `pink_gen` = per aptitude, in the solver's order, the chance her veteran's pink is that one; `start` is `{kind: "known", start, fire}`, or, with a veteran before her result is known
 among the six, `{kind: "outcomes", outcomes: [{p, outcome: {start, fire}}]}`, one per combination of the pinks such
 veterans may carry); her schedule's win chances
 count them, combining repeated races over the shared grade history as above; a hypothetical veteran

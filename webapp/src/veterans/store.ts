@@ -13,7 +13,10 @@ import type { ReadonlySignal } from '@preact/signals';
 import { ERA } from '../saved.ts';
 import { browserStorage, readJson, updateJson } from '../storage.ts';
 import type { Backing } from '../storage.ts';
-import { isGrades } from '../grades.ts';
+import { gradesOfList, isGrades } from '../grades.ts';
+import type { Grades } from '../gen/solver.ts';
+import { jobNode, knownPinks } from './records.ts';
+import type { JobLegacy } from './records.ts';
 import { store } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';
 
@@ -38,7 +41,7 @@ export interface LineageNode {
   /** race index -> the turn its win shows at (display only; the solver reads `wins`) */
   winAt?: Record<number, number>;
   /** her end-of-career aptitude grades (the veteran analysis' draft) */
-  apt?: number[] | null;
+  apt?: Grades | null;
 }
 /** The trainer who lists a veteran found on uma.moe (umadump.ts `parseListing`): kept on this device, left out of
  *  Export. */
@@ -140,10 +143,11 @@ const isMap = (x: unknown) => !!x && typeof x === 'object' && !Array.isArray(x);
  *  older save, a hand-edited or cut export) */
 const asNode = (n: Raw): LineageNode => ({
   ...n,
-  ...(n.apt == null || isGrades(n.apt) ? {} : { apt: null }), // (damaged grades read as none: grades.ts gradeAt)
+  // (grades saved as a list, before they had kinds, read as grades; damaged ones as none)
+  ...(n.apt == null || isGrades(n.apt) ? {} : { apt: gradesOfList(n.apt) }),
   chara: Number.isInteger(n.chara) ? (n.chara as number) : null,
   sparks: isMap(n.sparks) ? (n.sparks as Sparks) : {},
-  pinks: isMap(n.pinks) ? (n.pinks as Sparks) : {},
+  pinks: knownPinks(n.pinks).pinks, // (an aptitude the solver doesn't know is left out: records.ts)
   wins: Array.isArray(n.wins) ? n.wins : [],
 });
 /** a checked record (`isVeteran`) with its nodes' fields defaulted */
@@ -249,28 +253,6 @@ function placesFor(list: readonly VetRecord[], plan: PlacesRecord): PlacesRecord
   const parents = plan.parents.map((id) => (id && list.some((v) => v.id === id) ? id : null));
   return parents.every((id, k) => id === plan.parents[k]) ? plan : { ...plan, parents };
 }
-/**
- * A veteran as the solver's job takes her (sparks as [group, stars] pairs; an unknown parent's character 0: no relation
- * points).
- */
-export interface JobNode {
-  chara: number;
-  sparks: [number, number][];
-  pinks: [number, number][];
-  wins: readonly number[];
-}
-export interface JobLegacy extends JobNode {
-  borrowed: boolean;
-  parents: JobNode[];
-}
-const pairs = (sparks: DeepReadonly<Sparks> | undefined): [number, number][] =>
-  Object.entries(sparks || {}).map(([group, stars]) => [+group, stars]);
-const jobNode = (n: NodeRecord): JobNode => ({
-  chara: n.chara || 0,
-  sparks: pairs(n.sparks),
-  pinks: pairs(n.pinks),
-  wins: n.wins,
-});
 // each veteran as the job takes her, made once per record
 const jobOf = new WeakMap<VetRecord, JobLegacy>();
 function jobLegacy(v: VetRecord) {

@@ -85,7 +85,7 @@
 use crate::career::evaluator::{Cur, Evaluator};
 /// the page's next career (`next` on a career job)
 use crate::career::sim::play::PathState;
-use crate::career::{CareerJob, Env, JobInputs, Legacy, Lineage};
+use crate::career::{Ancestor, CareerJob, Env, JobInputs, Legacy, Lineage};
 use crate::data::Data;
 use crate::deck::CardsRaw;
 use crate::request::CareerRequest;
@@ -308,20 +308,18 @@ pub(crate) struct Sim<'env, 'data> {
     record_audits: bool,
     audits: Vec<report::SurrogateAudit>,
 }
-fn canon(character_id: u32, sparks: &[(u32, u8)], pinks: &[(u32, u8)], wins: &[usize]) -> String {
-    let (mut sparks, mut pinks, mut wins) = (sparks.to_vec(), pinks.to_vec(), wins.to_vec());
+/// a recorded parent as a key's text: her character, then her sparks, pinks and wins sorted (a key compared for
+/// equality only: `family`)
+fn canon(parent: &Ancestor) -> String {
+    let (mut sparks, mut pinks, mut wins) = (parent.sparks.clone(), parent.pinks.clone(), parent.wins.clone());
     sparks.sort_unstable();
     pinks.sort_unstable();
     wins.sort_unstable();
-    format!("{character_id}|{sparks:?}|{pinks:?}|{wins:?}")
+    format!("{}|{sparks:?}|{pinks:?}|{wins:?}", parent.character_id)
 }
 /// a veteran's family: the character and her two parents as recorded
 fn family(legacy: &Legacy) -> String {
-    let mut parents: Vec<String> = legacy
-        .parents
-        .iter()
-        .map(|parent| canon(parent.character_id, &parent.sparks, &parent.pinks, &parent.wins))
-        .collect();
+    let mut parents: Vec<String> = legacy.parents.iter().map(canon).collect();
     parents.sort();
     format!("{}#{}", legacy.character_id, parents.join("#"))
 }
@@ -347,7 +345,7 @@ fn legacy_record(legacy: &Legacy) -> report::LegacyRecord {
 
 impl<'env, 'data> Sim<'env, 'data> {
     /// A career job of the simulator's own (`policies`), run in process as the page would send it: the job's targets,
-    /// deck and settings, `legacies` (as a job sends them, `Legacy::recorded`) as its veterans, no simulation, no places
+    /// deck and settings, `legacies` (records, as a job sends them) as its veterans, no simulation, no places
     /// (the job's `fix` indexes its own legacies), its best career alone (`top` 1, not per trainee); `adjust` sets what
     /// the policy's job sets besides.
     pub(super) fn own_job<'legacy>(
@@ -355,7 +353,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         legacies: impl Iterator<Item = &'legacy Legacy>,
         adjust: impl FnOnce(&mut CareerJob),
     ) -> CareerRequest {
-        let mut career = self.job.career.on_veterans(legacies.map(Legacy::recorded).collect());
+        let mut career = self.job.career.on_veterans(legacies.cloned().collect());
         career.fixed_parents = vec![];
         career.top = 1;
         career.per_trainee = false;

@@ -1,6 +1,6 @@
 //! Legacy slots, affinity and inheritance chances.
 use crate::career::pool::{Pool, Who, shared};
-use crate::career::{CareerSetup, Lineage, SearchState};
+use crate::career::{CareerSetup, Lineage, Pink, SearchState};
 use crate::deck::chains::ChainEvents;
 use crate::deck::joint::{JointExt, joint_fast};
 use crate::deck::sources::TargetSources;
@@ -217,7 +217,7 @@ pub(crate) struct Slot {
     pub(crate) relation_points: f64,
     pub(crate) race: f64,
     pub(crate) stars: std::rc::Rc<Vec<u8>>,
-    pub(crate) pinks: std::rc::Rc<Vec<(u32, u8)>>,
+    pub(crate) pinks: std::rc::Rc<Vec<Pink>>,
     /// A veteran before her result is known: the pinks she may carry (`Who::pink_chances`).
     pub(crate) pink_chances: std::rc::Rc<Vec<crate::career::schedule::PinkChance>>,
     pub(crate) mix: Option<[f64; 3]>,

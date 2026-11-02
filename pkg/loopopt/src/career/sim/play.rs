@@ -15,7 +15,7 @@ use crate::career::sim::{
     Goal, IndexAction, Policy, Sim, SimJob, SimulationOptions, SimulationRoster, family, legacy_record,
 };
 use crate::career::state::{KeptState, kept_swap};
-use crate::career::{Env, JobInputs, Legacy, Lineage};
+use crate::career::{Env, JobInputs, Legacy, Lineage, Pink};
 use crate::refusal::Refusal;
 use std::rc::Rc;
 
@@ -25,7 +25,7 @@ use std::rc::Rc;
 struct VeteranResult {
     stars: Vec<u8>,
     wins: Vec<usize>,
-    pinks: Vec<(u32, u8)>,
+    pinks: Vec<Pink>,
 }
 /// One path's state: veterans, the solver's pool, owned veterans per family (dominance), the surrogate's best
 #[derive(Clone)]
@@ -140,7 +140,13 @@ impl Sim<'_, '_> {
             .targets
             .iter()
             .map(|target| {
-                legacy.sparks.iter().filter(|spark| spark.0 == target.group).map(|spark| spark.1).max().unwrap_or(0)
+                legacy
+                    .sparks
+                    .iter()
+                    .filter(|spark| spark.group == target.group)
+                    .map(|spark| spark.stars)
+                    .max()
+                    .unwrap_or(0)
             })
             .collect();
         let mut wins = legacy.wins.clone();
@@ -619,17 +625,20 @@ pub(in crate::career) fn simulate<'data>(
 #[cfg(test)]
 mod tests {
     use super::VeteranResult;
+    use crate::career::Pink;
+    use crate::codes::Aptitude;
 
     #[test]
     /// Dominance pruning keeps a veteran whose pinks differ from an owned one with the same stars and wins (the pinks
     /// change her children's aptitudes), and drops one whose pinks are the same.
     fn sim_pruning_keeps_different_pinks() {
-        let veteran = |pinks: Vec<(u32, u8)>| VeteranResult { stars: vec![2, 1, 3], wins: vec![4, 9], pinks };
-        let owned = veteran(vec![(32, 2)]);
-        assert!(owned.dominates(&veteran(vec![(32, 2)])));
-        assert!(!owned.dominates(&veteran(vec![(11, 2)])));
-        assert!(!owned.dominates(&veteran(vec![(32, 3)])));
-        assert!(!owned.dominates(&veteran(vec![])));
-        assert!(!veteran(vec![]).dominates(&veteran(vec![(32, 1)])));
+        let veteran = |pinks: Vec<Pink>| VeteranResult { stars: vec![2, 1, 3], wins: vec![4, 9], pinks };
+        let pink = |aptitude, stars| Pink { aptitude, stars };
+        let owned = veteran(vec![pink(Aptitude::Mile, 2)]);
+        assert!(owned.dominates(&veteran(vec![pink(Aptitude::Mile, 2)])), "the same pink");
+        assert!(!owned.dominates(&veteran(vec![pink(Aptitude::Turf, 2)])), "another aptitude");
+        assert!(!owned.dominates(&veteran(vec![pink(Aptitude::Mile, 3)])), "more stars");
+        assert!(!owned.dominates(&veteran(vec![])), "no pink");
+        assert!(!veteran(vec![]).dominates(&veteran(vec![pink(Aptitude::Mile, 1)])), "a pink over none");
     }
 }

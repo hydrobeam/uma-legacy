@@ -4,7 +4,7 @@
 import { must } from '../must.ts';
 import { drawPink } from '../pink.ts';
 import { SOLVER } from '../gen/constants.ts';
-import type { RankClass } from '../gen/solver.ts';
+import type { Grades, RankClass } from '../gen/solver.ts';
 import type { DeepReadonly } from '../store.ts';
 import type { CareerReport } from './job.ts';
 
@@ -25,7 +25,7 @@ export interface Roll {
   bought: Record<number, string>;
   wins: number[];
   pinks: Record<number, number>;
-  apt: number[] | null;
+  apt: Grades | null;
   blues: Record<number, number>;
   greens: Record<number, number>;
 }

@@ -21,7 +21,7 @@ export const LAYERS = [
     ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'career/job', 'career/reply']
       .concat(['career/keys', 'career/run'])
       .concat(['career/analysis/compare', 'loop/job', 'loop/keys', 'loop/members', 'loop/run', 'umamoesetup'])
-      .concat(['veterans/names']),
+      .concat(['veterans/names', 'veterans/records']),
   ],
   ['stores', ['settings', 'loop/state', 'veterans/store', 'career/state', 'career/analysis/state']],
   ['shared', null], // every module of src/ not named in another layer

@@ -1,7 +1,9 @@
 //! The continuation (`Cont`) and its memo: the fitted expected careers to finish after a candidate.
 use crate::FxMap;
-use crate::career::Legacy;
+use crate::career::CareerSetup;
+use crate::career::imagined::ImaginedVeteran;
 use crate::career::plan::CandidateIndex;
+use crate::career::pool::Pool;
 /// Partners kept per candidate where a career's veteran is a parent, unless the job names another count
 /// (`PlanJob::partners`); at most MAX_PARTNERS
 pub(crate) const IDX_PARTNERS: usize = 2;
@@ -108,7 +110,9 @@ impl SideStep {
 /// mix, her G1 wins at their chances).
 pub(crate) struct TrioSideVeteran {
     pub(crate) step: SideStep,
-    pub(crate) legacy: Legacy,
+    /// A fresh side's veteran (`SideStep::Current`, `Alternative`); None for a real one (`Existing`: her legacy index
+    /// places her).
+    pub(crate) fresh: Option<ImaginedVeteran>,
     /// The career's trainee odds (P(all)) the side's step prices; a real full veteran's: 0.
     pub(crate) odds: f64,
     /// The career's parents (legacy indices); a real full veteran's: her own recorded parents are not indexed (None).
@@ -121,11 +125,23 @@ pub(crate) struct TrioSideVeteran {
 }
 
 impl TrioSideVeteran {
+    /// Her place in `pool`: a real veteran's legacy index, or a fresh one's new entry, pushed (pop it with
+    /// `Pool::pop_veteran`).
+    pub(super) fn place_in(&self, setup: &CareerSetup, pool: &mut Pool) -> usize {
+        match (self.step, &self.fresh) {
+            (SideStep::Existing(legacy), _) => legacy,
+            (SideStep::Current | SideStep::Alternative(_), Some(veteran)) => {
+                setup.pool_push_imagined(pool, veteran);
+                pool.veterans.len() - 1
+            }
+            (SideStep::Current | SideStep::Alternative(_), None) => unreachable!("a fresh side carries her veteran"),
+        }
+    }
     /// The same side at another step (a model variant's: `robust`).
     pub(crate) fn at_step(&self, step: SideStep) -> Self {
         Self {
             step,
-            legacy: self.legacy.clone(),
+            fresh: self.fresh.clone(),
             odds: self.odds,
             parents: self.parents,
             deck: self.deck.clone(),
