@@ -19,12 +19,13 @@ async function samplePlan(page: Page) {
   await act.click();
   await expect(page.locator('#run-note')).toHaveText(/Planned in/, { timeout: SOLVER_WAIT });
 }
-// what the page's IndexedDB holds of the worker's kept work: each stored state's version and how many searches it keeps
-// (the connection closed at once: an open one would block the page's own, which then saves nothing)
+// what the page's IndexedDB holds of the worker's kept work: each stored state's length (the solver's own string, which
+// the page stores untouched; the connection closed at once: an open one would block the page's own, which then saves
+// nothing)
 const storedStates = (page: Page) =>
   page.evaluate(
     () =>
-      new Promise<{ v: unknown; solve: number }[]>((resolve) => {
+      new Promise<number[]>((resolve) => {
         const rq = indexedDB.open('llp-solver');
         rq.onerror = () => resolve([]);
         rq.onsuccess = () => {
@@ -32,10 +33,7 @@ const storedStates = (page: Page) =>
           try {
             const all = db.transaction('state').objectStore('state').getAll();
             all.onerror = () => resolve([]);
-            all.onsuccess = () =>
-              resolve(
-                all.result.map((s: { v?: unknown; solve?: unknown[] }) => ({ v: s.v, solve: s.solve?.length ?? 0 })),
-              );
+            all.onsuccess = () => resolve(all.result.map((s: unknown) => (typeof s === 'string' ? s.length : 0)));
           } catch {
             resolve([]);
           } finally {
@@ -75,7 +73,7 @@ test('the kept work is stored after a plan and restored first by the next worker
     .toBeGreaterThan(0);
   // (the store waits in the worker behind the plan's check, a background job)
   await expect
-    .poll(async () => (await storedStates(page)).filter((s) => Number.isInteger(s.v) && s.solve > 0).length, {
+    .poll(async () => (await storedStates(page)).filter((length) => length > 0).length, {
       timeout: SOLVER_WAIT,
     })
     .toBeGreaterThan(0);

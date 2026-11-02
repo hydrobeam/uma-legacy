@@ -81,7 +81,7 @@ export type PlanReport = Omit<Gen.Plan, 'choice' | 'options' | 'robust'> & {
   /** set by the page: why some of its career searches proved nothing (`unprovenWhy`) */
   unproven_why?: string[];
   /** set by the page: the named assumptions any search of the plan job rests on (the job's `job_assumes`) */
-  job_assumes?: Gen.Assumes;
+  job_assumes?: Gen.Assumption[];
 };
 /** A route's A, B and C steps: the expected careers of each (null: an infinite cost, a step that cannot land) */
 export type RouteCareers = Gen.Route['careers'];

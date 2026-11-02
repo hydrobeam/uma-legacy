@@ -93,10 +93,9 @@ export type ArgmaxCheck = { pool: number, sur: string, sur_p: number, sur_val: n
 export type AscentRun = { start: [string, [number, number]], end: [string, [number, number]] | null, score: number | null, rounds: number | null, scorings: number, ms: number, };
 
 /**
- * The named assumptions a proof rests on beyond the derived bounds and the measured class caps (docs/SOLVER.md, *What
- * "proven" rests on*), each that occurred; written as the list of their names (`Assumption`).
+ * A named assumption a proof rests on.
  */
-export type Assumes = Array<"two_feeder_cap" | "multi_feeder_cap">;
+export type Assumption = "two_feeder_cap" | "multi_feeder_cap";
 
 /**
  * An outcome: her stars per job target, its chance, and each candidate's lift there.
@@ -108,11 +107,6 @@ export type AuditedOutcome = { stars: Array<number>, chance: number, lifts: Arra
  * pick, its margins over the pick.
  */
 export type BestPair = { trainee: string, career: string, best_parents: [number, number], score: number, reason: string, pick_trainee_shown: string | null, margin_over_pick_trainee_shown: number | null, versus_pick?: VersusPick, };
-
-/**
- * A float as its bit pattern in 16 hex digits (`f64::to_bits`).
- */
-export type Bits = string;
 
 /**
  * Where a career may take a borrowed parent (`CareerJob::borrowed_parent`).
@@ -320,7 +314,7 @@ results: Array<CareerReport>,
  */
 candidates: number, solved: number, bounded: number, scored: number, skipped: number, 
 /**
- * the ceiling of every career left unsolved (null: none left, or one career given)
+ * the ceiling of every career left unsolved (0 when none is left; null where one career was given)
  */
 next_bound: number | null, 
 /**
@@ -346,12 +340,12 @@ given?: boolean,
 /**
  * why the main search is not complete
  */
-unproven?: Unproven, 
+unproven?: Array<UnprovenReason>, 
 /**
  * the named assumptions the main search's proof rests on beyond the derived bounds and the measured class caps
  * (docs/SOLVER.md, *What "proven" rests on*): still a proof
  */
-assumes?: Assumes, 
+assumes?: Array<Assumption>, 
 /**
  * a comparison's job
  */
@@ -836,11 +830,11 @@ nested_max_ratio?: number,
 /**
  * the named assumptions any search of the job rests on
  */
-job_assumes?: Assumes, 
+job_assumes?: Array<Assumption>, 
 /**
  * why any search of the job is not complete
  */
-job_unproven?: Unproven, };
+job_unproven?: Array<UnprovenReason>, };
 
 /**
  * The joint-lift oracle (`next.oracle` "joint"): V on a joint two-side lattice of the cheapest trios' continuations,
@@ -863,11 +857,6 @@ v0_separate: number, above_anchor: boolean,
  * the lattice's cheapest trio is not V's
  */
 best_trio_changes: boolean, trios: Array<OracleTrio>, oracle_ms: number, scoring_complete: boolean, };
-
-/**
- * A 64-bit key (a hash) in 16 hex digits.
- */
-export type Key = string;
 
 /**
  * A veteran as a job sends her: her record (character, sparks, G1 wins, pinks) and her recorded parents. A veteran
@@ -1442,7 +1431,7 @@ searched?: boolean,
 /**
  * the named assumptions her proven career rests on
  */
-assumes?: Assumes, 
+assumes?: Array<Assumption>, 
 /**
  * her stage step's careers (null: not a stage candidate)
  */
@@ -1565,7 +1554,7 @@ export type Request = { "cmd": "deck" } & DeckRequest | { "cmd": "career" } & Ca
 /**
  * what `state_out` gave, as the page stored it
  */
-state: StoredState, };
+state: string, };
 
 /**
  * A deck in a result. Parallel lists: `cards[i]` is named with ` (borrowed)` or ` (end chain at link N)` appended
@@ -1689,7 +1678,7 @@ export type RotationAudit = { t: number, rotation: [number, number, number, numb
  */
 export type Route = { a: string | null, b: string | null, c: string | null, 
 /**
- * each step's expected careers (null: infinite, a step that cannot land)
+ * each step's expected careers (null: infinite, a step that cannot land; `finite_careers`)
  */
 careers: [number | null, number | null, number | null], sides: [string, string], };
 
@@ -1759,7 +1748,7 @@ p_switch: number,
  */
 builder: string | null, 
 /**
- * her step's expected careers (0 when `real`; null: infinite)
+ * her step's expected careers (0 when `real`; null: infinite, `finite_careers`)
  */
 careers: number | null, };
 
@@ -2065,121 +2054,16 @@ export type StateCounts = { bests: number, seen: number, solve: number, rolls: n
 /**
  * `state_out`'s answer: the kept work to store.
  */
-export type StateOut = { state: StoredState, };
+export type StateOut = { 
+/**
+ * the kept work as one opaque string (`encode`), which the page stores and sends back to `state_in` unread
+ */
+state: string, };
 
 /**
  * A candidate whose step is her kept cap's: its careers and her odds then.
  */
 export type StepCap = { careers: number, p: number, };
-
-/**
- * A roll state's base (`KeptBase`): the candidates (uma indices), their steps' costs, V, their odds now, their
- * continuations and held caps.
- */
-export type StoredBase = { candidates: Array<number>, step_costs: Array<Bits>, current_value: Bits, current_odds: Array<Bits>, 
-/**
- * per candidate: [lam, phi, pinf, whether it has its table (it builds), p0]
- */
-continuations: Array<[Bits, Bits, Bits, boolean, Bits]>, 
-/**
- * per candidate, the caps she holds
- */
-step_caps: Array<Array<[Bits, Bits, Bits, Bits, Bits, Bits]>>, };
-
-/**
- * A kept plan as stored (`Bests`): its key, the uma count, every uma's kept best and looped best (searched: an entry,
- * a null where the search found none), the umas whose searches were not complete, and its class flags. Her decks'
- * refs are not kept: nothing reads them back.
- */
-export type StoredBests = { key: [Key, Key], umas: number, best: Array<[number, StoredFound | null]>, looped: Array<[number, StoredFound | null]>, incomplete: Array<number>, looped_incomplete: Array<number>, flags: Array<[Key, number]>, };
-
-/**
- * A route's C while a lifted side builds: its step's fixed cost, or a finisher slot's.
- */
-export type StoredBuilding = { "fixed": Bits } | { "slot": number };
-
-/**
- * A plan's kept caps as stored (`KeptCaps`): its pool's scope and veterans (hashes), and per uma (index) her cap.
- */
-export type StoredCaps = { scope: Key, veterans: Array<Key>, caps: Array<[number, [Bits, Bits, Bits, Bits, Bits, Bits]]>, };
-
-/**
- * Class flags as stored: the class count, and the breached classes and those assuming each named assumption.
- */
-export type StoredClassFlags = { count: number, breached: Array<number>, two_feeder: Array<number>, multi_feeder: Array<number>, };
-
-/**
- * A deck as stored: its entries, plain pals and filler cards, and its hint chances per uncertain target.
- */
-export type StoredDeck = { entries: Array<number>, plain: number, filler: number, white: Array<Bits>, gold: Array<Bits>, };
-
-/**
- * A career as stored: the trainee (uma index), her parents (legacy indices), its value, ceiling and deck.
- */
-export type StoredFound = { trainee: number, parents: [number, number], value: Bits, ceiling: Bits, deck: StoredDeck, };
-
-/**
- * Per-uma (or per-class) lists as stored: their count, and each non-empty one by its index.
- */
-export type StoredLists<Item> = { count: number, lists: Array<[number, Array<Item>]>, };
-
-/**
- * A fully checked deck as stored: the inheritance chances it was checked at, its value and the deck.
- */
-export type StoredRef = { q: Array<Bits>, value: Bits, deck: StoredDeck, };
-
-/**
- * A roll state as stored (`RollKeep`): its key, the pick's lineage (uma index, two legacy indices) and deck, its base
- * and its scorings (the first batch's, then the later ones'), every float as its bits.
- */
-export type StoredRoll = { key: Key, lineage: [number, number, number], deck: StoredDeck, base: StoredBase, scored: StoredScored, later: Array<StoredScored>, };
-
-/**
- * A route as stored: its lifted slots and finisher slot (null: none), whether it takes full veterans only, its fixed
- * cost, and its C while a lifted side builds (null: skipped).
- */
-export type StoredRoute = { lifts: [number | null, number | null], full_only: boolean, fixed_cost: Bits, finisher_slot: number | null, while_building: StoredBuilding | null, };
-
-/**
- * A stored `Scored` (score/kernel.rs), its derived tables left out (`derive` rebuilds them).
- */
-export type StoredScored = { uncertain_target_count: number, fixed_target_count: number, target_count: number, slot_count: number, completes_goal: boolean, star_mix: [Bits, Bits, Bits], uncertain_targets: Array<number>, fixed_landed_masks: Array<number>, misses_without_her: Array<Array<Bits>>, miss_by_stars: Array<[Bits, Bits, Bits, Bits]>, 
-/**
- * per setup, each target's pair of spark scales
- */
-target_spark_scales: Array<Array<[Bits, Bits]>>, setup_by_table: Array<number>, initial_tables: Array<Bits>, collapsed_targets: Array<boolean>, slot_by_setup: Array<number>, current_probabilities: Array<Bits>, landed_set_chances: Array<Bits>, slot_candidates: Array<number>, lift_candidates: Array<number>, routes: Array<StoredRoute>, };
-
-/**
- * One key's kept fully checked decks as stored (`KeptSeen`).
- */
-export type StoredSeen = { key: Key, 
-/**
- * per deck class, its fully checked decks
- */
-refs: StoredLists<StoredRef>, };
-
-/**
- * A kept main search as stored (`KeptSolve`): every field of `CareerSearchResult`, its product proofs, class flags and
- * trainees' classes.
- */
-export type StoredSolve = { key: Key, found: Array<StoredFound>, refs: StoredLists<StoredRef>, work: number, candidates: number, solved: number, bounded: number, scored: number, skipped: number, next_bound: Bits, complete: boolean, unproven: Unproven, assumes: Assumes, proven: boolean, cert: Bits, 
-/**
- * per deck class, its product proofs: [the chances searched at, the bound]
- */
-ruled: StoredLists<[Array<Bits>, Bits]>, class_flags: StoredClassFlags, classes: Array<number>, };
-
-/**
- * The worker's kept work as the page stores it (`state_out`; back with `state_in`).
- */
-export type StoredState = { 
-/**
- * `STATE_VERSION`: a store of another is refused
- */
-v: number, bests: Array<StoredBests>, seen: Array<StoredSeen>, solve: Array<StoredSolve>, 
-/**
- * class flags by class content key (`ClassFlags::bits`), keys ascending
- */
-flags: Array<[Key, number]>, rolls: Array<StoredRoll>, caps: Array<StoredCaps>, };
 
 /**
  * A race's surface, data.json's `race_ground` (the exporter's numbering, not the game's 1 turf, 2 dirt), and the place
@@ -2310,10 +2194,9 @@ alternatives: Array<FinalistReport>, pairs_scored: number, pairs_runnable: numbe
 export type UmaName = { id: number, name: string, };
 
 /**
- * Why a career search is not complete (`CareerSearchResult::complete` false), each reason that occurred; written as
- * the list of their names (`UnprovenReason`).
+ * Why a search is not complete.
  */
-export type Unproven = Array<"work_cap" | "band_overflow" | "cap_breach">;
+export type UnprovenReason = "work_cap" | "band_overflow" | "cap_breach";
 
 /**
  * A check variant's scores (`kind` "plan" for the plan's own; else the variant's), its pick (a row's career id) and
@@ -2323,7 +2206,11 @@ export type VariantReport = { kind: string, ceil_share: number, lam_decay: numbe
 /**
  * the scaled umas (uma indices) and their scales; none for a uniform scale
  */
-scaled: Array<[number, number]>, v0: number | null, pick: string, score: number, margin: number, scores: Array<number>, routes_dropped: number | null, routes_dropped_uncertified: number | null, partner_setups_dropped: number | null, };
+scaled: Array<[number, number]>, 
+/**
+ * V under the variant (null: infinite, no route lands; `finite_careers`)
+ */
+v0: number | null, pick: string, score: number, margin: number, scores: Array<number>, routes_dropped: number | null, routes_dropped_uncertified: number | null, partner_setups_dropped: number | null, };
 
 /**
  * A career's margins over the plan's pick.

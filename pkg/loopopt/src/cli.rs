@@ -140,8 +140,15 @@ fn pb_table(path: &Path) -> Result<PbRaw, CliError> {
     let n = data.umas.len();
     let roster: Vec<UmaIndex> = data.umas.indices().collect();
     let ceilings = pair_ceilings(&data, &roster);
-    let rows: Vec<String> =
-        (0..n).map(|a| (a + 1..n).map(|b| crate::hex::f64_hex(ceilings[UmaIndex(a)][UmaIndex(b)])).collect()).collect();
+    let rows: Vec<Vec<f64>> =
+        (0..n).map(|a| (a + 1..n).map(|b| ceilings[UmaIndex(a)][UmaIndex(b)]).collect()).collect();
+    // (JSON's float text carries a finite ceiling bit for bit but writes an infinite one as null and -0.0 as 0 in the
+    // page's JavaScript: the table holds neither)
+    if let Some(value) =
+        rows.iter().flatten().find(|value| !value.is_finite() || value.to_bits() == (-0.0f64).to_bits())
+    {
+        return Err(CliError(format!("{}: a pairwise ceiling of {value} has no exact JSON text", path.display())));
+    }
     Ok(PbRaw { fingerprint, rows })
 }
 
@@ -204,7 +211,7 @@ fn add_cli_events(job: &mut CareerRequest, events: &crate::deck::sources::EventL
 /// A `state_out` reply as the command line saves it: the worker reads (and checks) its `state`.
 #[derive(Deserialize)]
 struct SavedState {
-    state: crate::career::state::StoredState,
+    state: String,
 }
 
 /// Restores the career worker's kept work (`STATE_IN`) before any job runs, as the page does across reloads.

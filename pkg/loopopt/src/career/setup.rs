@@ -3,8 +3,8 @@
 use crate::career::decks::{CfStats, DECK_KEEP_CAP, JOB_NO};
 use crate::career::state::KeptState;
 use crate::career::{
-    BorrowedParent, CAREER_BUDGET, CareerSetup, ClassFlags, DeckSearchAudit, DeckSearchMemo, Env, JobInputs,
-    SearchState,
+    BorrowedParent, CAREER_BUDGET, CareerSetup, CertifiedCap, ClassFlags, DeckSearchAudit, DeckSearchMemo, Env,
+    JobInputs, SearchState,
 };
 use crate::data::Data;
 use crate::deck::Card;
@@ -162,7 +162,7 @@ pub(super) fn career_setup<'data>(
     };
     // (the class flags first, by class content: a class flagged in any earlier job on the setup stays so, whatever
     // its trainees, and its kept proofs then prove as little, `restore_seen`)
-    setup.union_keyed(&mut state, worker.flags.iter().map(|(&key, &flags)| (key, flags)));
+    setup.union_keyed(&mut state, worker.flags.iter().map(|(&key, flags)| (key, flags)));
     restore_seen(worker, &setup, &mut state, seen_fingerprint);
     let audit = DeckSearchAudit {
         max_ratio: [0.0; 4],
@@ -174,7 +174,7 @@ pub(super) fn career_setup<'data>(
         max_deck: Default::default(),
         nested_max_ratio: f64::NEG_INFINITY,
         nested_past_cap: 0,
-        certified_cap: f64::INFINITY,
+        certified_cap: CertifiedCap::default(),
         overflows: 0,
     };
     Ok(CareerBuild { env: Env { setup, state, audit, memo }, trainees, seen_fingerprint })

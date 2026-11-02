@@ -95,7 +95,7 @@ mod setup;
 mod sim;
 
 /// A trainee and her parents in the supplied legacy pool; parent order is significant.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Lineage {
     /// Trainee's index in Data::umas.
     pub(crate) trainee: UmaIndex,
@@ -459,12 +459,12 @@ struct CareerSetup<'data> {
 /// any kept earlier one on the same class content (`CareerSetup::class_key`, `KeptState::flags`, never evicted). Each
 /// flag is only ever set: a job unions the kept flags in and keeps its own, a restored search, kept plan or state
 /// unions its own in, and nothing clears one.
-#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+#[derive(Clone, Default, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ClassFlags {
     /// A capped deck search of the class scored a deck past its class's cap (`DeckSearchAudit::capped_breaches`): the
     /// cap is refuted for that deck space, so the class's certificates are dropped and none is used as a bound
     /// (`solve`, `plan::certified`, the evaluator's bounds; a later deck search of it still runs capped first, rerun
-    /// cap-free where it breaches itself); every answer of the class is unproven (`Unproven::cap_breach`).
+    /// cap-free where it breaches itself); every answer of the class is unproven (`UnprovenReason::CapBreach`).
     pub(crate) breached: bool,
     /// The named assumptions a capped deck search of the class pruned under (`DeckSearchAudit::assumed_searches`,
     /// `multi_searches`): the class's certificates are kept and used, and every answer of the class that is proven is
@@ -474,26 +474,13 @@ pub(crate) struct ClassFlags {
 
 impl ClassFlags {
     /// Whether the class's certificates may prove anything (not breached).
-    pub(crate) const fn proves(self) -> bool {
+    pub(crate) const fn proves(&self) -> bool {
         !self.breached
     }
-    /// Both sets of flags, each set where either has it.
-    pub(crate) const fn union(self, other: Self) -> Self {
-        Self { breached: self.breached || other.breached, assumes: self.assumes.union(other.assumes) }
-    }
-    /// As stored: bit 0 breached, bit 1 `two_feeder`, bit 2 `multi_feeder`.
-    pub(crate) const fn bits(self) -> u8 {
-        self.breached as u8 | (self.assumes.two_feeder as u8) << 1 | (self.assumes.multi_feeder as u8) << 2
-    }
-    /// From `bits`; None with any other bit set.
-    pub(crate) const fn from_bits(bits: u8) -> Option<Self> {
-        if bits >> 3 != 0 {
-            return None;
-        }
-        Some(Self {
-            breached: bits & 1 != 0,
-            assumes: crate::career::search::Assumes { two_feeder: bits & 2 != 0, multi_feeder: bits & 4 != 0 },
-        })
+    /// `other`'s flags set here too (never clearing one).
+    pub(crate) fn union_with(&mut self, other: &Self) {
+        self.breached |= other.breached;
+        self.assumes.extend(&other.assumes);
     }
 }
 
@@ -535,7 +522,7 @@ impl SearchState {
     fn union_flags(&mut self, flags: &UmaTable<ClassFlags>) {
         if flags.len() == self.class_flags.len() {
             for class in flags.indices() {
-                self.class_flags[class] = self.class_flags[class].union(flags[class]);
+                self.class_flags[class].union_with(&flags[class]);
             }
         }
     }
@@ -553,14 +540,14 @@ struct DeckSearchAudit {
     /// (`best_deck_run`), and the output lists the classes (`cap_exceeded`)
     pub(crate) cap_breach: usize,
     /// capped deck searches (`best_deck_capped`, a memo hit of one as if it ran) that scored such a deck: each makes
-    /// its career search not complete (`Unproven::cap_breach`) and flags its class (`ClassFlags::breached`)
+    /// its career search not complete (`UnprovenReason::CapBreach`) and flags its class (`ClassFlags::breached`)
     pub(crate) capped_breaches: usize,
     /// capped deck searches (a memo hit as if it ran) that pruned decks of a shape left under the assumed class cap
-    /// (`SearchOutcome::assumed`): each flags its class (`Assumes::two_feeder`)
+    /// (`SearchOutcome::assumed`): each flags its class (`Assumption::TwoFeederCap`)
     pub(crate) assumed_searches: usize,
     /// capped deck searches (a memo hit as if it ran) that pruned decks with a nested chain beside other chain feeders
     /// or an uncertified group (`SearchOutcome::multi`, `caps::multi_feeder`): each flags its class
-    /// (`Assumes::multi_feeder`)
+    /// (`Assumption::MultiFeederCap`)
     pub(crate) multi_searches: usize,
     /// the cap-free searches (`best_deck_cf`): reruns after a breach, those that proved nothing, breaches left without
     /// a rerun (`CAP_RERUN=0`), their work (counted apart from `work`)
@@ -578,8 +565,56 @@ struct DeckSearchAudit {
     pub(crate) nested_past_cap: usize,
     /// the lowest cap any deck search was certified under (`best_deck_run`: a band over EXACT_CAP decks is retried
     /// down the cap ladder), and how many bands overflowed; a search below the top cap is not `full`
-    pub(crate) certified_cap: f64,
+    pub(crate) certified_cap: CertifiedCap,
     pub(crate) overflows: usize,
+}
+
+/// The lowest deck cap a set of deck searches was certified under (`best_deck_capped`: a band of over EXACT_CAP decks
+/// is retried down the cap ladder; 0 when even the last cap overflows, the answer certified under nothing); none while
+/// no deck search has been certified.
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct CertifiedCap(Option<f64>);
+
+impl CertifiedCap {
+    /// Certified under `cap`.
+    pub(crate) const fn at(cap: f64) -> Self {
+        Self(Some(cap))
+    }
+    /// Certified under `cap` too: the lower of the two.
+    pub(crate) fn lower_to(&mut self, cap: f64) {
+        self.0 = Some(self.0.map_or(cap, |certified| certified.min(cap)));
+    }
+    /// Both certificates: the lower cap.
+    pub(crate) fn lowest(mut self, other: Self) -> Self {
+        if let Some(cap) = other.0 {
+            self.lower_to(cap);
+        }
+        self
+    }
+    /// The cap in force under the top cap `rho_top`: the lower of the two.
+    pub(crate) fn under(self, rho_top: f64) -> f64 {
+        self.0.map_or(rho_top, |cap| rho_top.min(cap))
+    }
+    /// Whether a deck search was certified below the top cap `rho_top` only.
+    pub(crate) fn below(self, rho_top: f64) -> bool {
+        self.0.is_some_and(|cap| cap < rho_top)
+    }
+}
+
+impl DeckSearchAudit {
+    /// The assumptions deck searches pruned under since `assumed_searches` and `multi_searches` stood at
+    /// `assumed_before` and `multi_before`.
+    fn assumes_since(&self, assumed_before: usize, multi_before: usize) -> crate::career::search::Assumes {
+        use crate::career::search::Assumption;
+        let mut assumes = crate::career::search::Assumes::new();
+        if self.assumed_searches > assumed_before {
+            assumes.insert(Assumption::TwoFeederCap);
+        }
+        if self.multi_searches > multi_before {
+            assumes.insert(Assumption::MultiFeederCap);
+        }
+        assumes
+    }
 }
 
 /// The deck searches' memo, kept between jobs of one setup (`KeptState::decks`).

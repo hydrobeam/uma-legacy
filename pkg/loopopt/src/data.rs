@@ -88,12 +88,14 @@ pub(crate) fn rel_tables(
     (pair_relations, trio_relations)
 }
 /// Precomputed pairwise ceilings (`loopopt pbtable`, merged into data.json by `./build.sh pb`): `fp` is
-/// `pb_fingerprint` of the data it was computed from; row a holds PB(a, b) for b > a as 16-hex-digit f64 bit patterns.
+/// `pb_fingerprint` of the data it was computed from; row a holds PB(a, b) for b > a. Every ceiling is finite and none
+/// is -0.0, so JSON's shortest float text (serde_json's `float_roundtrip`, Python's and JavaScript's alike) carries it
+/// bit for bit.
 #[derive(Deserialize, Serialize)]
 pub(crate) struct PbRaw {
     #[serde(rename = "fp")]
     pub(crate) fingerprint: String,
-    pub(crate) rows: Vec<String>,
+    pub(crate) rows: Vec<Vec<f64>>,
 }
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) enum Choice {
@@ -217,11 +219,10 @@ fn pb_table_from(raw: &DataRaw) -> Option<UmaPairTable<f64>> {
     }
     let mut table = vec![0.0f64; roster_len * roster_len];
     for (a, row) in stored.rows.iter().enumerate() {
-        if row.len() != 16 * (roster_len - 1 - a) {
+        if row.len() != roster_len - 1 - a {
             return None;
         }
-        for (offset, b) in (a + 1..roster_len).enumerate() {
-            let value = crate::hex::hex_f64(row.get(16 * offset..16 * offset + 16)?)?;
+        for (b, &value) in (a + 1..roster_len).zip(row) {
             table[a * roster_len + b] = value;
             table[b * roster_len + a] = value;
         }

@@ -37,6 +37,7 @@ Everything a build reads lives inside the repository folder, apart from the tool
 | Where | What | Used by |
 |---|---|---|
 | `pkg/loopopt/Cargo.toml` | `serde`, `serde_json` | the solver |
+| `pkg/loopopt/Cargo.toml` | `postcard` (MIT or Apache-2.0), `base64` (MIT or Apache-2.0): the worker's kept state as the page stores it, the kept types in postcard's binary serde (every f64 its 8 bytes, infinities included) as base64 text (`career/state.rs`) | the solver |
 | `pkg/loopopt/Cargo.toml` | `ts-rs` (pinned exactly; MIT): derives the TypeScript type of every report and job struct, so the page's types are generated from the solver's (*Generated types*); its derives are dead code in the wasm (none of the declarations' text is in it) | `types`, `lint` |
 | `pkg/loopopt/Cargo.toml` | `clap` (pinned exactly, its derive API; MIT or Apache-2.0): the native `loopopt` command line's arguments, subcommands and errors; a native-only dependency, not in the wasm | `native`, `val`, `pb` |
 | `pkg/loopopt/Cargo.toml` | `wasm-bindgen` (pinned exactly; MIT or Apache-2.0): the wasm's exports (`src/web.rs`, the `Solver` class the worker makes) and the host's imports (`career/clock.rs`: `performance.now()`, the worker's progress hook), through its generated glue; `console_error_panic_hook` (pinned exactly; MIT or Apache-2.0): a panic's message in the console before the trap. Both wasm-only | `wasm` |

@@ -2,7 +2,7 @@
 use crate::career::outcomes::CornerKey;
 use crate::career::plan::report::ClassMaxDeck;
 use crate::career::search::DeckRes;
-use crate::career::{CareerSetup, DeckSearchAudit, Env, SearchState};
+use crate::career::{CareerSetup, CertifiedCap, DeckSearchAudit, Env, SearchState};
 use crate::deck::caps::{EXACT_BUDGET, EXACT_STEPS, NESTED_CHAIN};
 use crate::deck::enumerate::{BandBound, LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
 use crate::deck::joint::joint_b;
@@ -72,7 +72,7 @@ pub(crate) struct DeckMemo {
     product_bound: Option<f64>,
     work: usize,
     scored: usize,
-    certified_cap: f64,
+    certified_cap: CertifiedCap,
     overflows: usize,
     /// whether its capped search breached its cap (`DeckSearchAudit::capped_breaches`)
     capped_breach: bool,
@@ -159,8 +159,8 @@ impl SearchEffects {
 struct MemoStart {
     work: usize,
     scored: usize,
-    /// The job's certificate before the call (the call's own starts from INFINITY).
-    certified_cap: f64,
+    /// The job's certificate before the call (the call's own starts from none).
+    certified_cap: CertifiedCap,
     overflows: usize,
     capped_breaches: usize,
     assumed_searches: usize,
@@ -312,8 +312,7 @@ impl Env<'_> {
         let result = self.best_deck_memo(search, starts, scored);
         let deck_class = self.setup.deck_class[search.trainee];
         let flags = &mut self.state.class_flags[deck_class];
-        flags.assumes.two_feeder |= self.audit.assumed_searches > assumed_before;
-        flags.assumes.multi_feeder |= self.audit.multi_searches > multi_before;
+        flags.assumes.extend(self.audit.assumes_since(assumed_before, multi_before));
         if self.audit.capped_breaches > breaches_before {
             flags.breached = true;
             self.state.ruled[deck_class].clear();
@@ -346,7 +345,7 @@ impl Env<'_> {
             self.state.work += stored.work;
             *scored += stored.scored;
             self.state.last_product_bound = stored.product_bound;
-            self.audit.certified_cap = self.audit.certified_cap.min(stored.certified_cap);
+            self.audit.certified_cap = self.audit.certified_cap.lowest(stored.certified_cap);
             self.audit.overflows += stored.overflows;
             self.audit.capped_breaches += usize::from(stored.capped_breach);
             self.audit.assumed_searches += usize::from(stored.assumed);
@@ -376,7 +375,7 @@ impl Env<'_> {
         let start = MemoStart {
             work: self.state.work,
             scored: *scored,
-            certified_cap: std::mem::replace(&mut self.audit.certified_cap, f64::INFINITY),
+            certified_cap: std::mem::take(&mut self.audit.certified_cap),
             overflows: self.audit.overflows,
             capped_breaches: self.audit.capped_breaches,
             assumed_searches: self.audit.assumed_searches,
@@ -395,7 +394,7 @@ impl Env<'_> {
         let nested_ratio = self.audit.nested_max_ratio;
         self.audit.nested_max_ratio = previous_nested_ratio.max(nested_ratio);
         let certified_cap = self.audit.certified_cap;
-        self.audit.certified_cap = start.certified_cap.min(certified_cap);
+        self.audit.certified_cap = start.certified_cap.lowest(certified_cap);
         let (search_ratios, search_decks) = (
             std::mem::replace(&mut self.audit.max_ratio, previous_ratios),
             std::mem::replace(&mut self.audit.max_deck, previous_decks),
@@ -815,7 +814,7 @@ impl Env<'_> {
                     rho = next_cap;
                     continue;
                 }
-                audit.certified_cap = 0.0;
+                audit.certified_cap = CertifiedCap::at(0.0);
                 break;
             }
             // (a band that pruned a shape left under a named assumption: its proof rests on it, `Assumes`)
@@ -878,7 +877,7 @@ impl Env<'_> {
                 }
             }
             if !cut {
-                audit.certified_cap = audit.certified_cap.min(rho);
+                audit.certified_cap.lower_to(rho);
             }
             break;
         }

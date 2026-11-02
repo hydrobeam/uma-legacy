@@ -412,7 +412,8 @@ impl Drop for MemoReport {
 /// pinf is at index 0, so there the least of K_0 and 1 / p). Below p0 each
 /// success's rate is the state-local one, capped at lam (`Building`). pinf = CEIL_SHARE x her full-loop odds. Shape calibration and its limits: docs/MODEL.md, "Next career"; trace setup:
 /// val/sim/README.md. lam = 0: no building.
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(from = "KeptCont", into = "KeptCont")]
 pub(crate) struct Cont {
     pub(crate) lam: f64,
     pub(crate) phi: f64,
@@ -454,7 +455,7 @@ pub(crate) struct LatticePoint {
 }
 
 /// What `Cont::plan` chooses at odds p: build n successes, then grind.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BuildPlan {
     /// Expected careers to her full veteran.
     pub(crate) expected_careers: f64,
@@ -472,6 +473,37 @@ pub(crate) struct ContMemo {
 
 fn cont_memo() -> std::rc::Rc<ContMemo> {
     std::rc::Rc::new(ContMemo { plan: std::cell::RefCell::new(Memo::new(MemoKind::Plan)) })
+}
+
+/// A Cont in the kept state (`KeptState`): its parameters and whether it has its tables; the tables, lattice and memo
+/// are built again from them (`Cont::with_decay`: the same construction, so the same f64s; a Cont without tables is
+/// `Cont::default`'s with these parameters).
+#[derive(serde::Serialize, serde::Deserialize)]
+struct KeptCont {
+    lam: f64,
+    phi: f64,
+    pinf: f64,
+    anchor_odds: f64,
+    lam_decay: f64,
+    has_tables: bool,
+}
+
+impl From<Cont> for KeptCont {
+    fn from(continuation: Cont) -> Self {
+        let Cont { lam, phi, pinf, anchor_odds, lam_decay, .. } = continuation;
+        Self { lam, phi, pinf, anchor_odds, lam_decay, has_tables: !continuation.tables.is_empty() }
+    }
+}
+
+impl From<KeptCont> for Cont {
+    fn from(kept: KeptCont) -> Self {
+        let KeptCont { lam, phi, pinf, anchor_odds, lam_decay, has_tables } = kept;
+        if has_tables {
+            Self::with_decay(lam, phi, pinf, anchor_odds, lam_decay)
+        } else {
+            Self { lam, phi, pinf, anchor_odds, lam_decay, ..Self::default() }
+        }
+    }
 }
 
 impl Default for Cont {

@@ -56,7 +56,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     // (the kept plans' class flags, by class content: what their careers and completeness rest on, `Bests::flags`; so
     // every reuse, `best_of` and the looped rows, and the output read them with this job's)
     for plan in [&searches.kept_same_pool, &searches.kept_previous_pool].into_iter().flatten() {
-        env.setup.union_keyed(&mut env.state, plan.flags.iter().copied());
+        env.setup.union_keyed(&mut env.state, plan.flags.iter().map(|(key, flags)| (*key, flags)));
     }
     // where pass 1 searches every allowed uma's best career exactly anyway (no proxies: `exact_all`, `exact_builders`),
     // the searches run here, before the candidates, so the free slots rank by the odds found (`stage_candidates`):

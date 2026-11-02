@@ -3,16 +3,13 @@ use crate::career::Env;
 use crate::career::plan::ParentPool;
 use crate::career::search::{Found, Ref};
 use crate::career::sim::Sim;
-use crate::career::state::StoredFound;
-use crate::hex::Key;
 use crate::key::content_key;
 use crate::request::CareerRequest;
 use crate::uma::{UmaIndex, UmaTable};
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 /// A cached result may be available from searching, certification or reuse. A known empty result is
 /// reusable too; an unsearched entry still needs work. Completeness is tracked separately.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) enum CachedSearch {
     Unsearched,
     Known(Option<Found>),
@@ -32,18 +29,6 @@ impl CachedSearch {
     }
 }
 
-/// Preserve the stored distinction: unsearched entries are absent, searched empty entries are explicit nulls.
-fn cached_searches_out(searches: &UmaTable<CachedSearch>) -> Vec<(usize, Option<StoredFound>)> {
-    searches
-        .iter()
-        .enumerate()
-        .filter_map(|(trainee, search)| match search {
-            CachedSearch::Unsearched => None,
-            CachedSearch::Known(found) => Some((trainee, found.as_ref().map(crate::career::state::found_out))),
-        })
-        .collect()
-}
-
 /// Each trainee's best career (`Env::solve`, one trainee, top 1) and the decks that search checked, per plan:
 /// kept for the next plan of the same setup and places whose pool is this one plus one veteran at the end (the page's
 /// Compare and Reroll: your veterans and her). Every career of the larger pool is one of this pool's or has her as a
@@ -52,12 +37,15 @@ fn cached_searches_out(searches: &UmaTable<CachedSearch>) -> Vec<(usize, Option<
 /// `CachedSearch` distinguishes an unsearched trainee from a search that returned no career.
 /// Search completeness is separate, in `base_incomplete` / `looped_incomplete`. Every vector is indexed by uma
 /// (`Data::umas`).
+#[derive(Serialize, Deserialize)]
 pub(crate) struct Bests {
     /// The plan's setup and the pool it was planned on (`bests_key`).
     pub(crate) key: (u64, u64),
     /// Her best career.
     pub(crate) best_careers: UmaTable<CachedSearch>,
-    /// Per trainee, the decks her best career's search checked fully (refs to absorb into the next search).
+    /// Per trainee, the decks her best career's search checked fully (refs to absorb into the next search). Not stored
+    /// (`state_out`): a restored plan has none.
+    #[serde(skip)]
     pub(crate) proof_refs: UmaTable<UmaTable<Vec<Ref>>>,
     /// her best looped career (`index_rule`), where searched: kept the same way (a pool plus one veteran adds looped pairs
     /// only when she is a full veteran)
@@ -69,78 +57,6 @@ pub(crate) struct Bests {
     /// The class flags its searches rested on, by class content (`CareerSetup::keyed_flags`, as the plan ended):
     /// unioned into a job that reuses it, whatever its trainees (`KeptState::flags` holds them too).
     pub(crate) flags: Vec<(u64, crate::career::ClassFlags)>,
-}
-
-/// A kept plan as stored (`Bests`): its key, the uma count, every uma's kept best and looped best (searched: an entry,
-/// a null where the search found none), the umas whose searches were not complete, and its class flags. Her decks'
-/// refs are not kept: nothing reads them back.
-#[derive(Serialize, Deserialize, TS)]
-pub(crate) struct StoredBests {
-    pub(crate) key: [Key; 2],
-    pub(crate) umas: usize,
-    pub(crate) best: Vec<(usize, Option<StoredFound>)>,
-    pub(crate) looped: Vec<(usize, Option<StoredFound>)>,
-    pub(crate) incomplete: Vec<usize>,
-    pub(crate) looped_incomplete: Vec<usize>,
-    pub(crate) flags: Vec<(Key, u8)>,
-}
-
-/// the kept plans for the page to store (`state_out`)
-pub(crate) fn bests_out(bests: &[Bests]) -> Vec<StoredBests> {
-    let marked = |flags: &UmaTable<bool>| flags.indices().filter(|&uma| flags[uma]).map(|uma| uma.0).collect();
-    bests
-        .iter()
-        .map(|plan| StoredBests {
-            key: [Key(plan.key.0), Key(plan.key.1)],
-            umas: plan.best_careers.len(),
-            best: cached_searches_out(&plan.best_careers),
-            looped: cached_searches_out(&plan.looped_careers),
-            incomplete: marked(&plan.base_incomplete),
-            looped_incomplete: marked(&plan.looped_incomplete),
-            flags: crate::career::state::keyed_flags_out(plan.flags.iter().map(|(key, flags)| (key, flags))),
-        })
-        .collect()
-}
-
-/// Kept plans from their stored form (`bests_out`); None refuses the store: a count past `STATE_MAX_N`, an uma index
-/// past the count (an incomplete search's included: dropping one would make it read as complete)
-pub(crate) fn bests_in(stored: &[StoredBests]) -> Option<Vec<Bests>> {
-    use crate::career::state::{count, found_in};
-    stored
-        .iter()
-        .map(|stored| {
-            let n = count(stored.umas)?;
-            let per_uma = |entries: &[(usize, Option<StoredFound>)]| -> Option<UmaTable<CachedSearch>> {
-                let mut searches = UmaTable(vec![CachedSearch::Unsearched; n]);
-                for (uma, found) in entries {
-                    if *uma >= n {
-                        return None;
-                    }
-                    searches[UmaIndex(*uma)] = CachedSearch::Known(match found {
-                        None => None,
-                        Some(found) => Some(found_in(found)?),
-                    });
-                }
-                Some(searches)
-            };
-            let marked = |umas: &[usize]| -> Option<UmaTable<bool>> {
-                let mut flags = UmaTable(vec![false; n]);
-                for &uma in umas {
-                    *flags.0.get_mut(uma)? = true;
-                }
-                Some(flags)
-            };
-            Some(Bests {
-                key: (stored.key[0].0, stored.key[1].0),
-                best_careers: per_uma(&stored.best)?,
-                proof_refs: UmaTable(vec![UmaTable(vec![]); n]),
-                looped_careers: per_uma(&stored.looped)?,
-                base_incomplete: marked(&stored.incomplete)?,
-                looped_incomplete: marked(&stored.looped_incomplete)?,
-                flags: crate::career::state::keyed_flags_in(&stored.flags)?.into_iter().collect(),
-            })
-        })
-        .collect()
 }
 
 /// Remove one kept plan while `index_rule` owns it; the plan puts retained entries back when it finishes.
@@ -380,8 +296,12 @@ pub(crate) fn same_deck(first: &crate::deck::space::SelectedDeck, second: &crate
 #[cfg(test)]
 mod cached_search_tests {
     use super::*;
+    use crate::career::reply::CareerReply;
+    use crate::career::state::{KeptState, state_in, state_out};
     use crate::deck::space::SelectedDeck;
-    use serde_json::{Value, json};
+    /// A kept plan comes back from the page's store with each trainee's search as it was: not searched, searched with
+    /// no career, or her career with its floats bit for bit (a -0.0 hint chance included); and the umas whose searches
+    /// were not complete.
     #[test]
     fn stored_searches_distinguish_missing_empty_and_found() {
         let found = Found {
@@ -398,49 +318,39 @@ mod cached_search_tests {
                 gold_hint_chances: vec![0.5],
             },
         };
-        let searches = UmaTable(vec![
-            CachedSearch::Unsearched,
-            CachedSearch::Known(None),
-            CachedSearch::Known(Some(found.clone())),
-        ]);
-        let rows = serde_json::to_value(cached_searches_out(&searches)).unwrap();
-        assert_eq!(rows, json!([[1, null], [2, crate::career::state::found_out(&found)]]));
-        let decode = |stored: Value| {
-            serde_json::from_value::<Vec<StoredBests>>(stored).ok().and_then(|stored| bests_in(&stored))
+        let plan = Bests {
+            key: (1, 2),
+            best_careers: UmaTable(vec![
+                CachedSearch::Unsearched,
+                CachedSearch::Known(None),
+                CachedSearch::Known(Some(found.clone())),
+            ]),
+            proof_refs: UmaTable(vec![]),
+            looped_careers: UmaTable(vec![
+                CachedSearch::Known(None),
+                CachedSearch::Unsearched,
+                CachedSearch::Unsearched,
+            ]),
+            base_incomplete: UmaTable(vec![false, false, true]),
+            looped_incomplete: UmaTable(vec![false, true, false]),
+            flags: vec![],
         };
-        let key = json!(["0000000000000001", "0000000000000002"]);
-        let stored = json!([{
-            "key": key, "umas": 3, "best": rows, "looped": rows, "incomplete": [2], "looped_incomplete": [1],
-            "flags": [],
-        }]);
-        let decoded = decode(stored.clone()).unwrap();
-        let cached = &decoded[0];
+        let stored = state_out(&KeptState { bests: vec![plan], ..KeptState::default() }).state;
+        let mut restored = KeptState::default();
+        assert!(matches!(state_in(&mut restored, &stored), CareerReply::StateIn(_)), "the store was refused");
+        let cached = &restored.bests[0];
+        assert_eq!(cached.key, (1, 2));
         assert!(cached.best_careers[UmaIndex(0)].is_unsearched());
         assert!(matches!(cached.best_careers[UmaIndex(1)], CachedSearch::Known(None)));
         assert!(!cached.best_careers[UmaIndex(1)].is_unsearched());
-        assert!(cached.best_careers[UmaIndex(1)].found().is_none());
-        assert_eq!(
-            cached.best_careers[UmaIndex(2)].found().unwrap().deck.white_hint_chances[0].to_bits(),
-            (-0.0f64).to_bits()
-        );
-        assert_eq!(serde_json::to_value(cached_searches_out(&cached.best_careers)).unwrap(), stored[0]["best"]);
-        assert_eq!(serde_json::to_value(cached_searches_out(&cached.looped_careers)).unwrap(), stored[0]["looped"]);
+        let career = cached.best_careers[UmaIndex(2)].found().expect("her career");
+        assert!(same_career(career, &found), "another career");
+        assert_eq!((career.value, career.ceiling), (found.value, found.ceiling));
+        assert_eq!(career.deck.white_hint_chances[0].to_bits(), (-0.0f64).to_bits());
+        assert!(matches!(cached.looped_careers[UmaIndex(0)], CachedSearch::Known(None)));
+        assert!(cached.looped_careers[UmaIndex(1)].is_unsearched());
         assert_eq!(cached.base_incomplete.0, [false, false, true]);
         assert_eq!(cached.looped_incomplete.0, [false, true, false]);
-
-        // a count past STATE_MAX_N, an index past the count, and an incomplete search's uma past it are refused (that
-        // last one skipped would read as a complete search)
-        let wide = u64::from(u32::MAX) + 2;
-        let with = |umas: Value, best: Value, incomplete: Value| {
-            decode(json!([{"key": key, "umas": umas, "best": best, "looped": [], "incomplete": incomplete,
-                "looped_incomplete": [], "flags": []}]))
-        };
-        assert!(with(json!(u64::MAX), json!([]), json!([])).is_none(), "a count beyond STATE_MAX_N is refused");
-        assert!(with(json!(3), json!([[wide, null]]), json!([])).is_none(), "an index past the count is refused");
-        assert!(
-            with(json!(3), json!([]), json!([wide, 1])).is_none(),
-            "an incomplete search past the count is refused"
-        );
-        assert_eq!(with(json!(3), json!([]), json!([1])).unwrap()[0].base_incomplete.0, [false, true, false]);
+        assert_eq!(state_out(&restored).state, stored, "the store did not come back as it left");
     }
 }
