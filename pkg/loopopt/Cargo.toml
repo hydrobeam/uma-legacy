@@ -42,6 +42,11 @@ console_error_panic_hook = "=0.1.7"
 [build-dependencies]
 serde_json = "1"
 
+# the planner's property test (tests/plan_monotone.rs): random small pools, shrunk to a minimal one on a failure; no
+# default features (no forking, timeouts or regex strategies: the test uses none)
+[dev-dependencies]
+proptest = { version = "=1.12.0", default-features = false, features = ["std"] }
+
 [profile.release]
 opt-level = 3
 lto = true
@@ -57,7 +62,9 @@ codegen-units = 1
 # keep [profile.release].
 [profile.checks]
 inherits = "release"
-lto = false
+# "off", not false: Cargo's false still runs thin LTO across the crate's own codegen units, 12 of a 44 s rebuild after
+# a one-line edit; off makes that rebuild 7.7 s (opt-level 3 kept: opt-level 1 rebuilt no faster and ran tests slower)
+lto = "off"
 codegen-units = 16
 incremental = true
 debug-assertions = true

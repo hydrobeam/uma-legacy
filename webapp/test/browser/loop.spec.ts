@@ -92,7 +92,7 @@ async function menuKeys(page: Page, name: string, button: Locator, menu: Locator
   });
 }
 
-test('loop planner: the keyboard through every ARIA pattern; Auto-search back on searches the change it held', async ({
+test('loop planner: the keyboard through every ARIA pattern; Auto-search back on searches the change it held @both', async ({
   page,
 }) => {
   await openLoop(page);
@@ -230,7 +230,7 @@ test('loop planner: the keyboard through every ARIA pattern; Auto-search back on
   });
 });
 
-test.describe('career planner', () => {
+test.describe('career planner @both', () => {
   test.use({
     seed: {
       'llp:career': fs.readFileSync(path.join(import.meta.dirname, 'umadump12.json'), 'utf8'),
@@ -356,7 +356,7 @@ const liveRegion = (page: Page) =>
       : null;
   });
 
-test('the loop page as served, laid out and announced; a reload shows the saved result from the first frame, searching nothing', async ({
+test('the loop page as served, laid out and announced; a reload shows the saved result from the first frame, searching nothing @both', async ({
   page,
 }) => {
   const hosts = new Set<string>();

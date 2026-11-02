@@ -135,11 +135,11 @@ it stops; the `art` step instead says what it skipped.
 | `hooks` | `git config core.hooksPath .githooks`: the tracked pre-commit hook (see *Rust style*); once per clone |
 | `pb` | the release solver (cargo's build, a no-op on an unchanged tree), then each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files, then the page's lists (`data.json` is one of their inputs); it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
 | `wasm` | the wasm32 build (stable; rebuilding std with `-Z build-std` was measured on 2026-10-31 to change neither the output nor the speed, and under 2 KB of size), `wasm-bindgen --target web --omit-default-module-path` (into `pkg/loopopt/target/bindgen/`: the wasm with the glue's exports, and the glue, `loopopt.js` and `loopopt.d.ts`, copied to `webapp/src/gen/`: an ES module the worker imports, instantiated from the page's compiled module by `initSync`, with no fallback fetch of the wasm by URL), `wasm-opt -O3 -ocimfs=0` (no inlining of single-caller functions, so long loops stay in functions V8 optimises: `docs/PERF.md`, *In the page*), then `webapp/example.json` (the result shown before the first search). `wasm-opt` (about a minute) is skipped when the bound wasm, its flags (`WASM_OPT_FLAGS`, the one list the command also reads) and wasm-opt's version match its last run (`webapp/.loopopt.wasm.key`); the example always runs |
-| `page` | `webapp/dist/` (see *The page*) |
+| `page` | `webapp/dist/` (see *The page*); skipped when what the build reads matches the last build's (`webapp/.dist.key`: the page's sources, Vite's config and plugins, the lockfile, the data and research values it reads, the wasm or stub, `webapp/img/`, the game files `page.json` was made from, the footer's version and `SITE_URL`), so a test run on an unchanged tree builds nothing |
 | `images` | game art into `webapp/img/` (see *Art*); only new ids unless `IMAGES_FORCE=1` |
 | `runners` | each uma's running mini model as a sprite strip in `webapp/img/run/` (see *Art*) |
 | `browsers` | Playwright's browsers at the revisions the pinned `playwright` package wants into `cache/ms-playwright` (`playwright install`: a download after a Playwright bump, a 0.6 s no-op when they are there) |
-| `test` / `testq` | the page (`page`), then the browser flows on it, in both browsers or Chromium alone; they replay recorded solver replies and need no built solver (see *Tests*) |
+| `test` / `testq` | the page (`page`), then the browser flows on it, in Chromium (and Firefox for the flows titled `@both`) or Chromium alone; they replay recorded solver replies and need no built solver (see *Tests*) |
 | `prune-replies` | the page, then deletes the recorded solver replies of every solver and data but its own (see *Tests*, *Recorded solver replies*) |
 | `serve` | `webapp/dist` on https://localhost:8000 (`PORT=…`) over HTTP/2 with TLS, as the host serves it (`vite preview`): the certificate is self-signed (`cache/tls/`), so a browser warns once. Unlike the host, it revalidates `assets/` on each load (ETags) rather than caching them a year |
 | `val TAG` / `valq TAG` | the release solver, then validation: in full before landing a change that can move results, quick while iterating (see *Tests*) |
@@ -343,7 +343,7 @@ their inputs (`cache/passed/NAME-KEY`: the SHA-256 of the files they read, track
 shared by every worktree, and on the same key say so and return; a page-only change never runs them. `lint` runs
 Rust's linters only when a Rust input differs from main's. The wasm and the checks' binary are kept the same way
 (`cache/wasm/KEY`, `cache/bin/KEY`): a worktree whose solver inputs were built before copies them instead of
-compiling, so one that changed no Rust runs no cargo for val, valq or mono. `./build.sh setup` brings a new worktree
+compiling, so one that changed no Rust runs no cargo for val, valq, mono or research. `./build.sh setup` brings a new worktree
 to ready from these caches (the shared `cache/`, `npm ci` only when `webapp/package-lock.json` differs from the
 installed one, the wasm and the binary when built before) and compiles nothing; the steps call the same pieces
 themselves, so it is a head start, and running it again does nothing.
@@ -354,11 +354,11 @@ count less two, so the slowest job (`p16_t10`) starts at the beginning; the comp
 
 **Profiles.** Every test, `val`, `valq`, `mono` and lint's generated-types and section-8 tests build in
 `[profile.checks]`, with `debug-assertions` and `overflow-checks` on (release hides both from the tests); the wasm and
-`pb`'s and research's binary in `[profile.release]`; clippy checks without code generation. valq is byte-identical
+`pb`'s binary in `[profile.release]` (research runs the checks' binary); clippy checks without code generation. valq is byte-identical
 with the assertions on (2026-11-01), which cost the solver 8-12% more instructions. The unit tests stay in the checks
 profile: the dev profile (`opt-level` 1, dependencies 3) rebuilt them no faster after a one-line edit (31 s against
 34) and ran them slower (31 s against 25), and a second profile compiles the crate twice. Neither meets the edit
-tier's 10 s: one unit test, `deck::tests::chain_marginals_dense_matches_ref`, is most of their run.
+tier's 10 s.
 
 **Type-only changes.** A change the type checker fully explains (a rename, a type in place of a bare number, moved
 code; no change to arithmetic, control flow or data) runs the unit tests and clippy per commit and one `valq` at the
@@ -368,7 +368,7 @@ merge, not a `valq` per commit. A change to arithmetic, control flow or data fol
   clippy. The checks' profile (`[profile.checks]` in `pkg/loopopt/Cargo.toml`) is release's opt-level 3 without fat
   LTO and one codegen unit, which had made every test binary a minute or two of single-threaded linking; val, valq,
   mono and lint run its binary, `target/checks/loopopt`, too. Its outputs are byte-identical to the release binary's on
-  every val job (full val and valq, 2026-11-01); the wasm, `pb` and `research` keep `[profile.release]`.
+  every val job (full val and valq, 2026-11-01); the wasm and `pb` keep `[profile.release]`.
   The integration tests are one crate, `pkg/loopopt/tests/it/` (a module per file, `main.rs` lists them: the
   crate links once and libtest runs all of them in parallel; its own test fails on a file there that is not one of
   its modules), and run the solver binary through one harness, `tests/it/common.rs`,
@@ -389,10 +389,12 @@ merge, not a `valq` per commit. A change to arithmetic, control flow or data fol
   browser only when it needs one.
 - **Browser flows:** `./build.sh test` builds the page and runs Playwright Test (`webapp/playwright.config.ts`, from
   the pinned `playwright` package) against `webapp/dist`, served by `vite preview` over HTTP/2 with TLS as the host
-  serves it (a self-signed certificate made once into `cache/tls/`), or against `LLP_URL`, in Chromium and Firefox:
+  serves it (a self-signed certificate made once into `cache/tls/`), or against `LLP_URL`:
   `webapp/test/browser/*.spec.ts`, small independent tests run in parallel (`fullyParallel`, Playwright's default
   workers), each for what needs a real browser: layout at real widths, the worker as the page drives it, keyboard and
-  focus, storage across a reload, both engines. Each starts from the state it seeds (`test.use({ seed })`,
+  focus, storage across a reload. Every flow runs in Chromium; Firefox runs only those with `@both` in their
+  title (or their `describe`'s), where the engine matters: layout at real widths, keyboard and focus, the worker. Each
+  starts from the state it seeds (`test.use({ seed })`,
   `fixtures.ts`: localStorage written before the page's first script, once per tab) rather than clicking its way
   there, moves the page's own timers with `page.clock`, and fails on any page error. An action or an assertion waits
   at most 5 s; a wait on the solver says so (`pages.ts` `SOLVER_WAIT`). All test code is TypeScript, checked by

@@ -236,7 +236,7 @@ The job file's `files.skills` holds the outfit skill lists, the skill catalog an
 
 | Field | Meaning | Default |
 |---|---|---|
-| `targets[]` | `group` = skill group id; `guaranteed` 0 none / 1 white / 2 gold; `deck_white`, `deck_gold` = deck hint chance 0–1 | required |
+| `targets[]` | `group` = skill group id; `guaranteed` 0 none / 1 white / 2 gold; `deck_white`, `deck_gold` = deck hint chance 0–1. Where every target is `guaranteed` 2, no deck changes the odds: a deck job is refused, and a career job gives each career the job's locked cards and filler with no deck search | required |
 | `rank_class` | the rank band the legacies were bred at, which sets their sparks' star mix (`RankClass::star_mix`, assumed: docs/RESEARCH.md section 2): `"below_ss"` (rank score 6,500 to 17,499) [0.50, 0.45, 0.05], `"ss_and_up"` (17,500 and up) [0.20, 0.70, 0.10] | `"below_ss"` |
 | `owned` | uma ids you own (empty = whole roster) | `[]` |
 | `exclude` | uma ids to leave out | `[]` |
@@ -685,7 +685,7 @@ evidence: `docs/MODEL.md`, *Next career*. The planner is in `src/career/plan/` (
 | `sur`, `sur_margin` | `"surrogate"`: each uma's best career from the simulator's surrogate (`best_sur`: every legal pair by ceiling, her cached decks, an exact deck search where the bound beats the table by more than `sur_margin`) in place of the career search; `"both"`: both, the differences listed in `sur_diff` (`SurrogateMode`) | `"search"`, 0 |
 | `exact_all` | every uma's best career searched exactly (no proxies) | `false` |
 | `proxy_check` | disable proxies for the main plan and report each builder's proxy beside her exact career (`proxy_check` in the output, each row with its `origin`, base / looped / nb / alternative, and `looped`: a looped row's proxy is her unconstrained career, so only base rows compare like for like); also evaluate looped rows' lift statistics | `false` |
-| `proxy_eff` | test knob replacing `PROXY_EFF`; `tests/it/plan_memo.rs` sets -1 (pass 1's builders left to their proxies, so the pass-2 searches refit Cont) | 0.06 |
+| `proxy_eff` | test knob replacing `PROXY_EFF` (-1: pass 1's builders left to their proxies, so the pass-2 searches can refit Cont) | 0.06 |
 | `fit` | `[[chara, lam, phi, pinf, p0], ...]` (a plan's own `fit` output): the stage candidates and their continuations taken as given instead of fitted to this pool, each anchored at the odds p0 it was fitted at (a 4-element entry, written before p0 was, is anchored at the candidate's odds now, so it re-anchors). The page's Compare prices the pool with her under the plan's own `fit`, passed on unchanged, where today's plan has a V and a fit (else it refits; Add to veterans always refits) | none |
 | `partners` | partners kept per candidate where a scored career's veteran is a parent (1 to 8) | 2 |
 | `fresh_lineages` | fresh lineages a trio side may take per candidate: her best career now and her next `fresh_lineages` - 1 by her cached decks (1 to 64) | 3 |

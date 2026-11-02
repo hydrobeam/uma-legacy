@@ -818,7 +818,7 @@ END_GROUPS: tuple[str, ...] = (
     "chosen end, no list shown",
 )
 BOOT_SIMS: int = 20  # synthetic pools per hypothesis (ends_bootstrap)
-BOOT_JOBS: int = 6  # worker processes for the pools
+BOOT_JOBS: int = 10  # worker processes for the pools (each seeded by its own index: the count moves no value)
 BOOT_SEED: int = 20261024
 MIX_GRID: tuple[float, ...] = tuple(i / 20 for i in range(21))  # end_mixture's freed shares
 BG_SCALES: tuple[float, ...] = (0.5, 1.5)  # every marker background scaled by these, the comparison re-run

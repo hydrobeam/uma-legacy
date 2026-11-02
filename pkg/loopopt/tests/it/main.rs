@@ -15,6 +15,7 @@ mod plan_alternative;
 mod plan_borrowed;
 mod plan_looped;
 mod plan_memo;
+mod plan_monotone;
 mod plan_order;
 mod plan_roll;
 mod plan_state;

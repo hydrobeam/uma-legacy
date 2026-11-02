@@ -1,6 +1,6 @@
 // A roll: a random result of a career (the veteran it leaves), drawn from the solver's report of it. No page state:
 // each function takes the report, what it reads of the settings and data (`RollSetup`) and the random source (`rnd`,
-// Math.random on the page; the browser suite's `career` group passes a seeded one and runs these in node).
+// Math.random on the page; test/unit/careerroll.test.ts passes scripted uniforms).
 import { must } from '../must.ts';
 import { drawPink } from '../pink.ts';
 import { SOLVER } from '../gen/constants.ts';

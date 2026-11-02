@@ -1,175 +1,288 @@
 // A roll of the career planner (career/roll.ts) and her pink spark (pink.ts `drawPink`) against the solver's reports
-// they are drawn from: on every reference career (val/ref__global__career_*.out, the solver's outputs validation pins),
-// seeded draws land each figure as often as the report gives it, to 5 sigma (at least 1e-3). The draws are few enough
-// to run in about a second each (10,000 pink draws and 5,000 rolls per career: 5 sigma is about ±0.025 and ±0.035 at
-// p = 0.5), so they catch a figure drawn from the wrong field or bit, not a bias of a percent. npx vitest run (in webapp)
+// they are drawn from, exactly: each draw maps one uniform in [0, 1) to an outcome, so a scripted random source (the
+// uniforms in order) puts u just below and just above each cut point and the outcome changes there, on a reference
+// career (val/ref__global__career_U.out, the solver's output validation pins). The interval between two cut points is
+// each outcome's chance, so these show every piece drawn with the chance the report gives it, and one whole roll shows
+// which piece reads which uniform. npx vitest run (in webapp)
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { test } from 'vitest';
-import { drawPink } from '../../src/pink.ts';
+import { drawPink, pinkAmong } from '../../src/pink.ts';
 import { rolledBlueGreen, rolledBought, rolledOutcome, scheduledRaces, starDraw } from '../../src/career/roll.ts';
+import type { RollSetup } from '../../src/career/roll.ts';
 import type { CareerReport } from '../../src/career/job.ts';
+import { gradeOf, withGrade } from '../../src/grades.ts';
 import { SOLVER } from '../../src/gen/constants.ts';
-import type { RankClass } from '../../src/gen/solver.ts';
+import { Grade } from '../../src/gen/solver.ts';
+import type { Aptitude, Grades, RankClass } from '../../src/gen/solver.ts';
 
-// a seeded random source (mulberry32)
-function seeded(seed = 0x9e3779b9) {
-  let s = seed;
-  return () => {
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+// how far from a cut point the scripted uniforms sit: well under any chance the reports give, well over rounding
+const EPS = 1e-9;
+/** A scripted random source: `us` in order, then `rest` for every further draw (none when it is left out: a draw past
+ *  the script fails); `used()` counts the draws taken. */
+function script(us: readonly number[], rest?: number) {
+  let taken = 0;
+  const rnd = () => {
+    const u = us[taken] ?? rest;
+    taken++;
+    assert.ok(u !== undefined, `draw ${taken} is past the script`);
+    return u;
   };
+  return Object.assign(rnd, { used: () => taken });
 }
-const VAL = new URL('../../../val/', import.meta.url);
-// the reference careers' reports: [file, report]
-const referenceCareers = (): [string, CareerReport][] =>
-  fs
-    .readdirSync(VAL)
-    .filter((f) => /^ref__global__career_.*\.out$/.test(f))
-    .sort()
-    .flatMap((f) => {
-      const out: { results?: CareerReport[] } = JSON.parse(fs.readFileSync(new URL(f, VAL), 'utf8'));
-      return (out.results ?? []).map((r): [string, CareerReport] => [f, r]);
-    });
+const close = (a: number | undefined, b: number, what: string) => assert.ok(Math.abs((a ?? NaN) - b) < 1e-12, what);
 
-/** Counts each figure's draws against its chance; the first one off by more than 5 sigma (at least 1e-3). */
-function tally() {
-  let figures = 0,
-    worst = 0,
-    bad = '';
-  return {
-    near(what: string, count: number, p: number, n: number) {
-      const fr = count / n,
-        sd = Math.sqrt((p * (1 - p)) / n);
-      figures++;
-      if (Math.abs(fr - p) > Math.max(5 * sd, 1e-3)) bad ||= `${what}: drawn ${fr.toFixed(4)} vs ${p.toFixed(4)}`;
-      if (sd > 0) worst = Math.max(worst, Math.abs(fr - p) / sd);
-    },
-    fail(why: string) {
-      bad ||= why;
-    },
-    check() {
-      assert.ok(figures > 0, 'some figures compared');
-      assert.equal(bad, '', `worst ${worst.toFixed(2)} sigma`);
-    },
-  };
-}
-const count = (m: Map<number, number>, k: number) => m.set(k, (m.get(k) ?? 0) + 1);
-
-test("a roll's pink spark (`drawPink`) is drawn from the solver's pink model: each aptitude as often as its `pink_gen` chance", () => {
-  const rnd = seeded(),
-    N = 10000,
-    t = tally();
-  for (const [f, r] of referenceCareers()) {
-    const ap = r.aptitudes;
-    if (ap?.start.kind !== 'known' || !ap.start.fire.length) continue;
-    const drawn = new Map<number, number>(); // pink aptitude -> draws that gave it
-    for (let i = 0; i < N; i++) {
-      const g = Object.keys(drawPink(ap, rnd).pinks)[0];
-      if (g !== undefined) count(drawn, +g);
-    }
-    for (const { aptitude, p } of ap.pink_gen) t.near(`${f} aptitude ${aptitude}`, drawn.get(aptitude) ?? 0, p, N);
+// the first two careers of a reference output: one with the landed targets' sets (`outcome_sets`) and a schedule, and
+// one over each target's own odds (the solver reports sets up to 12 targets; this pins the other branch)
+const [withSets, perTarget] = (
+  JSON.parse(fs.readFileSync(new URL('../../../val/ref__global__career_U.out', import.meta.url), 'utf8')) as {
+    results: CareerReport[];
   }
-  t.check();
+).results;
+assert.ok(withSets && perTarget && Array.isArray(withSets.outcome_sets) && !perTarget.outcome_sets);
+const rank: RankClass = 'ss_and_up';
+const [one = 0, two = 0] = SOLVER.star_mix[rank];
+// a uniform drawing 1, 2 or 3 stars from the rank's star mix
+const STAR = { 1: one / 2, 2: one + two / 2, 3: 1 - EPS };
+const setupOf = (r: CareerReport, races: readonly string[] = []): RollSetup => {
+  const outfit = r.trainee.outfits[0]?.id;
+  return { career: { races, uniques: outfit ? { [outfit]: true } : {} }, targets: r.targets, rank };
+};
+
+test('the star mix and the blue stat: stars cut at the rank mix, the stat uniform over five', () => {
+  // a uniform just below and just above each cut point: 1|2 stars at the 1-star share, 2|3 at the 1- and 2-star shares
+  const stars = [one - EPS, one + EPS, one + two - EPS, one + two + EPS].map((u) => starDraw(rank, () => u)());
+  assert.deepEqual(stars, [1, 2, 2, 3]);
+  // the blue stat: stat k + 1 on [k/5, (k+1)/5), then its stars
+  for (const [k, cut] of [0.2, 0.4, 0.6, 0.8].entries()) {
+    const below = rolledBlueGreen(withSets, setupOf(withSets), script([cut - EPS, STAR[1], STAR[3]]));
+    const above = rolledBlueGreen(withSets, setupOf(withSets), script([cut + EPS, STAR[2], STAR[3]]));
+    assert.deepEqual([below.blues, above.blues], [{ [k + 1]: 1 }, { [k + 2]: 2 }], `blue stat at ${cut}`);
+  }
 });
 
-test("a roll keeps its career's report: targets land, are bought and gold, G1s are won as the report says; stars, blue stat and unique as the model draws them", () => {
-  const rnd = seeded(),
-    N = 5000,
-    rank: RankClass = 'ss_and_up',
-    mix = SOLVER.star_mix[rank],
-    t = tally();
-  for (const [f, r] of referenceCareers()) {
-    const races = [...new Set((r.schedule ?? []).map((w) => w.name || w.chart.race))],
-      outfit = r.trainee.outfits[0]?.id,
-      setup = { career: { races, uniques: outfit ? { [outfit]: true } : {} }, targets: r.targets, rank };
-    const landed = new Map<number, number>(),
-      bought = new Map<number, number>(),
-      gold = new Map<number, number>(),
-      won = new Map<number, number>(), // race index -> rolls she won it in
-      stars = [0, 0, 0],
-      blues = [0, 0, 0, 0, 0];
-    let greens = 0;
-    for (let i = 0; i < N; i++) {
-      const roll = rolledOutcome(r, setup, rnd);
-      for (const [g, s] of Object.entries(roll.sparks)) {
-        count(landed, +g);
-        stars[s - 1] = (stars[s - 1] ?? 0) + 1;
-      }
-      for (const [g, kind] of Object.entries(roll.bought)) {
-        count(bought, +g);
-        if (kind === 'gold') count(gold, +g);
-      }
-      for (const ix of roll.wins) count(won, ix);
-      const blue = +(Object.keys(roll.blues)[0] ?? 0) - 1;
-      blues[blue] = (blues[blue] ?? 0) + 1;
-      greens += outfit && roll.greens[outfit] ? 1 : 0;
-    }
-    const sets = Array.isArray(r.outcome_sets) ? r.outcome_sets : null;
-    r.targets.forEach((target, i) => {
-      const p = sets ? sets.reduce((sum, q, mask) => sum + (mask & (1 << i) ? q : 0), 0) : target.p;
-      t.near(`${f} ${r.career} target ${target.group} lands`, landed.get(target.group) ?? 0, p, N);
-      if (!target.buy) return;
-      const { gold: g, white } = target.buy;
-      t.near(`${f} ${r.career} target ${target.group} bought`, bought.get(target.group) ?? 0, g + white, N);
-      t.near(`${f} ${r.career} target ${target.group} gold`, gold.get(target.group) ?? 0, g, N);
-    });
-    for (const race of scheduledRaces(r, races))
-      t.near(`${f} ${r.career} ${race.name} won`, won.get(race.ix) ?? 0, race.p, N);
-    const sparks = stars.reduce((a, b) => a + b, 0);
-    mix.forEach((p, k) => {
-      t.near(`${f} ${r.career} ${k + 1}-star sparks`, stars[k] ?? 0, p, sparks);
-    });
-    blues.forEach((n, k) => {
-      t.near(`${f} ${r.career} blue stat ${k + 1}`, n, 0.2, N);
-    });
-    // (a report without an outfit, as before outfits were reported: no unique)
-    if (greens !== (outfit ? N : 0)) t.fail(`${f} ${r.career}: her unique in ${greens} of ${N} rolls`);
-  }
-  t.check();
+test('her unique spark: always for an outfit with one, by the star mix; none, and no draw, for an outfit without', () => {
+  const outfit = withSets.trainee.outfits[0]?.id ?? 0;
+  const rnd = script([0.5, STAR[1], STAR[3]]);
+  assert.deepEqual(rolledBlueGreen(withSets, setupOf(withSets), rnd).greens, { [outfit]: 3 });
+  assert.equal(rnd.used(), 3);
+  const none = script([0.5, STAR[1]]);
+  const noUnique = rolledBlueGreen(withSets, { ...setupOf(withSets), career: { races: [], uniques: {} } }, none);
+  assert.deepEqual(noUnique.greens, {});
+  assert.equal(none.used(), 2);
 });
 
-test("a roll's pieces: a race run twice is won with 1 - (1 - p1)(1 - p2), the star mix's cut points, no bought draw for a skill that never lands, no unique for an outfit without one", () => {
-  const [[, report] = []] = referenceCareers();
-  assert.ok(report, 'a reference career');
-  const [row] = report.schedule ?? [];
-  const [target] = report.targets;
-  const [outfit] = report.trainee.outfits;
-  assert.ok(row && target && outfit, "the reference career's schedule, targets and outfit");
+test("the landed targets: the set drawn by its chance in `outcome_sets`; over each target's odds, a target at its p", () => {
+  const sets = withSets.outcome_sets ?? [];
+  // the likeliest set: u lands it on [C(m-1), C(m)), C the cumulative chances, an interval of width sets[m]
+  const m = sets.indexOf(Math.max(...sets));
+  const before = sets.slice(0, m).reduce((a, b) => a + b, 0),
+    after = before + (sets[m] ?? 0);
+  const landed = (u: number) =>
+    Object.keys(rolledOutcome(withSets, setupOf(withSets), script([u], 0.5)).sparks)
+      .map(Number)
+      .sort((a, b) => a - b);
+  const groups = (mask: number) =>
+    withSets.targets
+      .filter((_, i) => mask & (1 << i))
+      .map((t) => t.group)
+      .sort((a, b) => a - b);
+  assert.ok(sets[m - 1] && sets[m + 1], 'the sets either side have a chance');
+  assert.deepEqual([before - EPS, before + EPS, after - EPS, after + EPS].map(landed), [
+    groups(m - 1),
+    groups(m),
+    groups(m),
+    groups(m + 1),
+  ]);
+  // over each target's own odds: the first target lands below its p and not above
+  const [first] = perTarget.targets;
+  assert.ok(first && first.p > 0 && first.p < 1);
+  const lands = (u: number) => first.group in rolledOutcome(perTarget, setupOf(perTarget), script([u], 0.5)).sparks;
+  assert.deepEqual([first.p - EPS, first.p + EPS].map(lands), [true, false]);
+});
+
+test("a target's buy: a landed one gold at land_gold / land; one that didn't land bought at (buy - land) / (1 - land), then gold at (gold - land_gold) / (buy - land), so bought at buy and gold at gold in all", () => {
+  // the reference career's target bought gold or white whether or not it lands
+  const target = withSets.targets.find((t) => t.group === 20165);
+  assert.ok(target?.buy, 'target 20165 and its buy');
+  const { gold, white, land_gold, land_white } = target.buy;
+  const land = land_gold + land_white,
+    buy = gold + white;
+  const report = { ...withSets, targets: [target] };
+  const bought = (sparks: Record<number, number>, us: number[]) => rolledBought(report, sparks, script(us))[20165];
+  const landedGold = land_gold / land,
+    unlandedBought = (buy - land) / (1 - land),
+    unlandedGold = (gold - land_gold) / (buy - land);
+  assert.ok(
+    [landedGold, unlandedBought, unlandedGold].every((p) => p > 0.5 && p < 1),
+    'cut points inside (0, 1)',
+  );
+  assert.deepEqual(
+    [landedGold - EPS, landedGold + EPS].map((u) => bought({ 20165: 2 }, [u])),
+    ['gold', 'white'],
+  );
+  assert.deepEqual(
+    [
+      bought({}, [unlandedBought - EPS, unlandedGold - EPS]),
+      bought({}, [unlandedBought - EPS, unlandedGold + EPS]),
+      bought({}, [unlandedBought + EPS]), // not bought: no draw for gold (the script has none)
+    ],
+    ['gold', 'white', undefined],
+  );
+  // a skill that never lands or is bought: no buy
+  const never = { land_gold: 0, land_white: 0, gold: 0, white: 0 };
+  const unlanded = rolledBought(
+    { ...withSets, targets: [{ ...target, buy: { ...target.buy, ...never } }] },
+    {},
+    script([0.5]),
+  );
+  assert.deepEqual(unlanded, {});
+});
+
+test('a G1 she runs: won below its p and not above; run twice, p = 1 - (1 - p1)(1 - p2)', () => {
+  const row = (name: string) => {
+    const found = withSets.schedule?.find((w) => w.name === name && w.run !== false);
+    assert.ok(found, name);
+    return found;
+  };
+  const sprinters = row('Sprinters Stakes'),
+    tenno = row('Tenno Sho (Spring)');
   const twice = scheduledRaces(
     {
       schedule: [
-        { ...row, name: 'A', p: 0.5, turn: 1, run: true },
-        { ...row, name: 'A', p: 0.4, turn: 30, run: true },
-        { ...row, name: 'B', p: 0.9, turn: 2, run: false },
-        { ...row, name: 'C', p: 0.9, turn: 3, run: true },
+        { ...sprinters, name: 'A', p: 0.5, turn: 1, run: true },
+        { ...sprinters, name: 'A', p: 0.4, turn: 30, run: true },
+        { ...sprinters, name: 'B', p: 0.9, turn: 2, run: false },
+        { ...sprinters, name: 'C', p: 0.9, turn: 3, run: true },
       ],
     },
     ['B', 'A'],
   );
   assert.equal(twice.length, 1);
   assert.equal(twice[0]?.ix, 1);
-  assert.ok(Math.abs((twice[0]?.p ?? 0) - 0.7) < 1e-12);
+  close(twice[0]?.p, 0.7, 'A run twice at 0.5 and 0.4: 0.7');
   assert.deepEqual(twice[0]?.turns, [1, 30]);
-  const rank: RankClass = 'ss_and_up';
-  const [one = 0, two = 0] = SOLVER.star_mix[rank];
-  // a uniform just below and just above each of the rank class's cut points (1|2 and 2|3 stars)
-  const stars = [one - 1e-9, one + 1e-9, one + two - 1e-9, one + two + 1e-9].map((u) => starDraw(rank, () => u)());
+  // the reference career's Sprinters Stakes, run twice (turns 41 and 65), and its Tenno Sho (Spring), once
+  const races = ['Sprinters Stakes', 'Tenno Sho (Spring)'];
+  const [sp, te] = scheduledRaces(withSets, races);
+  assert.deepEqual(sp?.turns, [41, 65]);
+  close(sp?.p, 1 - (1 - (sprinters.p ?? 0)) ** 2, 'Sprinters Stakes');
+  close(te?.p, tenno.p ?? 0, 'Tenno Sho (Spring)');
+  // won when its uniform is below p: without targets or sets, the races are the roll's first draws
+  const schedule = withSets.schedule?.filter((w) => races.includes(w.name)) ?? null;
+  const bare = { ...withSets, targets: [], outcome_sets: null, schedule };
+  const wins = (us: number[]) => rolledOutcome(bare, setupOf(bare, races), script(us, 0.5)).wins;
+  for (const [ix, p] of [sp?.p ?? 0, te?.p ?? 0].entries()) {
+    const other = 1 - EPS; // the other race lost
+    const at = (u: number) => wins(ix === 0 ? [u, other] : [other, u]);
+    assert.deepEqual([at(p - EPS), at(p + EPS)], [[ix], []], races[ix]);
+  }
+});
+
+test("her pink spark: each aptitude's uniform interval is its `pink_gen` chance, a legacy pink fires at its p, stars 20/70/10", () => {
+  const ap = withSets.aptitudes;
+  assert.ok(ap?.start.kind === 'known');
+  const { start, fire } = ap.start;
+  // every pink that can fire raises an aptitude she starts at A or S, so the aptitudes she ends at A or S are those
+  // she starts at, whatever fires: the draws below with none firing give each pink its whole chance
+  assert.ok(
+    fire.every((f) => ap.pink_gen.some((g) => g.aptitude === f.aptitude) && gradeAt(start, f.aptitude) >= Grade.A),
+  );
+  const noFire = fire.map(() => 1 - EPS).concat(fire.map(() => 1 - EPS)); // two April inspirations
+  const pinkAt = (u: number) => Object.keys(drawPink(ap, script([...noFire, u, STAR[2]])).pinks).map(Number);
+  // the aptitudes with a chance, in `pink_gen` order: aptitude k on [C(k-1), C(k)), C the cumulative chances
+  const drawn = ap.pink_gen.filter((g) => g.p > 0);
+  let cumulative = 0;
+  assert.deepEqual(pinkAt(0), [drawn[0]?.aptitude]);
+  drawn.forEach(({ aptitude, p }, k) => {
+    cumulative += p;
+    const next = drawn[k + 1];
+    if (next) assert.deepEqual([pinkAt(cumulative - EPS), pinkAt(cumulative + EPS)], [[aptitude], [next.aptitude]]);
+    else assert.deepEqual(pinkAt(1 - EPS), [aptitude]);
+  });
+  close(cumulative, 1, 'the chances add to 1');
+  // a legacy pink fires (+1 grade) below its p and not above: the first, at the first inspiration
+  const [first] = fire;
+  assert.ok(first);
+  const gradeAfter = (u: number) =>
+    gradeAt(drawPink(ap, script([u, ...noFire.slice(1), 0.5, 0.5])).apt, first.aptitude);
+  assert.deepEqual(
+    [gradeAfter(first.p - EPS), gradeAfter(first.p + EPS)],
+    [Math.min(Grade.S, gradeAt(start, first.aptitude) + 1), gradeAt(start, first.aptitude)],
+  );
+  // the stars: 1|2 at 0.2, 2|3 at 0.9
+  const stars = [0.2 - EPS, 0.2 + EPS, 0.9 - EPS, 0.9 + EPS].map((u) => pinkAmong([31], script([0.5, u]))[31]);
   assert.deepEqual(stars, [1, 2, 2, 3]);
-  const rnd = seeded();
-  const never = { land_gold: 0, land_white: 0, gold: 0, white: 0 };
-  const unlanded = rolledBought(
-    { ...report, targets: [{ ...target, group: 7, buy: { ...target.buy, ...never } }] },
-    {},
-    rnd,
-  );
-  assert.deepEqual(unlanded, {});
-  const noUnique = rolledBlueGreen(
-    { ...report, trainee: { ...report.trainee, outfits: [{ ...outfit, id: 5 }] } },
-    { career: { races: [] }, targets: [], rank },
-    rnd,
-  );
-  assert.deepEqual(noUnique.greens, {});
+  // with several starts, the start is the first draw, by its chance: the first on [0, p1)
+  const several = {
+    ...ap,
+    start: {
+      kind: 'outcomes' as const,
+      outcomes: [
+        { p: 0.3, outcome: { start, fire: [] } },
+        { p: 0.7, outcome: { start: withGrade(start, 32, Grade.S), fire: [] } },
+      ],
+    },
+  };
+  const startAt = (u: number) => gradeAt(drawPink(several, script([u, 0.5, 0.5])).apt, 32);
+  assert.deepEqual([startAt(0.3 - EPS), startAt(0.3 + EPS)], [gradeAt(start, 32), Grade.S]);
+});
+function gradeAt(grades: Readonly<Grades> | null, aptitude: Aptitude): Grade {
+  assert.ok(grades);
+  return gradeOf(grades, aptitude);
+}
+
+test("a whole roll reads its uniforms in order: the landed set, each landed target's stars, the G1s, the buys, the pink's fires, aptitude and stars, the blue stat and stars, the unique's stars", () => {
+  const sets = withSets.outcome_sets ?? [];
+  const m = sets.indexOf(Math.max(...sets));
+  const sprinters = withSets.schedule?.filter((w) => w.name === 'Sprinters Stakes') ?? [];
+  const tenno = withSets.schedule?.find((w) => w.name === 'Tenno Sho (Spring)');
+  assert.ok(sprinters.length === 2 && tenno);
+  const races = ['Sprinters Stakes', 'Tenno Sho (Spring)'];
+  const report = { ...withSets, schedule: [sprinters[0], tenno, sprinters[1]].flatMap((w) => (w ? [w] : [])) };
+  const ap = withSets.aptitudes;
+  assert.ok(ap?.start.kind === 'known');
+  const groups = withSets.targets.map((t) => t.group);
+  assert.deepEqual(groups, [20159, 20049, 20166, 20046, 20161, 21010, 20165, 20203]);
+  assert.equal(m, 0b11001111, 'the likeliest set: all but 20161 and 21010');
+  const [fire0, ...fires] = ap.start.fire.map(() => 1 - EPS).concat(ap.start.fire.map(() => 1 - EPS));
+  assert.ok(fire0 && ap.start.fire[0]?.aptitude === 32, 'the first pink that can fire is on aptitude 32');
+  const rnd = script([
+    sets.slice(0, m).reduce((a, b) => a + b, 0) + (sets[m] ?? 0) / 2, // the landed set: m
+    ...[STAR[1], STAR[2], STAR[3], STAR[1], STAR[2], STAR[3]], // its targets' stars, in the targets' order
+    0.7, // Sprinters Stakes (1 - 0.53^2 = 0.72): won
+    0.5, // Tenno Sho (Spring) (0.17): lost
+    ...[0.5, 0.5, 0.5, 0.5], // the four landed gold-only targets: gold
+    0.5, // 20161, unlanded: bought (0.99)
+    0.5, // and white (it is never gold)
+    0.99, // 21010, unlanded: not bought (0.93)
+    0.99, // 20165, landed: white (gold at 0.986)
+    0.5, // 20203, landed: gold (0.857)
+    0.1, // the pink on 32 fires at the first inspiration (0.1125): 32 to S
+    ...fires, // the others don't
+    0.5, // her pink: the fourth of the six she ends at A or S (32, 33, 11, 12, 22, 23)
+    0.95, // at 3 stars
+    0.45, // the blue stat: 3
+    STAR[2], // at 2 stars
+    STAR[1], // her unique, at 1 star
+  ]);
+  const roll = rolledOutcome(report, setupOf(report, races), rnd);
+  assert.deepEqual(roll, {
+    sparks: { 20159: 1, 20049: 2, 20166: 3, 20046: 1, 20165: 2, 20203: 3 },
+    bought: {
+      20159: 'gold',
+      20049: 'gold',
+      20166: 'gold',
+      20046: 'gold',
+      20161: 'white',
+      20165: 'white',
+      20203: 'gold',
+    },
+    wins: [0],
+    pinks: { 12: 3 },
+    apt: withGrade(ap.start.start, 32, Grade.S),
+    blues: { 3: 2 },
+    greens: { [withSets.trainee.outfits[0]?.id ?? 0]: 1 },
+  });
+  assert.equal(rnd.used(), 1 + 6 + 2 + 9 + 2 * ap.start.fire.length + 2 + 2 + 1, 'every scripted uniform read');
 });
