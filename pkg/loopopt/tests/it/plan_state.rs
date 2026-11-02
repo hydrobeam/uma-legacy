@@ -2,7 +2,7 @@
 //! work out with `state_out`, back in with `state_in`), on the val/plan p16 pool: the plan job takes the search the
 //! worker keeps with what its product searches proved, so its plan does the work of one combined job and gives its
 //! output; after a reload the stored main search is taken as it is (no search nodes) and both jobs answer as before.
-mod common;
+use crate::common;
 use common::{Ran, State, TempFile, check_of, loopopt, run_with, val_job, without_work};
 use serde_json::{Value, json};
 

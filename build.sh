@@ -163,11 +163,24 @@ clippy_all() {
   cargo clippy --quiet --all-targets -- -D warnings \
     && cargo clippy --quiet --target wasm32-unknown-unknown --lib -- -D warnings
 }
-# cargo test in the checks profile: every test binary's result line and any failure, with the tests' exit status
+# cargo test in the checks profile: every test binary's result line and any failure, with the tests' exit status; and
+# the number of tests (passed, failed and ignored) against the pinned count, pkg/loopopt/tests/count.txt, so a test
+# that stops running (a file no crate compiles, a module left out) fails here. A change that adds or removes tests
+# writes the new count there (TESTS_BLESS=1 ./build.sh native), and one that removes any says why in its message.
 cargo_test() {
-  local out rc=0
-  out=$(cd "$C" && cargo test --profile checks 2>&1) || rc=$?
+  local out rc=0 count pinned
+  out=$(cd "$C" && cargo test --profile checks --no-fail-fast 2>&1) || rc=$?
   printf '%s\n' "$out" | grep -E '^test result|FAILED|panicked|^error' || true
+  count=$(printf '%s\n' "$out" | sed -n 's/^test result: [a-zA-Z]*\. \([0-9]*\) passed; \([0-9]*\) failed; \([0-9]*\) ignored.*/\1 \2 \3/p' \
+    | awk '{n += $1 + $2 + $3} END {print n + 0}')
+  pinned=$(cat "$C/tests/count.txt")
+  if [ -n "${TESTS_BLESS:-}" ]; then
+    echo "$count" >"$C/tests/count.txt"
+    echo "tests: $count, pinned (was $pinned)"
+  elif [ "$count" != "$pinned" ]; then
+    echo "tests: $count ran, $pinned pinned (pkg/loopopt/tests/count.txt): a test file no crate compiles, or tests added or removed (TESTS_BLESS=1 ./build.sh native re-pins; say why in the commit)" >&2
+    rc=1
+  fi
   return "$rc"
 }
 step_wasm() {

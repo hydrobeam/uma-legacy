@@ -3,7 +3,7 @@
 //! the plan's look-ahead is the one with borrowing (V and Cont's fit are the "allow" job's, to the bit on this pool);
 //! the page's run as two jobs, after an "allow" run in the same worker, plans as the combined job does (each setting's
 //! main search is kept under its own key). "never" answers as the pool without the borrowed veteran.
-mod common;
+use crate::common;
 use common::{check_of, run_jobs, val_job, without_work};
 use serde_json::{Value, json};
 

@@ -2,7 +2,7 @@
 //! on the val/sim pool4 pool, run 1 of a two-run job (`runs` 2, `first` 0) and the same run alone (`runs` 1, `first` 1),
 //! each in its own process, under goal `looped`, give the same record, wall clocks aside. Each run starts from an empty
 //! kept state (`kept_swap`), so the first run's plans cannot reach the second's.
-mod common;
+use crate::common;
 use common::{run_job, val_job};
 use serde_json::{Value, json};
 

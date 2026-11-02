@@ -1,7 +1,7 @@
 //! The obsolete `next.value_only` field is refused (a job's records refuse a field they do not know), so it cannot
 //! change the plan's V, continuation fit or chosen trio. The boot_mob fixture exercises a continuation that builds
 //! before grinding.
-mod common;
+use crate::common;
 use common::{run_job, val_job};
 use serde_json::{Value, json};
 

@@ -98,7 +98,7 @@ goal `looped` every run adds `finishing` (careers run on two full veterans), `fu
 
 `simulate.act_on: "pair_search"` makes `index` run the page's final recommendation instead of the plan's pick: each
 plan job also runs the page's whole check and pair search, and the career `pairs.recommendation` names runs with its
-own deck (docs/SOLVER.md, *Policy simulator*; `tests/sim_pair_search.rs` checks the first career against the page's
+own deck (docs/SOLVER.md, *Policy simulator*; `tests/it/sim_pair_search.rs` checks the first career against the page's
 own job sequence on three pools). Its cost grows with the pool, since the pair search scores every runnable pair of
 the pick's and the tied trainees: one p16_borrow plan job with the check costs 4.6 s at the pool's 17 legacies (1.5 s
 without), 11.3 s at 57 and 27.0 s at 116 (1.7 s and 1.9 s without; pools grown by a greedy run, 2026-10-26), against a

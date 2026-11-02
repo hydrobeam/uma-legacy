@@ -4,7 +4,7 @@
 //! 10 reversed), the legacies reversed give the same results, in order, each on the same
 //! veterans (by their records), with the same deck and P(all) to the bit. Ties in the search's ranking break by the
 //! veterans' content (`Pool::content_ranks`), not their places.
-mod common;
+use crate::common;
 use common::{run_job, val_job};
 use serde_json::Value;
 

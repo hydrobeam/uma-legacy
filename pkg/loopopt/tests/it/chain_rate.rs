@@ -1,6 +1,6 @@
 //! The pal-count chain-event rate (`chain_budget`, `ChainModel`) on the shipped Global data: without a slope it is the
 //! fixed law it stands for, and a positive slope raises the odds of decks with pals.
-mod common;
+use crate::common;
 use common::{run_job, val_job, without_clocks};
 use serde_json::{Value, json};
 

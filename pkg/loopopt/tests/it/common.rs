@@ -1,7 +1,6 @@
 //! The integration tests' harness: the solver binary run on jobs from an era's data folder, one process per run, the
 //! jobs in turn as the page's worker runs them (its kept state carried between them). Every run clears the kept-state
 //! variables (`LOOPOPT_STATE_IN`, `LOOPOPT_STATE_OUT`) of the shell running the tests and sets only the files it names.
-#![allow(dead_code, reason = "each test binary uses part of the harness")]
 
 use serde_json::Value;
 use std::borrow::Borrow;
@@ -25,13 +24,6 @@ impl State<'_> {
 /// The solver run from `era`'s data folder (`data/global`, `data/jp`), with `state`'s files and no other kept state.
 pub fn loopopt(era: &str, state: State) -> Command {
     in_era(Command::new(env!("CARGO_BIN_EXE_loopopt")), era, state)
-}
-
-/// `loopopt`, killed after `seconds` (`timeout`): a regression to an hours-long search fails instead of hanging.
-pub fn loopopt_bounded(seconds: u32, era: &str) -> Command {
-    let mut command = Command::new("timeout");
-    command.arg(format!("{seconds}s")).arg(env!("CARGO_BIN_EXE_loopopt"));
-    in_era(command, era, State::NONE)
 }
 
 fn in_era(mut command: Command, era: &str, state: State) -> Command {

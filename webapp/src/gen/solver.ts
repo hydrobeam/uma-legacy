@@ -1352,7 +1352,7 @@ fresh_lineages?: number,
 audit_lifts?: boolean, 
 /**
  * `index_rule` test knob: PROXY_EFF in place of 0.06 (-1 leaves pass 1's builders to their proxies, so the pass-2
- * searches refit Cont: tests/plan_memo.rs runs that path)
+ * searches refit Cont: tests/it/plan_memo.rs runs that path)
  */
 proxy_eff?: number, 
 /**

@@ -9,7 +9,7 @@
 //! search kept from a proven run; the searches
 //! and plans after it, the kept search reused alone and both after the worker's state goes out and comes back into a
 //! process with the normal caps, all say so.
-mod common;
+use crate::common;
 use common::{State, TempFile, loopopt, run_with, val_job};
 use serde_json::{Value, json};
 

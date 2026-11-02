@@ -329,7 +329,9 @@ budget: an overrun is reported, never a failure.
 | `merge` | before a merge to main | 10 min | every area, changed or not: `lint`'s linters, `native`, full `val`, the full browser suite, and `mono` after a change under `src/career/` |
 | `full` | by hand | none | `merge`'s, then `mono` and `research --force` whatever changed |
 
-Nothing runs twice on the same inputs: `native`, `val`, `valq` and `mono` record a pass under the key of their inputs
+A test that stops running fails `native`: it counts the tests run (passed, failed and ignored) against
+`pkg/loopopt/tests/count.txt`, which a change that adds or removes tests re-pins (`TESTS_BLESS=1 ./build.sh native`),
+saying why in its message when it removes any. Nothing runs twice on the same inputs: `native`, `val`, `valq` and `mono` record a pass under the key of their inputs
 (`cache/passed/NAME-KEY`: the SHA-256 of the files they read, tracked and untracked, and `build.sh`), shared by every
 worktree, and on the same key say so and return; a page-only change never runs them. `lint` runs Rust's linters only
 when a Rust input differs from main's. The wasm is shared the same way (`cache/wasm/KEY`): a worktree whose solver
@@ -353,7 +355,8 @@ merge, not a `valq` per commit. A change to arithmetic, control flow or data fol
   mono and lint run its binary, `target/checks/loopopt`, too. Its outputs are byte-identical to the release binary's on
   every valq job (checked 2026-11-01); the wasm, `pb` and `research` keep `[profile.release]`.
   The integration tests are one crate, `pkg/loopopt/tests/it/` (a module per file, `main.rs` lists them: the
-  crate links once and libtest runs all of them in parallel), and run the solver binary through one harness, `tests/it/common.rs`,
+  crate links once and libtest runs all of them in parallel; its own test fails on a file there that is not one of
+  its modules), and run the solver binary through one harness, `tests/it/common.rs`,
   which clears the kept-state variables (`LOOPOPT_STATE_IN`, `LOOPOPT_STATE_OUT`) of the shell running them. When
   results move on purpose, `BLESS=1 cargo test --profile checks --test it plan_roll::rolls_equal` re-takes the roll fixture
   (`tests/fixtures/plan_roll.json`) from the solver's own rolls, naming each roll that changed and any sample whose y
