@@ -2,17 +2,18 @@
 without her is still there), so a rise in the planner's V is the planner's error. Two checks per val/plan job:
 
 - **last veteran:** plan the pool less its last veteran, then the full pool under that plan's fit (`next.fit`);
-- **rolled veterans:** plan the full pool, then the pool with each of N veterans of its pick added, drawn as the page's
+- **rolled veterans:** plan the full pool, then the pool with each of N veterans of its pick added (N: -n, default 1), drawn as the page's
   Compare and Reroll draw them (analysis `draftOf` / `draftJob`: the landed set from the pick's `outcome_sets`, every
   set including the all-landed one, or each target on its own odds past 12 targets; each landed spark's stars from the
   job's rank class's star mix; each scheduled G1 won with its chance; her pink drawn as model/pink.ts `drawPink` draws it; her parents
-  copied without their own parents; seeded per pool), each under the full pool's fit and refitted.
+  copied without their own parents; seeded per pool), each under the full pool's fit (and refitted, with --refit).
 
 The fixed fit takes the continuation's refit out (`Cont` is refitted per pool); what remains is the plan's own
 choice of route through the pool (which lineages its trios are bred from), so a fixed-fit rise is the plan's error. The
 fixed-fit column is what the page's Compare shows (the plan of the pool with her under today's fit, compare.ts
 `runComparison`); the refit column is what Add then shows (the pool with her, fitted to it). Refit rises are reported,
-not failed on: a refit can move V either way.
+not failed on: a refit can move V either way. Since they never decide the verdict, the refit plans run only with
+--refit (they were a quarter of the check's solver time).
 
 A fixed-fit rise is re-planned with WIDE_LINEAGES fresh lineages per candidate (`next.fresh_lineages`, default 3),
 the pool without her and with her under the same fit: if she no longer raises V there, the rise is the documented
@@ -27,9 +28,10 @@ plan), flagged QUICK Y OFF where it differs from the fixed-fit saving by more th
 picks, each candidate's (lam, phi, pinf, p0) under both fits, and whether the builder pair her pinf comes from switched
 (where the plan reports `pinf_builders`: {chara: [first, second]}).
 
-usage: mono.py BIN [JOB ...] [-j N] [-n ROLLS]   (default: every job in val/plan/jobs.json but those asking for the
-  robustness check, `checks_only`; -j jobs at a time, default
-  the CPU count less two; -n rolled veterans per pool, default 3, 0 for the last-veteran check alone)
+usage: mono.py BIN [JOB ...] [-j N] [-n ROLLS] [--refit]   (default: every job in val/plan/jobs.json but those
+  asking for the robustness check, `checks_only`, and the costly pools, COSTLY; -j jobs at a time, default
+  the CPU count less two; -n rolled veterans per pool, default 1, 0 for the last-veteran check alone; --refit plans
+  each rolled veteran's pool refitted too)
   writes its job files and outputs to a temporary folder (printed at the end); exits 1 when a V rises by more than 1e-9 relative under a fixed fit, or a plan or roll
   fails (above)"""
 
@@ -72,11 +74,11 @@ class RolledComparison:
     landed: int
     target_count: int
     fixed_fit_v: float | None
-    refit_v: float | None
+    refit_v: float | None  # None without --refit
     truncated: bool = False  # a fixed-fit rise that WIDE_LINEAGES fresh lineages remove
     quick_y: float | None = None  # the pick's roll at her stars (`next.roll`, from the kept plan): her saving
     fixed: dict | None = None  # the fixed-fit plan (`plan_summary`)
-    refit: dict | None = None  # the refit plan (`plan_summary`)
+    refit: dict | None = None  # the refit plan (`plan_summary`), None without --refit
 
 
 def plan_summary(plan):
@@ -129,13 +131,14 @@ parser.add_argument(
 parser.add_argument(
     "-n",
     type=int,
-    default=3,
+    default=1,
     dest="roll_count",
     metavar="ROLLS",
     help="rolled veterans per pool, 0 for the last-veteran check alone",
 )
+parser.add_argument("--refit", action="store_true", help="plan each rolled veteran's pool refitted too (reported only)")
 arguments = parser.parse_intermixed_args()
-parallelism, roll_count = arguments.parallelism, arguments.roll_count
+parallelism, roll_count, refit_wanted = arguments.parallelism, arguments.roll_count, arguments.refit
 binary = os.path.abspath(arguments.binary)
 want = set(arguments.jobs)
 
@@ -148,10 +151,16 @@ def checks_only(name):
     )
 
 
+# Pools the default list leaves out for their cost: p16_t10 (10 targets) took about 1,000 of the check's 2,900 solver
+# seconds at -n 3 (its plan 246 s, the plan less its last veteran 115 s). val and planval still run its plan, and the
+# invariant over many small random pools is the property test pkg/loopopt/tests/it/plan_monotone.rs in cargo test.
+# Naming it runs it.
+COSTLY = {"p16_t10"}
+
 jobs = [
     (era, name)
     for era, name in json.load(open(os.path.join(PLAN_DIR, "jobs.json")))
-    if name in want or (not want and not checks_only(name))
+    if name in want or (not want and not checks_only(name) and name not in COSTLY)
 ]
 temporary_dir = tempfile.mkdtemp(prefix="mono_")
 
@@ -294,7 +303,7 @@ def rolled_veterans_of(job_entry):
     for roll, (landed, her) in enumerate(draws):
         with_her = solver.with_part(job, "career", legacies=solver.part(job, "career")["legacies"] + [her])
         fixed = plan(era, solver.with_next(with_her, fit=base["fit"]), f"{name}_r{roll}_fixed")
-        refit = plan(era, solver.with_next(with_her), f"{name}_r{roll}_refit")
+        refit = plan(era, solver.with_next(with_her), f"{name}_r{roll}_refit") if refit_wanted else None
         truncated = rises(fixed.get("v0"), base["v0"]) and truncation_only(
             era, f"{name}_r{roll}", job, base["fit"], her
         )
@@ -305,11 +314,11 @@ def rolled_veterans_of(job_entry):
                 landed=landed,
                 target_count=len(solver.part(job, "skills")["targets"]),
                 fixed_fit_v=fixed.get("v0"),
-                refit_v=refit.get("v0"),
+                refit_v=refit.get("v0") if refit is not None else None,
                 truncated=truncated,
                 quick_y=quick[roll] if roll < len(quick) else None,
                 fixed=plan_summary(fixed),
-                refit=plan_summary(refit),
+                refit=plan_summary(refit) if refit is not None else None,
             )
         )
     return base, comparisons, None
@@ -394,6 +403,8 @@ for comparison in last_comparisons:
     )
 if roll_count:
     print(f"== {roll_count} rolled veterans of each pool's pick: dV = V with her - V without (+: V rises)")
+    if not refit_wanted:
+        print("(refitted plans skipped: --refit runs them)")
     for (_era, name), (base, comparisons, error) in zip(jobs, rolled):
         if error:
             print(f"{name}: FAILED, no rolls ({error})")
@@ -404,16 +415,22 @@ if roll_count:
             f"{name}: V {value_without:,.2f}, pick {base['choice']['trainee']['name']} on {base['outcomes']['parents']}"
         )
         for c in comparisons:
-            fixed_rise, refit_rise = rises(c.fixed_fit_v, value_without), rises(c.refit_v, value_without)
-            refit_lost = not finite(c.refit_v)
+            fixed_rise = rises(c.fixed_fit_v, value_without)
+            refit_rise = refit_wanted and rises(c.refit_v, value_without)
+            refit_lost = refit_wanted and not finite(c.refit_v)
             truncation_rises += fixed_rise and c.truncated
             fixed_rise = fixed_rise and not c.truncated
             fixed_rises += fixed_rise
             refit_rises += refit_rise and not refit_lost
             failures += refit_lost
+            refit_note = (
+                f"  refit dV {change(c.refit_v, value_without)}{' (no V: FAILED)' if refit_lost else ' (refit rise)' if refit_rise else ''}"
+                if refit_wanted
+                else ""
+            )
             print(
                 f"    roll {c.roll}: landed {c.landed}/{c.target_count}  fixed-fit dV {change(c.fixed_fit_v, value_without)}{' RISES' if fixed_rise else ' (rise: lineage truncation, gone at ' + str(WIDE_LINEAGES) + ')' if c.truncated else ''}"
-                f"  refit dV {change(c.refit_v, value_without)}{' (no V: FAILED)' if refit_lost else ' (refit rise)' if refit_rise else ''}"
+                + refit_note
                 + quick_note(c, value_without)
             )
             if refit_rise and not refit_lost:
@@ -421,7 +438,7 @@ if roll_count:
 rolls = sum(len(comparisons) for _base, comparisons, _error in rolled)
 print(
     f"{len(last_comparisons)} pools, {rolls} rolled veterans: {fixed_rises} rise under a fixed fit, "
-    f"{refit_rises} rise refitted, {failures} failed plans or rolls; {truncation_rises} fixed-fit rises from lineage "
+    f"{f'{refit_rises} rise refitted' if refit_wanted else 'refits skipped'}, {failures} failed plans or rolls; {truncation_rises} fixed-fit rises from lineage "
     f"truncation (gone at {WIDE_LINEAGES} lineages)"
 )
 print(f"jobs and outputs: {temporary_dir}")
