@@ -1,11 +1,11 @@
 // ---------- the loop search's job, from the settings it is given (it reads no store: the caller passes their values) ----------
 // buildJob: the job for settings `s`, or why they can't be searched (blockedStatus says it); jobKey: the key a job's
 // result is kept and recognised by; doneText: the status line of a finished search.
-import { ASSETS, gameData } from '../data.ts';
-import { deckPart, isOwned, skillsPart } from '../job.ts';
-import type { jobTargets } from '../job.ts';
-import { ERA } from '../saved.ts';
-import type { SettingsView } from '../settings.ts';
+import { ASSETS, gameData } from '../model/data.ts';
+import { deckPart, isOwned, skillsPart } from '../model/job.ts';
+import type { jobTargets } from '../model/job.ts';
+import { ERA } from '../state/saved.ts';
+import type { SettingsView } from '../state/settings.ts';
 import type { Request } from '../gen/solver.ts';
 import type { LoopReport, Status } from './types.ts';
 
@@ -35,7 +35,7 @@ export function buildJob(s: SettingsView): Built {
   };
   return { job, targets: skills.targets };
 }
-/** what the status line says of blocked settings, with the button that fixes it (`loadExample`: presets.ts's) */
+/** what the status line says of blocked settings, with the button that fixes it (`loadExample`: state/presets.ts's) */
 export const blockedStatus = (blocked: Blocked, loadExample: () => void): Status =>
   blocked.blocked === 'targets'
     ? {
@@ -49,7 +49,8 @@ export const blockedStatus = (blocked: Blocked, loadExample: () => void): Status
         act: { label: 'Mark all umas owned', click: 'r-all' },
       };
 // A job's result is kept with its key: the solver's and the era data's fingerprints, what is still held back for a
-// later start (data.ts gameData().later) and the job, so a reload with unchanged settings finds it (`era`: the page's)
+// later start (model/data.ts gameData().later) and the job, so a reload with unchanged settings finds it (`era`: the
+// page's)
 export const jobKey = (job: DeckJob, era = ERA) =>
   JSON.stringify([ASSETS.wasm, ASSETS.engine[era === 'gm' ? 'gm' : 'global'], gameData().later, job]);
 

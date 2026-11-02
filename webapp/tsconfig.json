@@ -27,5 +27,5 @@
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   // the solver's worker has a worker's globals, not the page's: tsconfig.worker.json
-  "exclude": ["src/worker.ts"]
+  "exclude": ["src/solver/worker.ts"]
 }

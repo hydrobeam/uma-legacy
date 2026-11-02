@@ -11,14 +11,14 @@ import { test, vi } from 'vitest';
 import '@preact/signals';
 import { h, render } from 'preact';
 import * as vs from '../../src/veterans/store.ts';
-import { initStore, setTargets } from '../../src/settings.ts';
+import { initStore, setTargets } from '../../src/state/settings.ts';
 import { type Answer, dropAnswer, showAnswer } from '../../src/career/state.ts';
 import { takeCareer } from '../../src/career/options.ts';
 import { draftOf } from '../../src/career/analysis/view.tsx';
 import { legaciesOf } from '../../src/career/analysis/Details.tsx';
 import { legacyNumber, legacyVet } from '../../src/career/current.ts';
 import { Targets } from '../../src/career/view/Sections.tsx';
-import { loadData } from '../../src/data.ts';
+import { loadData } from '../../src/model/data.ts';
 import { memory } from './fakes.ts';
 import { allG, careerReport, careerTarget, lineageNode, veteran } from './reports.ts';
 

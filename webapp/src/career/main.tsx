@@ -24,34 +24,34 @@
 //   view/dialogs.ts    which popup is open, for what (modules that are not views open them through it)
 //   view/Options.tsx   the results column (the options table) and its Saves popup
 //   view/Pool.tsx      the veterans dialog: its tabs and order menu, lists and the pane beside them
-//   view/Umamoe.tsx    uma.moe's button and popup (umamoesetup.ts keeps its listings)
+//   view/Umamoe.tsx    uma.moe's button and popup (io/umamoesetup.ts keeps its listings)
 //   view/SkillDetails.tsx  the Skill Details popup
 //   view/Guard.tsx     the render guard each view draws inside
 //   view/parts.ts      small parts the views share
-import { started } from '../errorlog.ts'; // first: it listens before any other module runs
+import { started } from '../dom/errorlog.ts'; // first: it listens before any other module runs
 import '@preact/signals'; // its option hooks: a component that reads a signal draws again when it changes
 import { hydrate } from 'preact';
 import type { ComponentChildren } from 'preact';
 import { signal } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
-import { ERA } from '../saved.ts';
-import type { Era } from '../eras.ts';
+import { ERA } from '../state/saved.ts';
+import type { Era } from '../model/eras.ts';
 import { must } from '../must.ts';
-import { update } from '../storage.ts';
-import { loadData } from '../data.ts';
+import { update } from '../state/storage.ts';
+import { loadData } from '../model/data.ts';
 import CAREER from '#career-data';
-import { jobSetup, settings } from '../settings.ts';
-import { on } from '../store.ts';
-import { restartEngine, engineBusy, enginePersist, engineSaveState, nextKill } from '../engine.ts';
-import { answerLoad, answerSave } from '../statestore.ts';
-import { goldGiven } from '../job.ts';
-import { initScenario } from '../scenario.ts';
-import { initPopover } from '../popover.ts';
-import { CardPop } from '../ui/CardPop.tsx';
-import '../agenda.ts'; // (its document listener is added before gmtip's)
-import { openSetupDialog, pickEra, setupBadges, setupViews } from '../ui/Setup.tsx';
-import { useHydrated } from '../ui/Shell.tsx';
-import '../gmtip.ts'; // the game-style tooltips (both planner pages)
+import { jobSetup, settings } from '../state/settings.ts';
+import { on } from '../state/store.ts';
+import { restartEngine, engineBusy, enginePersist, engineSaveState, nextKill } from '../solver/engine.ts';
+import { answerLoad, answerSave } from '../state/statestore.ts';
+import { goldGiven } from '../model/job.ts';
+import { initScenario } from '../state/scenario.ts';
+import { initPopover } from '../results/popover.ts';
+import { CardPop } from '../results/CardPop.tsx';
+import '../model/agenda.ts'; // (its document listener is added before gmtip's)
+import { openSetupDialog, pickEra, setupBadges, setupViews } from '../setup/Setup.tsx';
+import { useHydrated } from '../setup/Shell.tsx';
+import '../dom/gmtip.ts'; // the game-style tooltips (both planner pages)
 import {
   vets,
   places,
@@ -65,9 +65,9 @@ import {
   parentsPlaced,
 } from '../veterans/store.ts';
 import { AddList, VetEditors } from '../veterans/Editors.tsx';
-import { ScheduleDialog } from '../ui/Schedule.tsx';
-import { setRunner } from '../images.ts';
-import { connectUmamoe, syncListings } from '../umamoesetup.ts';
+import { ScheduleDialog } from '../results/Schedule.tsx';
+import { setRunner } from '../model/images.ts';
+import { connectUmamoe, syncListings } from '../io/umamoesetup.ts';
 import { UmButton, UmamoeDialog } from './view/Umamoe.tsx';
 import { sayRenderErrors } from '../ui/RenderGuard.tsx';
 import { CareerLayout } from './Layout.tsx';
@@ -95,13 +95,13 @@ import { Results, SavesPopup } from './view/Options.tsx';
 import { VetsDialog } from './view/Pool.tsx';
 import { openPool } from './view/poolState.ts';
 import { ExportDialog, PasteDialog, openExport } from './view/Io.tsx';
-import { searchCaveat } from '../proofs.ts';
-import { fitSparks } from '../details.ts';
+import { searchCaveat } from '../model/proofs.ts';
+import { fitSparks } from '../results/details.ts';
 import type { Status } from './state.ts';
 import type { CareerSearch } from './job.ts';
 
 // ---------- the run ----------
-// uma.moe's sync (umamoesetup.ts): the targets it searches for, and the pool its listings join
+// uma.moe's sync (io/umamoesetup.ts): the targets it searches for, and the pool its listings join
 connectUmamoe({ targets: () => settings.peek().targets, setListings });
 // The veteran analysis' comparison (analysis/compare.ts `createComparison`): the solver, the clock, the answer store,
 // the analysis store, the career on show and her draft. The run machine below drives it through its hooks.
@@ -156,11 +156,11 @@ const run = createRun({
   analysis: comparison,
   view: { shown, paint },
 });
-// the search's status: done, with a caveat (proofs.ts `searchCaveat`) when the search could not prove the best odds'
-// order (`proven_top`), or proved it only under a lower deck cap (`complete` false), saying what the report establishes
-// of why, or proved it while a scored deck beat its class's assumed cap (the caps are assumptions the proofs rest on);
-// or, when no career can land every target, which targets nothing can give (no veteran or parent carries their spark;
-// no deck, outfit or event gives them either, or some career would have them)
+// the search's status: done, with a caveat (model/proofs.ts `searchCaveat`) when the search could not prove the best
+// odds' order (`proven_top`), or proved it only under a lower deck cap (`complete` false), saying what the report
+// establishes of why, or proved it while a scored deck beat its class's assumed cap (the caps are assumptions the
+// proofs rest on); or, when no career can land every target, which targets nothing can give (no veteran or parent
+// carries their spark; no deck, outfit or event gives them either, or some career would have them)
 function searchStatus(m: { r: CareerSearch; ms: number }, found: string): Status {
   const cert = searchCaveat(m.r),
     note = dropped.peek(),
@@ -294,7 +294,7 @@ function initSettings() {
 // ---------- start ----------
 // (the loop members kept per setup until the plan stopped running the loop planner's search: the old store goes)
 update('llp:loops', () => null); // (storage blocked: nothing was kept to remove)
-// a resize: the spark names on show shrink to fit their new width (details.ts fitSparks)
+// a resize: the spark names on show shrink to fit their new width (results/details.ts fitSparks)
 addEventListener('resize', () => fitSparks(document));
 // a save of the veterans still due goes out when the page is hidden or left (a reload or close loses nothing)
 addEventListener('pagehide', flushPersist);
@@ -322,4 +322,4 @@ loadData(CAREER).then(
     paint();
   },
 );
-started(); // (the last statement: errorlog.ts)
+started(); // (the last statement: dom/errorlog.ts)

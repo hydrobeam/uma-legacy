@@ -2,7 +2,7 @@
 // Every view of both pages draws inside one (each view in its place in the page's layout, and inside each dialog, so a throw leaves the
 // dialog itself open and closable). A throw while drawing (a malformed record, a bug) would otherwise escape in a
 // microtask, after the run has settled, and leave the status line saying the run is done over a half-updated view. Here
-// it is reported as an uncaught error is (errorlog.ts logs it), the status line says what could not be drawn (as a
+// it is reported as an uncaught error is (dom/errorlog.ts logs it), the status line says what could not be drawn (as a
 // run's own errors do: each page names how, `sayRenderErrors`), and the view shows `fallback` until what it draws
 // (`input`) is replaced, when it draws again.
 import type { ReadonlySignal } from '@preact/signals';

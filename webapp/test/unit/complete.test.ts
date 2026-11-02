@@ -7,9 +7,9 @@
 // npx vitest run (in webapp)
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
-import { loadData } from '../../src/data.ts';
-import { parseExport } from '../../src/umadump.ts';
-import { initStore, settings } from '../../src/settings.ts';
+import { loadData } from '../../src/model/data.ts';
+import { parseExport } from '../../src/io/umadump.ts';
+import { initStore, settings } from '../../src/state/settings.ts';
 import * as vs from '../../src/veterans/store.ts';
 import { isComplete, lacks, lacksSaid, notEntered } from '../../src/veterans/complete.ts';
 import { jobLegacy } from '../../src/veterans/records.ts';
@@ -17,10 +17,10 @@ import { enterVeteran } from '../../src/veterans/entry.ts';
 import { colourClosed, colourEditing } from '../../src/veterans/sparks.ts';
 import { skillsAsked, skillsChosen, umaPicked, umaPicking } from '../../src/veterans/pickers.ts';
 import { Blocked, buildJob } from '../../src/career/job.ts';
-import { ERA } from '../../src/saved.ts';
+import { ERA } from '../../src/state/saved.ts';
 import { memory } from './fakes.ts';
 import { must } from '../../src/must.ts';
-import type { Uma } from '../../src/data.ts';
+import type { Uma } from '../../src/model/data.ts';
 import { lineageNode } from './reports.ts';
 
 vi.mock('#page-data', () => import('./fakepage.ts'));

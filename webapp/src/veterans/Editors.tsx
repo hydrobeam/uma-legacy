@@ -8,17 +8,17 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { createPortal } from 'preact';
 import type { Ref } from 'preact';
-import { gameData } from '../data.ts';
-import type { Uma } from '../data.ts';
+import { gameData } from '../model/data.ts';
+import type { Uma } from '../model/data.ts';
 import { Dialog, DialogBody, DialogClose, DialogFoot, DialogHead, DialogPanel, DialogTitle } from '../ui/Dialog.tsx';
 import { RenderGuard } from '../ui/RenderGuard.tsx';
 import { UmaAv } from '../ui/Images.tsx';
-import { WinsEditor } from '../ui/Agenda.tsx';
+import { WinsEditor } from '../results/Agenda.tsx';
 import { useDropdown } from '../ui/dropdown.ts';
-import { AddPop } from '../ui/Shell.tsx';
+import { AddPop } from '../setup/Shell.tsx';
 import { NEW_STARS } from './store.ts';
 import type { NodeRecord, NodeRef } from './store.ts';
-import { settings } from '../settings.ts';
+import { settings } from '../state/settings.ts';
 import { skillName, targetGroups } from './names.ts';
 import { KIND, colourClosed, colourEditing, currentSpark } from './sparks.ts';
 import type { ColourEdit } from './sparks.ts';
@@ -39,7 +39,7 @@ import {
 import type { SkillsAsk, UmaPick, WinsEdit } from './pickers.ts';
 import { Button } from '../ui/Button.tsx';
 import { field } from '../ui/Field.ts';
-import { SPARK_CELL, SPARK_NAME, sparkBar } from '../ui/Sparks.tsx';
+import { SPARK_CELL, SPARK_NAME, sparkBar } from './Sparks.tsx';
 
 /** the editors' dialogs (their requests read here, so one render opens one and closes another in this order), each
  *  in a render guard of its own: one that throws is gone, says so on the status line, and gives up its request (a
@@ -120,6 +120,7 @@ export function UmaList(props: {
   return (
     <>
       {umas.map((u) => (
+        // its own <button>: an uma's row in the picker's list, the row the choice
         <button key={u.id} type="button" class={UMA} hidden={!shown(u)} onClick={() => onPick(u.id)}>
           <UmaAv uma={u.id} outfit={null} size={40} />
           <span>{u.name}</span>
@@ -178,7 +179,7 @@ function AskSkills({ asked }: { asked: SkillsAsk | null }) {
   );
 }
 
-// ---------- the G1 wins window: her wins on the calendar (ui/Agenda.tsx WinsEditor), each edit landing on her record
+// ---------- the G1 wins window: her wins on the calendar (results/Agenda.tsx WinsEditor), each edit landing on her record
 // as it is then; drawn only while open. A node that is gone (a pool veteran removed, the draft replaced) closes it, as
 // it does the colour picker
 function WinsDialog({ edit }: { edit: WinsEdit | null }) {
@@ -254,6 +255,7 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
       <div class="grid grid-cols-2 gap-x-2 gap-y-1.5">
         {spec.groups(nd).map((g) => (
           <span key={g} class={SPARK_CELL.pick} data-spark={kind}>
+            {/* its own <button>: a spark bar as a choice in the colour picker (sparkBar's look) */}
             <button
               type="button"
               class={sparkBar({ look: kind, use: 'pick' })}
@@ -271,6 +273,7 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
       {/* biome-ignore lint/a11y/useSemanticElements: today's markup (the game's star row); a fieldset would need it restyled */}
       <div class="mt-1.5 flex justify-center gap-2" role="group" aria-label="Stars">
         {[1, 2, 3].map((k) => (
+          // its own <button>: a star of the row, the game's star sprite its face
           <button
             key={k}
             type="button"
@@ -295,7 +298,7 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
 }
 
 // ---------- "+" beside a node's sparks: the target skills she lacks, as the game's white spark cells (her blue, pink
-// and unique sparks have bars of their own). Its box (#add-pop, ui/Shell.tsx AddPop) sits in the page's layout while
+// and unique sparks have bars of their own). Its box (#add-pop, setup/Shell.tsx AddPop) sits in the page's layout while
 // shut; open from a "+" inside a dialog, it is drawn inside that dialog (a portal: the page behind a modal dialog is out
 // of reach), placed against the "+". A dropdown (ui/dropdown.ts useDropdown): a press outside it and its "+" closes it
 // (another "+" moves it there); Escape closes it, not the dialog around it, back to the "+".
@@ -339,6 +342,7 @@ function AddBody({ open }: { open: { btn: HTMLElement; at: NodeRef } | null }) {
       <p class="text-note text-gm-ink2">{missing.length ? 'Target skills she lacks' : 'She has every target skill.'}</p>
       <div class="grid gap-1.5">
         {missing.map((g) => (
+          // its own <button>: a skill in the "+" list, the game's add cell its face
           <button
             key={g}
             type="button"

@@ -4,8 +4,11 @@
 // `nine-*` utility from the theme's --nine-* tokens (styles/theme.css), whose faces dark mode swaps. `size` is the type
 // size (the theme's scale). A caller's `class` places the button (margins, alignment, width), never restyles it
 // (Biome's noTailwindRestyledComponents).
+// `FileButton`: a file input as a plain button. `PortraitButton`: a portrait that is a button. `EnhButton`: the game's
+// Enhance menu button, art over a frame (the Umas, Support cards and Veteran Umamusume buttons).
+// Every other <button> of src/ is one component's own part, its look that component's: each says why where it is.
 import type { ButtonHTMLAttributes, ComponentChildren, InputHTMLAttributes } from 'preact';
-import { tv } from 'tailwind-variants/lite';
+import { cx, tv } from 'tailwind-variants/lite';
 import type { VariantProps } from 'tailwind-variants/lite';
 
 const look = tv({
@@ -35,6 +38,19 @@ export function Button({ variant, size, class: place, type = 'button', ...rest }
   return <button type={type} class={buttonClass({ variant, size, class: place })} {...rest} />;
 }
 
+/** a portrait as a button (a result's member, a node's face): the picture is its face, brighter under the pointer, its
+ *  focus ring the page's thinner one; type="button" unless given */
+const portrait = tv({
+  base: 'focus-visible:outline-accent cursor-pointer rounded-md leading-0 hover:brightness-106 focus-visible:outline-2 focus-visible:outline-offset-2',
+});
+type PortraitProps = { class?: string | undefined } & Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  'class' | 'className'
+>;
+export function PortraitButton({ class: place, type = 'button', ...rest }: PortraitProps) {
+  return <button type={type} class={portrait({ class: place })} {...rest} />;
+}
+
 type FileInput = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'role' | 'class' | 'className' | 'title'>;
 /** a file input as a plain button: the label is its face, the input covers it unseen (the label shows its focus) */
 export function FileButton({ title, children, ...input }: { title: string; children: ComponentChildren } & FileInput) {
@@ -48,5 +64,76 @@ export function FileButton({ title, children, ...input }: { title: string; child
       {children}
       <input type="file" class="absolute inset-0 w-full cursor-pointer opacity-0" {...input} />
     </label>
+  );
+}
+
+/** a count on an Enhance button, as its tooltip (none until the entry has counted) */
+export interface Badge {
+  title: string;
+}
+// ---------- the game's Enhance menu buttons: the game's art (its frame and white lower band, the art spilling over its
+// top edge; the drop shadow follows that shape), the label on the band with a ▶ beside its first line, the count owned
+// in its tooltip (the band holds one line: a count under the label pushed the label onto the art). Umas and Support
+// cards are square, one size on both pages (the label's margins a little wider on the career page); Veteran Umamusume
+// is wide, its two-line label right of the art, as wide as the row of Enhance buttons
+const ENH_ART = { umas: 'art-enh-umas', cards: 'art-enh-cards', vets: 'art-enh-vets' } as const;
+const ENH = {
+  career: {
+    button: 'h-28 w-35',
+    label:
+      'after:border-l-enh-ink text-body text-enh-ink absolute right-6 bottom-2.25 left-2 text-center leading-tight font-black whitespace-nowrap after:absolute after:top-1 after:-right-3.25 after:border-y-6 after:border-l-8 after:border-y-transparent',
+  },
+  loop: {
+    button: 'h-28 w-35',
+    label:
+      'after:border-l-enh-ink text-body text-enh-ink absolute right-5 bottom-2.25 left-1.5 text-center leading-tight font-black whitespace-nowrap after:absolute after:top-1 after:-right-3.25 after:border-y-6 after:border-l-8 after:border-y-transparent',
+  },
+  wide: {
+    button: 'col-span-full h-18 w-71.5',
+    label:
+      'after:border-l-enh-ink text-body text-enh-ink absolute top-1/2 right-8.5 left-[44%] -translate-y-1/2 text-center leading-tight font-black *:block after:absolute after:top-1/2 after:-right-5.5 after:-mt-1.5 after:border-y-6 after:border-l-8 after:border-y-transparent',
+  },
+} as const;
+/** an Enhance button (it opens a dialog): `art` its picture, `size` the page's square one or the wide one */
+export function EnhButton({
+  id,
+  art,
+  size,
+  label,
+  name,
+  badge,
+  onClick,
+}: {
+  id: string;
+  art: keyof typeof ENH_ART;
+  size: keyof typeof ENH;
+  label: ComponentChildren;
+  /** its name for assistive tech, when the label's words are not */
+  name?: string | undefined;
+  badge?: Badge | undefined;
+  onClick: (() => void) | undefined;
+}) {
+  return (
+    <button
+      class={cx(
+        'group focus-visible:outline-gm-bright2 relative inline-grid rounded-xl focus-visible:outline-3 focus-visible:outline-offset-2 active:translate-y-0.5',
+        ENH[size].button,
+      )}
+      type="button"
+      id={id}
+      aria-haspopup="dialog"
+      aria-label={name}
+      title={badge?.title}
+      onClick={onClick}
+    >
+      <span
+        class={cx(
+          'drop-shadow-enh group-hover:drop-shadow-enh-glow absolute inset-0 group-hover:brightness-106',
+          ENH_ART[art],
+        )}
+        aria-hidden="true"
+      />
+      <span class={ENH[size].label}>{label}</span>
+    </button>
   );
 }

@@ -4,12 +4,12 @@
 // G1 wins window or a skills prompt is open the page holds its search (`searchHeld`): the edits made meanwhile reach
 // one search when it closes.
 import { batch, computed, signal } from '@preact/signals';
-import { careerTables } from '../data.ts';
+import { careerTables } from '../model/data.ts';
 import { umaName } from './names.ts';
 import type { ReadonlySignal } from '@preact/signals';
 import type { NodeRef, Sparks } from './store.ts';
-import type { Uma } from '../data.ts';
-import type { WinInfo } from '../agenda.ts';
+import type { Uma } from '../model/data.ts';
+import type { WinInfo } from '../model/agenda.ts';
 
 // ---------- the uma picker: every uma (or those `only` lets through), filterable; onPick(chara id)
 export interface UmaPick {
@@ -76,7 +76,7 @@ export function skillsChosen(sparks: Sparks | null): void {
   });
 }
 
-// ---------- the G1 wins of one node, on the schedule window's calendar (ui/Agenda.tsx WinsEditor): each win in its
+// ---------- the G1 wins of one node, on the schedule window's calendar (results/Agenda.tsx WinsEditor): each win in its
 // slot, click it to remove it; an empty slot where a G1 is held lists the races held then. Each edit lands on her record
 // as it is then (`at`). A pool veteran's wins are saved on each edit, and the page searches again when the window
 // closes. opts (the veteran analysis' draft): {offer, info, onClose} (see WinsEditor). winAt {race index: turn} is

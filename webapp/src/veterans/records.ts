@@ -4,9 +4,9 @@
 // 3 stars (`knownPinks`), so a job never carries one the solver refuses. A job takes a veteran only when her record is
 // whole (`jobLegacy`): her uma and her one pink, and each parent place entered with hers or absent (complete.ts `lacks`
 // says what one that is not whole lacks).
-import { isAptitude } from '../grades.ts';
+import { isAptitude } from '../model/grades.ts';
 import type { Ancestor, Legacy, Pink, Spark } from '../gen/solver.ts';
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 
 /** A veteran's parent as the solver's job takes her. */
 export type JobNode = DeepReadonly<Required<Ancestor>>;

@@ -1,10 +1,10 @@
 // Small parts the career page's views share: a target's name, numbers, her schedule's rows.
-import { gameData } from '../../data.ts';
-import { settings } from '../../settings.ts';
-import { goldGiven } from '../../job.ts';
-import { tableCost, tableChance } from '../../agenda.ts';
+import { gameData } from '../../model/data.ts';
+import { settings } from '../../state/settings.ts';
+import { goldGiven } from '../../model/job.ts';
+import { tableCost, tableChance } from '../../model/agenda.ts';
 import { must } from '../../must.ts';
-import type { DeepReadonly } from '../../store.ts';
+import type { DeepReadonly } from '../../state/store.ts';
 import type { CareerReport } from '../job.ts';
 
 export const tName = (g: number): string => {
@@ -16,7 +16,7 @@ export const fmtN = (x: number): string => Math.round(x).toLocaleString();
 export const popupHeading = 'border-gm-line border-b-2 pb-0.5 font-black';
 // her race schedule: the schedule window (the game's calendar), from a button under the deck (the races she runs: the
 // G1s she could enter but doesn't aren't shown)
-// her schedule's rows, each race's figure the community table's on her own grades (agenda.ts `tableChance`; the
+// her schedule's rows, each race's figure the community table's on her own grades (model/agenda.ts `tableChance`; the
 // planner's, which counts the pink sparks she may get, on hover)
 export const tableRows = (r: DeepReadonly<CareerReport>) =>
   (r.schedule || []).map(({ chart, ...row }) => {

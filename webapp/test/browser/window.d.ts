@@ -4,9 +4,9 @@ import type { CareerReply, DeckReply, Request } from '../../src/gen/solver.ts';
 
 /** A reply as the page's worker posts it. */
 type Reply = CareerReply | DeckReply;
-/** What the page posts to its worker (src/solver.ts `ToWorker`), a job with its generated type. */
+/** What the page posts to its worker (src/solver/solver.ts `ToWorker`), a job with its generated type. */
 type Posted = { type: 'init'; module: WebAssembly.Module; data: string } | { type: 'run'; id: number; job: Request };
-/** What the worker posts (src/solver.ts `FromWorker`), a reply with its generated type. */
+/** What the worker posts (src/solver/solver.ts `FromWorker`), a reply with its generated type. */
 type Message =
   | { type: 'ready' }
   | { type: 'progress'; id: number; ph: number; k: number; n: number }

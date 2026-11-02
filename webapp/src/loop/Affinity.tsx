@@ -1,21 +1,21 @@
 // ---------- affinity popup (loop planner): a career's affinity, legacy by legacy, as on the career page ----------
 // The loop's careers as the game's pill switches: one per trainee, the most affinity first; in a four-uma loop each
 // trainee heads three careers, so a second row picks her parents (both faces and that career's affinity). Under them the
-// chosen career's table (ui/AffTable.tsx): each parent, then her two parents, with their relation points, the G1 wins
-// they share (expected: from the schedules' win chances, x3) and the affinity, and the total. In a three-uma rotation
-// the trainee is her own grandparent twice (her earlier veteran): no relation points with her (a trio counts distinct
-// umas), only the G1s it shares with its child.
+// chosen career's table (results/AffTable.tsx): each parent, then her two parents, with their relation points, the G1
+// wins they share (expected: from the schedules' win chances, x3) and the affinity, and the total. In a three-uma
+// rotation the trainee is her own grandparent twice (her earlier veteran): no relation points with her (a trio counts
+// distinct umas), only the G1s it shares with its child.
 import { signal, untracked } from '@preact/signals';
 import { useState } from 'preact/hooks';
-import { pickOutfit } from '../roster.ts';
+import { pickOutfit } from '../state/roster.ts';
 import { must } from '../must.ts';
 import { Dialog, DialogHead, DialogPanel } from '../ui/Dialog.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
-import { AffHeart, AffTable } from '../ui/AffTable.tsx';
-import type { AffinityLeg } from '../ui/AffTable.tsx';
+import { AffHeart, AffTable } from '../results/AffTable.tsx';
+import type { AffinityLeg } from '../results/AffTable.tsx';
 import { UmaAv } from '../ui/Images.tsx';
 import { RenderGuard } from '../ui/RenderGuard.tsx';
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import type * as Report from './types.ts';
 import { loopCareers, loopMembers } from './members.ts';
 import type { Career, Member } from './members.ts';

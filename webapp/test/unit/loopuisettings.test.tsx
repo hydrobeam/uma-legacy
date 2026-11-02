@@ -2,8 +2,8 @@
 // Saved settings as the loop page's setup draws them, over the real Global data (realpage.ts): owned umas and cards per
 // data set and the shared rest; Grand Masters saved while the Global data is active; Export and its import (a malformed
 // setting named and left out, the rest loaded, the stored settings still loading after it); and a banner held ahead of
-// its start (data.ts `later`): left out of the page and of what its jobs leave out until the page's clock passes it,
-// then there.
+// its start (model/data.ts `later`): left out of the page and of what its jobs leave out until the page's clock passes
+// it, then there.
 // npx vitest run (in webapp)
 import { fireEvent, render } from '@testing-library/preact';
 import { expect, test, vi } from 'vitest';
@@ -29,12 +29,12 @@ const $$ = <E extends Element = HTMLElement>(sel: string, root: ParentNode = doc
 async function page(stored: object | null) {
   vi.resetModules();
   document.body.replaceChildren();
-  const data = await import('../../src/data.ts');
-  const S = await import('../../src/settings.ts');
-  const { initScenario } = await import('../../src/scenario.ts');
-  const { setupViews } = await import('../../src/ui/Setup.tsx');
-  const { RosterPanel } = await import('../../src/ui/Roster.tsx');
-  const { CardsPanel } = await import('../../src/ui/Cards.tsx');
+  const data = await import('../../src/model/data.ts');
+  const S = await import('../../src/state/settings.ts');
+  const { initScenario } = await import('../../src/state/scenario.ts');
+  const { setupViews } = await import('../../src/setup/Setup.tsx');
+  const { RosterPanel } = await import('../../src/setup/Roster.tsx');
+  const { CardsPanel } = await import('../../src/setup/Cards.tsx');
   const { ExportDialog, openExport } = await import('../../src/loop/Export.tsx');
   const { initLoopState } = await import('../../src/loop/state.ts');
   const { buildJob } = await import('../../src/loop/job.ts');
@@ -154,7 +154,8 @@ test('a banner ahead of its start is left out of the page and its search; once t
     umas: umas.filter((u) => u.outfits.length && u.outfits.every((o) => o.rel > newest - 60)).map((u) => u.id),
   };
   expect(later.outfits.length + later.cards.length).toBeGreaterThan(0);
-  // what every job leaves out (engine.ts `gate` adds it to each job sent: the browser flow loopui.spec.ts checks a job)
+  // what every job leaves out (solver/engine.ts `gate` adds it to each job sent: the browser flow loopui.spec.ts checks
+  // a job)
   expect(before.later).toEqual(later);
   expect(after.later).toEqual({ umas: [], outfits: [], cards: [] });
   expect(after.tiles - before.tiles).toBe(later.outfits.length);

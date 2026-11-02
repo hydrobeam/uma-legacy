@@ -2,14 +2,14 @@
 // her chance of it, where it comes from, which legacies carry it and which cards give it. One dialog, there from load
 // (empty); `openSkill` fills and opens it, and the browser gives the focus back to the tile that opened it.
 import { computed, signal } from '@preact/signals';
-import type { Card } from '../../data.ts';
+import type { Card } from '../../model/data.ts';
 import type { CareerBuy } from '../job.ts';
 import { umaName } from '../../veterans/names.ts';
 import { CardAv, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle } from '../../ui/Dialog.tsx';
 import { Guard } from './Guard.tsx';
 import { popupHeading } from './parts.ts';
-import { skillTile } from '../../ui/skillTile.ts';
+import { skillTile } from './skillTile.ts';
 import { cx } from 'tailwind-variants/lite';
 
 /** the skill on show: `b` its buying report; `got` 'gold' | 'white' | null (not acquired), or undefined for a career

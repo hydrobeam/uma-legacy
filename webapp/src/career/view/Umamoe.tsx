@@ -1,7 +1,7 @@
 // uma.moe's button beside Next career (UmButton, into #um-root) and its popup (UmamoeDialog, into #um-dlg-root, ui/Dialog):
 // the key until one is saved, then the status, what was searched, Include max borrows, the order menu
-// (ui/SortMenu.tsx), every listing as a card (ui/VetCell.tsx: a card opens her veteran popup), Refresh and Disconnect.
-// What they show is umamoesetup.ts's (its signals and its sync).
+// (ui/SortMenu.tsx), every listing as a card (veterans/VetCell.tsx: a card opens her veteran popup), Refresh and
+// Disconnect. What they show is io/umamoesetup.ts's (its signals and its sync).
 import { computed, signal } from '@preact/signals';
 import type { RefObject } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
@@ -22,9 +22,9 @@ import {
   umFull,
   umSort,
   umStatus,
-} from '../../umamoesetup.ts';
+} from '../../io/umamoesetup.ts';
 import { SortMenu } from '../../ui/SortMenu.tsx';
-import { VetCell } from '../../ui/VetCell.tsx';
+import { VetCell } from '../../veterans/VetCell.tsx';
 import { openNode } from './dialogs.ts';
 import { Button } from '../../ui/Button.tsx';
 import { Checkbox } from '../../ui/Checkbox.tsx';
@@ -180,6 +180,7 @@ function UmamoePanel({ keyBox: key }: { keyBox: RefObject<HTMLInputElement | nul
             />
           ))}
         </div>
+        {/* its own <button>: Disconnect, a text link */}
         <button
           class="text-note text-gm-ink2 focus-visible:outline-accent cursor-pointer underline focus-visible:outline-3 focus-visible:outline-offset-2"
           type="button"

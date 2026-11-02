@@ -6,8 +6,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { batch } from '@preact/signals';
-import { ERA } from '../../src/saved.ts';
-import { on } from '../../src/store.ts';
+import { ERA } from '../../src/state/saved.ts';
+import { on } from '../../src/state/store.ts';
 import * as vs from '../../src/veterans/store.ts';
 import { memory } from './fakes.ts';
 import { must } from '../../src/must.ts';

@@ -4,7 +4,7 @@
 // until it closes (review-10 1, 2). npx vitest run (in webapp)
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
-import { loadData } from '../../src/data.ts';
+import { loadData } from '../../src/model/data.ts';
 import * as vs from '../../src/veterans/store.ts';
 import { askClosed, askSkills, openWins, winsClosed } from '../../src/veterans/pickers.ts';
 import { followPool } from '../../src/career/current.ts';

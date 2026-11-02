@@ -4,7 +4,7 @@
 // the career tables. No images: the catalog is empty, so every portrait is its initials.
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Assets, CareerTables, PageData } from '../../src/data.ts';
+import type { Assets, CareerTables, PageData } from '../../src/model/data.ts';
 
 // (a path, not a URL: Vite turns `new URL(…, import.meta.url)` into an asset import)
 const DATA = path.resolve(import.meta.dirname, '../../../pkg/loopopt/data');

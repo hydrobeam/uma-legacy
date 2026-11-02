@@ -4,8 +4,8 @@
 // it; the layout's switches follow the settings loaded.
 import { signal } from '@preact/signals';
 import { useRef, useState } from 'preact/hooks';
-import { ERA } from '../saved.ts';
-import { importSettings, importToEra, settings } from '../settings.ts';
+import { ERA } from '../state/saved.ts';
+import { importSettings, importToEra, settings } from '../state/settings.ts';
 import { Dialog, DialogHead, DialogPanel } from '../ui/Dialog.tsx';
 import { must } from '../must.ts';
 import { exportText, readImport } from './io.ts';

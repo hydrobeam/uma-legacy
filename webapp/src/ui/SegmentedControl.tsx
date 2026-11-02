@@ -142,6 +142,7 @@ export function SegmentedControl<V extends string | number | boolean>(props: Seg
       {options.map((o) => {
         const on = o.v === value;
         return (
+          // its own <button>: an option of the control, this primitive's own part
           // biome-ignore lint/a11y/useAriaPropsSupportedByRole: each state goes with its kind's role (aria-checked a radio's, aria-selected a tab's, aria-pressed a plain button's), which Biome can't follow through `kind`
           <button
             key={String(o.v)}

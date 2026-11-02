@@ -1,12 +1,12 @@
 // The loop page's setup and results where only a browser can tell: lengths at real widths (the phone at 375 px, the
 // result's popups, the scenario tiles, the card list), the panel beside its card, the game tooltip over a modal dialog,
 // the friend frame of a borrowed card, the era switch's reload into the Grand Masters data, what every job sent leaves
-// out by the page's clock (engine.ts `gate`), and a page whose scripts stop as they load. What the components draw from
-// the settings and a result is test/unit/loopui*.test.tsx's.
+// out by the page's clock (solver/engine.ts `gate`), and a page whose scripts stop as they load. What the components
+// draw from the settings and a result is test/unit/loopui*.test.tsx's.
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Page } from 'playwright/test';
-import type { Card, Uma } from '../../src/data.ts';
+import type { Card, Uma } from '../../src/model/data.ts';
 import { expect, test } from './fixtures.ts';
 import { SIDEWAYS, closeEditor, loopSettled, openEditor, openLoop } from './pages.ts';
 import { quiet } from './solver.ts';
@@ -447,7 +447,7 @@ test.describe('desktop setup', () => {
   }) => {
     await page.clock.setFixedTime((newest - 60) * 1000);
     await openLoop(page);
-    // a job sent leaves out what starts later (engine.ts `gate`)
+    // a job sent leaves out what starts later (solver/engine.ts `gate`)
     await page.click('#rank button[data-v="ss_and_up"]');
     await loopSettled(page);
     const sent = await page.evaluate(() => window.__runs.filter((j) => j.cmd === 'deck').at(-1));

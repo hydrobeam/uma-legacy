@@ -2,7 +2,7 @@
 // renderToString into the page's `<div id="app"></div>`, with no views and no state, so the page's first paint has the
 // setup's markup before any script runs; the entry hydrates it (main.tsx `hydrate`). The layout is imported through
 // Vite's module runner (`runnerImport`: its TypeScript and JSX compiled as the page's are), on its own: a layout imports
-// nothing but Preact and the shell (src/ui/Shell.tsx), so no store or game data loads here. (@preact/preset-vite's
+// nothing but Preact and the shell (src/setup/Shell.tsx), so no store or game data loads here. (@preact/preset-vite's
 // prerender, vite-prerender-plugin, renders every route into the first HTML input as one template: it can't fill two
 // pages, each with its own head.)
 import path from 'node:path';

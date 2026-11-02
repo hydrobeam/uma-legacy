@@ -4,7 +4,7 @@
 // from them as a run leaves them. A wire-shape change in src/gen/solver.ts fails tsc here.
 import { initVets } from '../../src/veterans/store.ts';
 import { newPlanId, showAnswer } from '../../src/career/state.ts';
-import { ERA } from '../../src/saved.ts';
+import { ERA } from '../../src/state/saved.ts';
 import type { CareerJob, CareerReport, CareerSearch, PlanCheck, PlanOption, PlanReport } from '../../src/career/job.ts';
 import type { RouteMember } from '../../src/gen/solver.ts';
 import type { LineagePlan, Veteran } from '../../src/veterans/store.ts';

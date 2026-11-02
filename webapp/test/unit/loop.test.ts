@@ -4,10 +4,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { test, vi } from 'vitest';
-import { loadData } from '../../src/data.ts';
-import { fmtIn } from '../../src/dom.ts';
-import { gameData } from '../../src/data.ts';
-import { deckPart, isOwned, skillsPart } from '../../src/job.ts';
+import { loadData } from '../../src/model/data.ts';
+import { fmtIn } from '../../src/model/odds.ts';
+import { gameData } from '../../src/model/data.ts';
+import { deckPart, isOwned, skillsPart } from '../../src/model/job.ts';
 import { blockedStatus, buildJob, jobKey } from '../../src/loop/job.ts';
 import { PAUSE_MS, createRun } from '../../src/loop/run.ts';
 import { resultKeys } from '../../src/loop/keys.ts';
@@ -24,14 +24,14 @@ import {
   setSort,
   setTargets,
   settings,
-} from '../../src/settings.ts';
-import { on } from '../../src/store.ts';
+} from '../../src/state/settings.ts';
+import { on } from '../../src/state/store.ts';
 import { FIXTURES } from './loopfixtures.ts';
 import { fakeClock, flush, memory } from './fakes.ts';
 import { must } from '../../src/must.ts';
-import type { Backing } from '../../src/storage.ts';
-import type { SettingsView } from '../../src/settings.ts';
-import type { SolverRefusal } from '../../src/solver.ts';
+import type { Backing } from '../../src/state/storage.ts';
+import type { SettingsView } from '../../src/state/settings.ts';
+import type { SolverRefusal } from '../../src/solver/solver.ts';
 import type { DeckJob } from '../../src/loop/job.ts';
 import type { DeckAnswer, LoopDeps } from '../../src/loop/run.ts';
 import type { DrawnReport, LoopReport, LoopResult } from '../../src/loop/types.ts';
@@ -228,7 +228,7 @@ test("an edit during a search kills it, and the old search's late answers change
 
 test("a job rejected when its worker is killed during the start ('superseded') changes nothing: the newer search keeps the page", async () => {
   const p = page();
-  const old = await searching(p); // waiting for the worker to start, say (engine.ts rejects it when that start is killed)
+  const old = await searching(p); // waiting for the worker to start, say (solver/engine.ts rejects it when that start is killed)
   p.loop.scheduleSearch(); // an edit kills it
   p.clock.advance(PAUSE_MS);
   await flush();
@@ -551,8 +551,8 @@ test("golden job keys: the defaults' job keyed as recorded, in both eras", () =>
   assert.equal(jobKey(job, 'gm'), GOLDEN.defaults.keyGm);
 });
 
-// the career page's job carries the same shared parts (job.ts: its targets and roster, its deck space; career/job.ts
-// builds it; this pins what the helpers give it and their order: 4ef2a4b's fields, nested)
+// the career page's job carries the same shared parts (model/job.ts: its targets and roster, its deck space;
+// career/job.ts builds it; this pins what the helpers give it and their order: 4ef2a4b's fields, nested)
 test("golden career fields: each fixture's shared career-job fields as recorded", () => {
   for (const [name, saved] of Object.entries(FIXTURES)) {
     if (!GOLDEN[name].career) continue;

@@ -7,20 +7,19 @@
 // (`draftOf`, `rollOf`: the page's veterans and settings, for the machine's deps) and adds her to the veterans.
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { computed, signal } from '@preact/signals';
-import { fmtIn } from '../../dom.ts';
-import { careerTables } from '../../data.ts';
-import { settings } from '../../settings.ts';
-import { pct } from '../../odds.ts';
+import { careerTables } from '../../model/data.ts';
+import { settings } from '../../state/settings.ts';
+import { pct, fmtIn } from '../../model/odds.ts';
 import { draft, draftRef } from '../../veterans/store.ts';
 import type { Draft, LineageNode, NodeRecord } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
 import { openWins } from '../../veterans/pickers.ts';
-import { fitSparks } from '../../details.ts';
+import { fitSparks } from '../../results/details.ts';
 import { must } from '../../must.ts';
 import { Runner, UmaAv } from '../../ui/Images.tsx';
-import type { DeepReadonly } from '../../store.ts';
-import type { ScheduleCell } from '../../solver.ts';
-import { cellAt } from '../../agenda.ts';
+import type { DeepReadonly } from '../../state/store.ts';
+import type { ScheduleCell } from '../../solver/solver.ts';
+import { cellAt } from '../../model/agenda.ts';
 import { scheduledRaces, rolledOutcome } from '../roll.ts';
 import type { Roll, RollSetup } from '../roll.ts';
 import { answer, answerPool, runView, searching as runSearching } from '../state.ts';
@@ -412,8 +411,8 @@ function Analysis({ comparison }: { comparison: Comparison }) {
     searching = runSearching.value, // (not runView: a plan's progress would draw her card again each time)
     section = useRef<HTMLElement>(null),
     wins = useRef<HTMLButtonElement>(null);
-  // her spark names shrink to fit (details.ts fitSparks: it measures the names on show and skips a closed popup's;
-  // TryRunDialog fits them again on opening)
+  // her spark names shrink to fit (results/details.ts fitSparks: it measures the names on show and skips a closed
+  // popup's; TryRunDialog fits them again on opening)
   useLayoutEffect(() => {
     if (section.current) fitSparks(section.current);
   });

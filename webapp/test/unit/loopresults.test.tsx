@@ -9,17 +9,17 @@ import path from 'node:path';
 import { fireEvent, render } from '@testing-library/preact';
 import { createRef } from 'preact';
 import { expect, test, vi } from 'vitest';
-import { loadData, SCEN_GOLDS } from '../../src/data.ts';
-import { deckHint } from '../../src/odds.ts';
-import { goldGiven } from '../../src/job.ts';
+import { loadData, SCEN_GOLDS } from '../../src/model/data.ts';
+import { deckHint } from '../../src/model/odds.ts';
+import { goldGiven } from '../../src/model/job.ts';
 import { exportText, readImport } from '../../src/loop/io.ts';
 import { blockedStatus, buildJob } from '../../src/loop/job.ts';
 import { drawResult, Results } from '../../src/loop/Results.tsx';
 import { RunAct, RunNote } from '../../src/loop/RunNote.tsx';
 import { beginSearch, initLoopState, interim, loopDrawn, settle, tick } from '../../src/loop/state.ts';
 import type { DrawnReport, LoopResult, ShownResult } from '../../src/loop/types.ts';
-import { loadExample, saveCurrent } from '../../src/presets.ts';
-import { PresetDialogs, openPresets } from '../../src/ui/Presets.tsx';
+import { loadExample, saveCurrent } from '../../src/state/presets.ts';
+import { PresetDialogs, openPresets } from '../../src/setup/Presets.tsx';
 import {
   DEFAULTS,
   importSettings,
@@ -29,9 +29,9 @@ import {
   setOwned,
   setPresets,
   setTargets,
-} from '../../src/settings.ts';
-import { on } from '../../src/store.ts';
-import { OddsDialog } from '../../src/ui/OddsDialog.tsx';
+} from '../../src/state/settings.ts';
+import { on } from '../../src/state/store.ts';
+import { OddsDialog } from '../../src/loop/OddsDialog.tsx';
 import { RenderGuard, sayRenderErrors } from '../../src/ui/RenderGuard.tsx';
 import { memory } from './fakes.ts';
 import { SKILL_ART, skills, umas } from './globalpage.ts';

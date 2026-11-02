@@ -7,14 +7,14 @@
 import { useComputed } from '@preact/signals';
 import type { RefObject } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
-import { settings } from '../../settings.ts';
-import type { Target } from '../../settings.ts';
+import { settings } from '../../state/settings.ts';
+import type { Target } from '../../state/settings.ts';
 import { vets, places, clearVets } from '../../veterans/store.ts';
 import type { VetRecord } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
 import { lacks, lacksSaid } from '../../veterans/complete.ts';
 import { SortMenu } from '../../ui/SortMenu.tsx';
-import { VetCell } from '../../ui/VetCell.tsx';
+import { VetCell } from '../../veterans/VetCell.tsx';
 import { idxOf } from '../current.ts';
 import { openNode } from './dialogs.ts';
 import { VetPane } from './NodeDialog.tsx';
