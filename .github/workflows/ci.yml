@@ -72,5 +72,5 @@ jobs:
         run: |
           ./build.sh browsers
           (cd webapp && sudo npx playwright install-deps chromium)
-      - name: Browser suite, fast tier
-        run: ./build.sh testq
+      - name: Browser flows, Chromium, on the real solver (CI holds no recorded replies)
+        run: LLP_SOLVER=live ./build.sh testq

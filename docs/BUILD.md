@@ -71,6 +71,8 @@ The page's packages (`webapp/package.json`; build and dev tools pinned exactly),
 | `dependency-cruiser` 18.7.0, `@swc/core` 1.16.21 | the module layers (`lint`); swc parses the TypeScript, as dependency-cruiser reads it through TypeScript's JavaScript API, which TypeScript 7 no longer has |
 | `oxlint` 1.90.0, `eslint-plugin-better-tailwindcss` 4.10.0 | the Tailwind class gate (`lint`, the hook): a class Tailwind doesn't know fails (`webapp/.oxlintrc.json`) |
 | `@testing-library/dom` 10.4.2 | the node tests' role queries (`within(root).getByRole`) |
+| `@testing-library/preact` 3.2.6 | the node tests' renders of a component (`render`, unmounted after each test by `test/unit/setup.ts`) |
+| `@types/node` 22.20.5 | node's types for the tests (`tsconfig.test.json`) |
 | `playwright` (pinned) | the browser suite, `icons.mjs`, `runners` |
 | `@biomejs/biome`, `typescript` | `lint` |
 
@@ -135,7 +137,7 @@ it stops; the `art` step instead says what it skipped.
 | `images` | game art into `webapp/img/` (see *Art*); only new ids unless `IMAGES_FORCE=1` |
 | `runners` | each uma's running mini model as a sprite strip in `webapp/img/run/` (see *Art*) |
 | `browsers` | Playwright's browsers at the revisions the pinned `playwright` package wants into `cache/ms-playwright` (`playwright install`: a download after a Playwright bump, a 0.6 s no-op when they are there) |
-| `test` / `testq` | the page (`page`, 1.4 s), then the browser suite on it, full or its fast tier; live, recording the solver's replies, when none are recorded for this solver and data (see *Tests*) |
+| `test` / `testq` | the page (`page`), then the browser flows on it, in both browsers or Chromium alone; they replay recorded solver replies and need no built solver (see *Tests*) |
 | `prune-replies` | the page, then deletes the recorded solver replies of every solver and data but its own (see *Tests*, *Recorded solver replies*) |
 | `serve` | `webapp/dist` on https://localhost:8000 (`PORT=…`) over HTTP/2 with TLS, as the host serves it (`vite preview`): the certificate is self-signed (`cache/tls/`), so a browser warns once. Unlike the host, it revalidates `assets/` on each load (ETags) rather than caching them a year |
 | `val TAG` / `valq TAG` | the release solver, then validation: in full before landing a change that can move results, quick while iterating (see *Tests*) |
@@ -368,41 +370,38 @@ merge, not a `valq` per commit. A change to arithmetic, control flow or data fol
   build's page data with a small made-up game's (`vi.mock('#page-data', () => import('./fakepage.ts'))`). happy-dom
   fires a dialog's `close` at once where a browser queues it, so a test lets tasks run after a close before it reads
   what the close did.
-- **Browser suite:** `./build.sh test` builds the page and runs Playwright Test (`webapp/playwright.config.mjs`, from the pinned
-  `playwright` package) against `webapp/dist`, served by `vite preview` over HTTP/2 with TLS as the host serves it (a
-  self-signed certificate made once into `cache/tls/`; over HTTP/1.1 requests queue and timings mislead), or against
-  `LLP_URL`, test groups in parallel (`LLP_JOBS` per browser, default 1: four each kept the laptop at its thermal
-  limit, 96.9 C on average, where two groups at once averaged 82.8 C; `LLP_JOBS=4` is about 2.5 times faster, by estimate, and hot):
-  every group in Chromium, and in Firefox the
-  groups tagged `@both` in `groups.spec.mjs` (where its engine matters: the worker, wasm, storage, timing, layout and
-  focus; the others test the page's logic, which Chromium covers, and took 420 of Firefox's 650 CPU-s a run). Each
-  group is a module in `webapp/test/` and one test of `webapp/test/groups.spec.mjs`; each check is a step of its test,
-  a failed one a soft failure (the group goes on), a throw ends the group. Shared helpers are in
-  `webapp/test/helpers.mjs`. One group: `cd webapp && npx playwright test --project chromium -g roster` (`-g` is a
-  regular expression over the titles). A failed test keeps its trace
-  (`npx playwright show-trace webapp/test-results/<test>/trace.zip`); the run's report is
-  `webapp/test-results/report.json`. `LLP_PROF=file` logs where the time goes.
-- **Recorded solver replies:** the groups that use the solver only to put the page in a state, or check what the page
-  draws from its replies (`REPLAY` in `groups.spec.mjs`), answer every solver job from the recorded replies
-  (`webapp/test/solverreplay.mjs`): the page's worker is a stand-in and its wasm compile gets an empty module, so they
-  cost about a third of their live CPU. The other groups run the real solver: they check its worker's live behaviour
-  (kills, restarts, progress, races, the stored work), the wasm as served, or the deck solver's odds. The replies of one
-  solver and data are one directory, `cache/solver-replies/WASM-GLOBAL-GM-WORKER`, named by the SHA-256 of those files'
-  bytes (the wasm, the two eras' engine data and the worker script: `webapp/test/replaystore.mjs`), never by an asset's
-  name, so a page change that leaves them alone (a view, the stylesheet, the bundler's file names) replays. Within it a
+- **Component and page logic:** most of what the page does is tested there, in milliseconds: a view rendered with
+  `@testing-library/preact` on happy-dom (its labels, marks, incomplete states, pickers, status wording), a run machine
+  driven on fakes (which job is sent, staleness, the timers), a store read from a seeded storage. A check goes to the
+  browser only when it needs one.
+- **Browser flows:** `./build.sh test` builds the page and runs Playwright Test (`webapp/playwright.config.ts`, from
+  the pinned `playwright` package) against `webapp/dist`, served by `vite preview` over HTTP/2 with TLS as the host
+  serves it (a self-signed certificate made once into `cache/tls/`), or against `LLP_URL`, in Chromium and Firefox:
+  `webapp/test/browser/*.spec.ts`, small independent tests run in parallel (`fullyParallel`, Playwright's default
+  workers), each for what needs a real browser: layout at real widths, the worker as the page drives it, keyboard and
+  focus, storage across a reload, both engines. Each starts from the state it seeds (`test.use({ seed })`,
+  `fixtures.ts`: localStorage written before the page's first script, once per tab) rather than clicking its way
+  there, moves the page's own timers with `page.clock`, and fails on any page error. An action or an assertion waits
+  at most 5 s; a wait on the solver says so (`pages.ts` `SOLVER_WAIT`). All test code is TypeScript, checked by
+  `tsconfig.test.json` (in `lint` and the pre-commit hook) against the generated wire types, so a wire-shape change
+  fails at the test that builds or reads it. One spec: `cd webapp && npx playwright test --project=chromium phone`. A
+  failed test keeps its trace (`npx playwright show-trace webapp/test-results/<test>/trace.zip`); the run's report is
+  `webapp/test-results/report.json`. `./build.sh testq` runs them in Chromium alone.
+- **Recorded solver replies:** the browser flows never run the solver. The page's worker is a stand-in
+  (`webapp/test/browser/solver.ts`) that answers every job from the replies recorded for this solver and data, and its
+  wasm compile gets an empty module; a tree that has not built the solver builds the page with an empty one
+  (`webapp/vite/stub.wasm`; `vite.config.mjs`), so a page-only change never runs cargo (deploy builds the solver
+  first). The replies of one solver and data are one directory, `cache/solver-replies/SOURCES-GLOBAL-GM`, named from
+  what they are a function of, read from the tree with nothing built (`webapp/test/browser/store.ts`: the SHA-256 of
+  the solver's sources, its Cargo files and `build.rs` with `research/results.json`, the worker and its glue; and of
+  each era's engine data as the page build writes it), so a page change that leaves them alone replays. Within it a
   reply's key is the era data's digest, the jobs that worker ran before and the job, so a page change that alters a job
-  fails its group with the job named; nothing falls back to the live solver. `LLP_SOLVER=live ./build.sh test` runs every
-  group on the real solver and records the replies (about 45 MB). `test` and `testq` do so by themselves, saying so in
-  one line, when the current directory holds no passing live run of their tier (`.recorded-full`, written by a passing
-  live `test`, serves both; `.recorded-quick` serves `testq`), so after a solver or data change the first run records.
-  Run it by hand after a page change that makes a replaying group fail on a missing reply, and before a release.
-  `./build.sh prune-replies` deletes the directories of every other solver and data, naming each, and leaves anything
-  a recording does not write. A live run also prints any reply that differs from the one stored under its key, which would mean the solver is
-  not deterministic given its jobs and replay unsound. Replaying groups wait, before a reload, for the page's 100 ms
-  state save to land, so the next worker's history does not depend on timing.
-- **Fast tier:** `./build.sh testq` (Chromium, the tests tagged `@quick`, with `LLP_QUICK=1` stopping career at its
-  one-run answer; about 30 s, 14 s with `LLP_JOBS=4`; popups and phone replay, career, load and about run live): run it after each
-  page change, and the full suite before a release.
+  fails its flow with the job named; nothing falls back to the solver. Recording is a solver lane's step: after a
+  solver or data change, or a page change that sends new jobs, `LLP_SOLVER=live ./build.sh test` with the built solver
+  (`./build.sh wasm`) runs the flows on the real worker and stores its replies. The solver is deterministic given its
+  jobs (its only clock reads are the timings it reports), which is what makes a replay sound. `./build.sh
+  prune-replies` deletes the directories of every other solver and data, naming each, and leaves anything a recording
+  does not write.
 - **Validation:** `./build.sh val TAG` builds the release solver (so it never validates a binary left from before a
   change) and runs every validation check, each whatever the others found, and fails if any
   does (about 7 CPU-min, summed from the recorded run times: `val/ref_times.txt`, `val/plan/*_times.txt` and the proxy
@@ -452,9 +451,8 @@ merge, not a `valq` per commit. A change to arithmetic, control flow or data fol
 `.github/workflows/ci.yml` runs on every push to main and every pull request, with the same `./build.sh` steps:
 - **solver:** `lint`, `native` (release build, clippy, tests), then `val ci` (every output byte-identical to the
   references, work counters included; *Tests*) and `mono`.
-- **page:** `wasm page` (no game art in a clone: the page shows initials) and `testq` (Chromium; live, since CI holds no
-  recorded solver replies); the checks that need
-  the art skip themselves.
+- **page:** `wasm page` (no game art in a clone: the page shows initials) and `LLP_SOLVER=live testq` (Chromium, on
+  the real solver, since CI holds no recorded solver replies); the checks that need the art skip themselves.
 
 ## Rust style
 
@@ -565,8 +563,8 @@ uma-legacy --production-branch main --force` (`--force` keeps it on classic Page
 to Workers-based Pages and failed).
 
 Check a deploy on its own address (`https://<hash>.uma-legacy.pages.dev`, printed by wrangler), e.g.
-`cd webapp && LLP_URL=https://<hash>.uma-legacy.pages.dev LLP_QUICK=1 npx playwright test --project chromium --grep
-@quick`: the branch addresses cache HTML for 5 minutes and can serve the previous page until then.
+`cd webapp && LLP_URL=https://<hash>.uma-legacy.pages.dev npx playwright test --project=chromium`: the branch
+addresses cache HTML for 5 minutes and can serve the previous page until then.
 
 ## Layout
 
