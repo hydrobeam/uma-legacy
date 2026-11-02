@@ -93,9 +93,8 @@ The tool that decrypts the client's bundles and asset index is not published in 
 game art are never committed.
 
 **Worktrees** (`git worktree add`): `build.sh` links a new worktree's `cache/` to the main checkout's on first use, so
-Playwright's browsers, the recorded solver replies, GameTora's files, wasm-bindgen and the TLS certificate are
-downloaded or recorded once for every worktree (`prune-replies` from any of them prunes the shared store). `./build.sh
-setup` makes a new worktree ready without compiling (*Tests*). `npm ci`
+Playwright's browsers, GameTora's files, wasm-bindgen and the TLS certificate are downloaded once for every worktree.
+`./build.sh setup` makes a new worktree ready without compiling (*Tests*). `npm ci`
 fills each worktree's own `node_modules` from npm's shared cache (`--prefer-offline`; about a minute): a symlinked
 `node_modules` is emptied for every tree by the next `npm ci` in any of them. Rust builds per worktree: the crate's
 dependencies are 7 s of a build, and the crate itself, nearly all of it, differs by tree, so a shared compile cache
@@ -139,8 +138,9 @@ it stops; the `art` step instead says what it skipped.
 | `images` | game art into `webapp/img/` (see *Art*); only new ids unless `IMAGES_FORCE=1` |
 | `runners` | each uma's running mini model as a sprite strip in `webapp/img/run/` (see *Art*) |
 | `browsers` | Playwright's browsers at the revisions the pinned `playwright` package wants into `cache/ms-playwright` (`playwright install`: a download after a Playwright bump, a 0.6 s no-op when they are there) |
-| `test` / `testq` | the page (`page`), then the browser flows on it, in Chromium (and Firefox for the flows titled `@both`) or Chromium alone; they replay recorded solver replies and need no built solver (see *Tests*) |
-| `prune-replies` | the page, then deletes the recorded solver replies of every solver and data but its own (see *Tests*, *Recorded solver replies*) |
+| `test` / `testq` | the page (`page`), then the browser flows on it, in Chromium (and Firefox for the flows titled `@both`) or Chromium alone; they answer with each scenario's canned solver replies and need no built solver (see *Tests*) |
+| `fixtures` | the browser flows' canned solver replies, regenerated natively from each scenario's jobs (see *Tests*, *Solver fixtures*) |
+| `worker` | the wasm (cached when built before) and the page, then the one flow on the real solver: its answer against its fixture's |
 | `serve` | `webapp/dist` on https://localhost:8000 (`PORT=…`) over HTTP/2 with TLS, as the host serves it (`vite preview`): the certificate is self-signed (`cache/tls/`), so a browser warns once. Unlike the host, it revalidates `assets/` on each load (ETags) rather than caching them a year |
 | `val TAG` / `valq TAG` | the release solver, then validation: in full before landing a change that can move results, quick while iterating (see *Tests*) |
 | `mono` | the release solver, then the career planner's monotonicity check (`val/mono.py`, 10-20 CPU-min: in the background; see *Tests*) |
@@ -402,21 +402,27 @@ merge, not a `valq` per commit. A change to arithmetic, control flow or data fol
   fails at the test that builds or reads it. One spec: `cd webapp && npx playwright test --project=chromium phone`. A
   failed test keeps its trace (`npx playwright show-trace webapp/test-results/<test>/trace.zip`); the run's report is
   `webapp/test-results/report.json`. `./build.sh testq` runs them in Chromium alone.
-- **Recorded solver replies:** the browser flows never run the solver. The page's worker is a stand-in
-  (`webapp/test/browser/solver.ts`) that answers every job from the replies recorded for this solver and data, and its
-  wasm compile gets an empty module; a tree that has not built the solver builds the page with an empty one
-  (`webapp/vite/stub.wasm`; `vite.config.mjs`), so a page-only change never runs cargo (deploy builds the solver
-  first). The replies of one solver and data are one directory, `cache/solver-replies/SOURCES-GLOBAL-GM`, named from
-  what they are a function of, read from the tree with nothing built (`webapp/test/browser/store.ts`: the SHA-256 of
-  the solver's sources, its Cargo files and `build.rs` with `research/results.json`, the worker and its glue; and of
-  each era's engine data as the page build writes it), so a page change that leaves them alone replays. Within it a
-  reply's key is the era data's digest, the jobs that worker ran before and the job, so a page change that alters a job
-  fails its flow with the job named; nothing falls back to the solver. Recording is a solver lane's step: after a
-  solver or data change, or a page change that sends new jobs, `LLP_SOLVER=live ./build.sh test` with the built solver
-  (`./build.sh wasm`) runs the flows on the real worker and stores its replies. The solver is deterministic given its
-  jobs (its only clock reads are the timings it reports), which is what makes a replay sound. `./build.sh
-  prune-replies` deletes the directories of every other solver and data, naming each, and leaves anything a recording
-  does not write.
+- **Solver fixtures:** the browser flows never run the solver. Each starts from a committed scenario
+  (`test.use({ scenario })`: `webapp/test/fixtures/solver/<scenario>.seed.json`, the localStorage the page starts
+  with; made-up veterans and public game ids only, few on purpose: `loop-small`, three umas, two targets and
+  fourteen cards; `loop-four`, a fourth uma, three decks and a pal left out; `career-small`, four veterans, two
+  targets, two trainees and eight cards, whose game export the import flows read, `export-small.json`). The page's worker is a stand-in (`webapp/test/browser/solver.ts`) that answers
+  each job with its scenario's canned reply for that kind of job (`<scenario>.snap.json`: a deck search; a career
+  search, plan, robustness-check step, comparison and its plan, roll, per pool size, since the page checks the
+  legacies a reply names against its job's pool; the kept work out and in). A foreground job of a kind the scenario
+  lacks fails the flow; a background one (the state store, a check step) is left unanswered. The replies are computed natively through the worker's own `Solver` (`web.rs`
+  `fixtures`, an insta snapshot; wall clocks 0) from one job of each kind (`<scenario>.jobs.json`, run in order in one
+  `Solver`, so the check, comparison and roll find the plan kept). The page reads a reply against its job only through
+  the plan it names, so every edit in a flow is answered with the scenario's one plan. `./build.sh fixtures`
+  regenerates the replies (insta with updates on); a solver or data change that moves one fails `check`'s "solver
+  fixtures", with the command. The flows send the same kinds of jobs with or without the game's art (none uses the
+  sample veterans, which show only with their portraits). A tree that has not built the solver builds the page with
+  an empty one (`webapp/vite/stub.wasm`; `vite.config.mjs`), so a page-only change never runs cargo; `./build.sh
+  worker`, in `check merge`, runs the one flow on the real solver (`worker.spec.ts`): the built wasm in the page's
+  worker answers loop-small's deck job as its canned reply holds it.
+- **Test counts:** a whole run's count of tests is pinned, as the Rust tests' (`pkg/loopopt/tests/count.txt`): the
+  node tests' in `webapp/test/unit/count.txt`, the browser flows' per browser in `webapp/test/browser/count-*.txt`. A
+  test that stops running fails the run; `TESTS_BLESS=1` re-pins, and a commit that removes tests says why.
 - **Validation:** `./build.sh val TAG` builds the release solver (so it never validates a binary left from before a
   change) and runs every validation check, each whatever the others found, and fails if any
   does (about 7 CPU-min, summed from the recorded run times: `val/ref_times.txt`, `val/plan/*_times.txt` and the proxy
@@ -466,8 +472,9 @@ merge, not a `valq` per commit. A change to arithmetic, control flow or data fol
 `.github/workflows/ci.yml` runs on every push to main and every pull request, with the same `./build.sh` steps:
 - **solver:** `lint`, `native` (release build, clippy, tests), then `val ci` (every output byte-identical to the
   references, work counters included; *Tests*) and `mono`.
-- **page:** `wasm page` (no game art in a clone: the page shows initials) and `LLP_SOLVER=live testq` (Chromium, on
-  the real solver, since CI holds no recorded solver replies); the checks that need the art skip themselves.
+- **page:** `wasm page` (no game art in a clone: the page shows initials), `testq` (Chromium, answered with the
+  canned solver replies) and `worker` (the real solver's answer against its fixture); the checks that need the art skip
+  themselves.
 
 ## Rust style
 

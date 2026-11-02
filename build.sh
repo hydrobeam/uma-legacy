@@ -54,15 +54,16 @@ STEPS=(
   "setup|||a worktree ready: the main checkout's cache/, the page's packages when its lockfile changed, the wasm and the checks' binary when built before from these inputs (nothing compiled)"
   "hooks|||use the tracked git hooks (.githooks: the pre-commit check); once per clone"
   "browsers|||Playwright's Chromium and Firefox at the pinned revisions into cache/ms-playwright"
-  "test|||the page, then the browser flows on it (Chromium and Firefox; recorded solver replies, no solver build)"
+  "test|||the page, then the browser flows on it (Chromium, and Firefox on @both; fixture replies, no solver build)"
   "testq|||the page, then the browser flows in Chromium: after each page change"
+  "worker|||the wasm and the page, then the one flow on the real solver: its reply against the native fixture's"
   "serve|||webapp/dist on https://localhost:8000 over HTTP/2 (vite preview; PORT=...; a self-signed certificate)"
   "deploy|||wasm and page, then webapp/dist to Cloudflare Pages; refuses with uncommitted changes"
   "val|TAG||the solver, then every validation check against the references (about 7 CPU-min)"
   "valq|TAG||val without the slow jobs, joint_check and planval's proxy gate (about 2.5 CPU-min)"
   "mono|||the solver, then the planner's monotonicity check (val/mono.py, 10-20 CPU-min: in the background)"
   "research|||research/run_all.py into research/results.json, then docs/RESEARCH.md from its template"
-  "prune-replies|||delete the recorded solver replies (cache/solver-replies) of every solver and data but this tree's"
+  "fixtures|||the browser flows' canned solver replies, regenerated natively from each scenario's jobs"
   "all|||the steps marked all, in the table's order"
   "help|||this list"
 )
@@ -186,7 +187,7 @@ clippy_all() {
 # writes the new count there (TESTS_BLESS=1 ./build.sh native), and one that removes any says why in its message.
 cargo_test() {
   local out rc=0 count pinned
-  out=$(cd "$C" && cargo test --profile checks --no-fail-fast 2>&1) || rc=$?
+  out=$(cd "$C" && INSTA_UPDATE=no cargo test --profile checks --no-fail-fast 2>&1) || rc=$?
   printf '%s\n' "$out" | grep -E '^test result|FAILED|panicked|^error' || true
   count=$(printf '%s\n' "$out" | sed -n 's/^test result: [a-zA-Z]*\. \([0-9]*\) passed; \([0-9]*\) failed; \([0-9]*\) ignored.*/\1 \2 \3/p' \
     | awk '{n += $1 + $2 + $3} END {print n + 0}')
@@ -317,7 +318,28 @@ page_lints() {
 # Capped: a runaway test (assert.equal on two fake-DOM nodes formats all of Preact's objects) dies at 1 GB, not the
 # terminal, and a hung one at 5 minutes (each test's own limit, 60 s: vite.config.mjs)
 node_tests() {
-  lint "node tests" in_dir "$W" env NODE_OPTIONS=--max-old-space-size=1024 timeout 300 npx --no-install vitest "$@" --run --reporter=dot
+  if [ "$1" = run ]; then
+    lint "node tests" in_dir "$W" env NODE_OPTIONS=--max-old-space-size=1024 timeout 300 npx --no-install vitest run \
+      --reporter=dot --reporter=json --outputFile.json=test-results/vitest.json
+    lint "node tests' count" pinned_count "node tests" "$W/test/unit/count.txt" \
+      "$(node -p "require('$W/test-results/vitest.json').numTotalTests")"
+  else
+    lint "node tests" in_dir "$W" env NODE_OPTIONS=--max-old-space-size=1024 timeout 300 npx --no-install vitest "$@" --run --reporter=dot
+  fi
+}
+# pinned_count WHAT FILE COUNT: the number of tests a whole run ran against the one pinned in FILE, so a test that stops
+# running (a file the runner no longer matches, a flow left out of every project) fails; a change that adds or removes
+# tests writes the new count there (TESTS_BLESS=1), and one that removes any says why in its message
+pinned_count() {
+  local pinned
+  pinned=$(cat "$2" 2>/dev/null || echo none)
+  if [ -n "${TESTS_BLESS:-}" ]; then
+    echo "$3" >"$2"
+    echo "$1: $3, pinned (was $pinned)"
+  elif [ "$3" != "$pinned" ]; then
+    echo "$1: $3 ran, $pinned pinned (${2#"$R"/}): tests added, removed or no longer run (TESTS_BLESS=1 re-pins; say why in the commit)" >&2
+    return 1
+  fi
 }
 lint_verdict() {   # lint_verdict NAME: fails, naming the linters that failed, if any did
   if [ ${#LINT_FAILED[@]} -gt 0 ]; then
@@ -433,7 +455,7 @@ step_page() {
 # footer, as vite.config.mjs `version()` makes it; and the site's address
 page_key() {
   local ignored version dirty
-  ignored=$(cd "$R" && { find webapp/img -type f; ls webapp/loopopt.opt.wasm game/*/master.mdb; } 2>/dev/null \
+  ignored=$(cd "$R" && { find -L webapp/img -type f; ls webapp/loopopt.opt.wasm game/*/master.mdb; } 2>/dev/null \
     | LC_ALL=C sort | xargs -r -d '\n' sha256sum | sha256sum | cut -c1-16)
   version=$(git -C "$R" describe --tags --always)
   dirty=$(git -C "$R" status --porcelain --untracked-files=no -- webapp pkg)
@@ -474,19 +496,49 @@ step_browsers() {
 }
 step_test() { browser_suite; }
 step_testq() { browser_suite --project chromium; }
-# The browser flows (webapp/test/browser) on the page this tree builds, never a dist left from before. They replay the
-# solver replies recorded for this solver and data (webapp/test/browser/store.ts), so they need no built solver (the
-# page then carries an empty one); a job without a reply fails its flow. LLP_SOLVER=live records the replies, with the
-# built solver (./build.sh wasm first): a solver lane's step after a solver or data change.
+# The browser flows (webapp/test/browser) on the page this tree builds, never a dist left from before. Each answers its
+# solver jobs with its scenario's canned reply per kind of job (webapp/test/fixtures/solver), so they need no built
+# solver (the page then carries an empty one); a job of a kind without one fails the flow.
 browser_suite() {   # browser_suite PLAYWRIGHT_ARGS...
   step_page
   step_browsers
-  (cd "$W" && npx --no-install playwright test "$@")
+  local rc=0
+  (cd "$W" && npx --no-install playwright test "$@") || rc=$?
+  # a whole run's flows per browser against the pinned counts (webapp/test/browser/count.txt, one line a project)
+  if [ $# -eq 0 ] || [ "$*" = "--project chromium" ]; then
+    local project counted
+    for project in chromium firefox; do
+      if [ "$project" = firefox ] && [ $# -gt 0 ]; then continue; fi
+      counted=$(node -e "const r = require('$W/test-results/report.json'); let n = 0;
+        const walk = (s) => { for (const x of s.specs || []) n += x.tests.filter((t) => t.projectName === '$project').length;
+          for (const c of s.suites || []) walk(c); };
+        r.suites.forEach(walk); console.log(n)")
+      pinned_count "browser flows ($project)" "$W/test/browser/count-$project.txt" "$counted" || rc=1
+    done
+  fi
+  return "$rc"
 }
-step_prune_replies() {
-  need_uv; check prune-replies
-  step_page   # the current solver and data are this tree's
-  "${PY[@]}" "$W/test/prune_replies.py" "$(cd "$W" && node test/browser/store.ts)"
+# The scenarios' canned solver replies regenerated from their jobs (web.rs `fixtures`, insta with updates on:
+# webapp/test/fixtures/solver/<scenario>.snap.json), after a solver or data change moves them or a scenario's jobs change
+step_fixtures() {
+  need_cargo; check fixtures
+  (cd "$C" && INSTA_UPDATE=always quiet cargo test --profile checks --offline --lib web::fixtures)
+  git -C "$R" status --porcelain -- webapp/test/fixtures/solver \
+    | sed -n 's#^.. webapp/test/fixtures/solver/\(.*\)\.snap\.json$#fixtures: changed \1#p'
+}
+# The one flow on the real solver (webapp/test/browser/worker.spec.ts, in merge): the built wasm in the page's worker,
+# one small job, its reply the native fixture's
+step_worker() {
+  need_cargo; need_node; check worker
+  step_wasm
+  step_page
+  step_browsers
+  (cd "$W" && LLP_WORKER=1 npx --no-install playwright test --project worker)
+}
+# The solver's replies as the fixtures hold them (web.rs `fixtures`): a solver change that moves them says so
+fixtures_current() {
+  in_dir "$C" env INSTA_UPDATE=no quiet cargo test --profile checks --offline --lib web::fixtures \
+    || { echo "the solver's replies differ from the scenarios' canned ones: ./build.sh fixtures" >&2; return 1; }
 }
 step_serve() {
   need_node; need "$NEED_DIST"; check serve
@@ -518,13 +570,14 @@ step_deploy() {
 declare -A INPUTS=(
   [solver]="pkg/loopopt/src pkg/loopopt/build.rs pkg/loopopt/Cargo.toml pkg/loopopt/Cargo.lock rust-toolchain.toml research/results.json"
   [rust]="pkg/loopopt/src pkg/loopopt/tests pkg/loopopt/build.rs pkg/loopopt/Cargo.toml pkg/loopopt/Cargo.lock rust-toolchain.toml research/results.json webapp/src/gen"
-  [native]="pkg/loopopt/src pkg/loopopt/tests pkg/loopopt/build.rs pkg/loopopt/Cargo.toml pkg/loopopt/Cargo.lock rust-toolchain.toml research/results.json pkg/loopopt/data val/jobs val/plan val/sim"
+  [native]="pkg/loopopt/src pkg/loopopt/tests pkg/loopopt/build.rs pkg/loopopt/Cargo.toml pkg/loopopt/Cargo.lock rust-toolchain.toml research/results.json pkg/loopopt/data val/jobs val/plan val/sim webapp/test/fixtures/solver"
   [val]="pkg/loopopt/src pkg/loopopt/build.rs pkg/loopopt/Cargo.toml pkg/loopopt/Cargo.lock rust-toolchain.toml research/results.json pkg/loopopt/data val"
   [mono]="pkg/loopopt/src pkg/loopopt/build.rs pkg/loopopt/Cargo.toml pkg/loopopt/Cargo.lock rust-toolchain.toml research/results.json pkg/loopopt/data val/mono.py val/solver.py val/plan"
   [research]="research pkg/loopopt/src pkg/loopopt/data val/jobs val/jobs.json"
   [python]=":(glob)**/*.py pyproject.toml uv.lock"
   [shell]="build.sh .githooks"
   [page]="webapp"
+  [fixtures]="webapp/test/fixtures/solver"
   [dist]="webapp/src webapp/vite webapp/vite.config.mjs webapp/partials webapp/public webapp/index.html webapp/loop.html webapp/about.html webapp/package-lock.json webapp/tsconfig.json pkg/loopopt/data research/results.json pyproject.toml uv.lock"
 )
 # inputs_key AREA [EXTRA...]: 16 hex digits of the SHA-256 of the area's files (tracked and untracked, ignored ones
@@ -613,8 +666,9 @@ check_edit() {
   fi
   if changed_in rust; then
     lint clippy in_dir "$C" cargo clippy --quiet --all-targets -- -D warnings
-    lint "unit tests" in_dir "$C" quiet cargo test --profile checks --lib
+    lint "unit tests" in_dir "$C" env INSTA_UPDATE=no quiet cargo test --profile checks --lib
   fi
+  if changed_in solver fixtures; then lint "solver fixtures" fixtures_current; fi
   py=$(changed_paths | grep '\.py$' || true)
   if [ -n "$py" ]; then
     # shellcheck disable=SC2086 # one path per word: the repo's paths have no spaces
@@ -640,8 +694,10 @@ check_merge() {
   rust_lints
   page_lints
   lint "rust tests (checks)" step_native
+  lint "solver fixtures" fixtures_current
   lint val step_val check
   lint "browser suite" step_test
+  lint "worker flow" step_worker
   if changed_paths | grep -q '^pkg/loopopt/src/career/'; then lint mono step_mono; fi
 }
 check_full() {
