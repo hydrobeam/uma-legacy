@@ -6,7 +6,7 @@
 // Grades are the solver's (gen/solver.ts `Grades`); stars are 1 to 3.
 import { gradeOf, withGrade } from './grades.ts';
 import { Grade } from './gen/solver.ts';
-import type { Aptitudes, Grades, PinkOutcomeReport, WeightedPinkOutcome } from './gen/solver.ts';
+import type { Aptitude, Aptitudes, Grades, PinkOutcomeReport, WeightedPinkOutcome } from './gen/solver.ts';
 import type { DeepReadonly } from './store.ts';
 import { must } from './must.ts';
 
@@ -31,11 +31,22 @@ export function drawPink(ap: DeepReadonly<Aptitudes> | null | undefined, rnd: ()
   }
   // the pinks of the aptitudes she ends at A or S (`pink_gen`: the solver's pink per aptitude, in its order)
   const atLeastA = ap.pink_gen.filter(({ aptitude }) => gradeOf(grades, aptitude) >= Grade.A);
-  if (!atLeastA.length) return { pinks: {}, apt: grades };
-  const pink = must(atLeastA[Math.floor(rnd() * atLeastA.length)], 'a uniform draw from a list lands in it'),
+  return {
+    pinks: pinkAmong(
+      atLeastA.map(({ aptitude }) => aptitude),
+      rnd,
+    ),
+    apt: grades,
+  };
+}
+/** Her pink among `ends` (the aptitudes she ends at A or S, in the order the draw reads them): one aptitude uniform
+ *  over them, then her stars, 20/70/10 (aptitude -> stars; empty when there are none). */
+export function pinkAmong(ends: readonly Aptitude[], rnd: () => number): Record<number, number> {
+  if (!ends.length) return {};
+  const aptitude = must(ends[Math.floor(rnd() * ends.length)], 'a uniform draw from a list lands in it'),
     u = rnd();
   const stars = u < 0.2 ? 1 : u < 0.9 ? 2 : 3;
-  return { pinks: { [pink.aptitude]: stars }, apt: grades };
+  return { [aptitude]: stars };
 }
 // the start `u` (uniform in [0, 1)) falls in, by the starts' chances in order; the last where rounding leaves u past them
 function drawnStart(outcomes: DeepReadonly<WeightedPinkOutcome[]>, u: number): DeepReadonly<PinkOutcomeReport> {

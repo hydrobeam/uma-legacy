@@ -3,10 +3,9 @@
 import { signal } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import { careerTables } from '../data.ts';
-import { gradeOf, isAptitude } from '../grades.ts';
+import { APTITUDES, gradeOf, isAptitude } from '../grades.ts';
 import { Grade } from '../gen/solver.ts';
 import type { Aptitude } from '../gen/solver.ts';
-import { SOLVER } from '../gen/constants.ts';
 import { pinkName, blueName, uniqueName } from './names.ts';
 import type { NodeRecord, NodeRef } from './store.ts';
 
@@ -43,17 +42,13 @@ export const KIND: Record<Colour, SparkKind> = {
 // grades are known for the veteran analysis' draft; a pool veteran's are not (her legacies' pinks raise her uma's base
 // grades, two steps from C to A at most per legacy pink), so every aptitude is a choice for her. The pink she has always
 // stays a choice. Every choice is an aptitude the solver knows, in code order (turf, dirt, the styles, the distances).
-const BY_CODE: readonly Aptitude[] = Object.keys(SOLVER.aptitude_kinds)
-  .map(Number)
-  .filter(isAptitude)
-  .sort((a, b) => a - b);
 function pinkChoices(nd: NodeRecord): Aptitude[] {
   const grades = nd.apt;
   const have = Object.keys(nd.pinks || {})
     .map(Number)
     .filter(isAptitude);
-  if (!grades) return [...BY_CODE];
-  return BY_CODE.filter((aptitude) => gradeOf(grades, aptitude) >= Grade.A || have.includes(aptitude));
+  if (!grades) return [...APTITUDES];
+  return APTITUDES.filter((aptitude) => gradeOf(grades, aptitude) >= Grade.A || have.includes(aptitude));
 }
 // her spark of one kind, as [group (an object key: a string), stars], or undefined (none)
 export const currentSpark = (nd: NodeRecord, kind: Colour): [string, number] | undefined =>

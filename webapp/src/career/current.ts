@@ -9,6 +9,8 @@ import { settings } from '../settings.ts';
 import { run as engineRun } from '../engine.ts';
 import { goldGiven } from '../job.ts';
 import { srcFor } from '../images.ts';
+import { APTITUDES } from '../grades.ts';
+import { pinkAmong } from '../pink.ts';
 import { vets, places, chosen, setChosen, vetById, addVets, legaciesJob, readyVets } from '../veterans/store.ts';
 import { targetGroups } from '../veterans/names.ts';
 import { answer, answerCareer, answerPool, choiceDropped, dropAnswer, reference } from './state.ts';
@@ -23,7 +25,6 @@ import { Blocked, buildJob, isFull, placesKey, umasNotOwned } from './job.ts';
 import { searchIn } from './reply.ts';
 import type { CareerAnswer, CareerJob, CareerReport, CareerTrainee, OptionRow, PoolActs } from './job.ts';
 import type { PlanProgress, SolverAnswer } from '../solver.ts';
-import { Aptitude } from '../gen/solver.ts';
 import type * as Gen from '../gen/solver.ts';
 import type { LineageNode, Sparks, Veteran, VetRecord } from '../veterans/store.ts';
 import type { DeepReadonly } from '../store.ts';
@@ -118,8 +119,10 @@ export function parentAt(
 // portrait), six veterans with two mob parents each, the bare minimum to start a loop: each veteran carries, at 1 star,
 // only the targets nothing but inheritance gives (no card hints or events them, no outfit has them, the scenario
 // doesn't hand them out); her parents carry nothing. No relation points with anyone (the solver knows no mob), no G1
-// wins. Each, parents too, has the one pink every veteran has: Turf at 1 star (the aptitude nearly every uma starts at
-// A). Marked as samples; Remove all clears them.
+// wins. Each, parents too, has the one pink every veteran has, drawn by the model's rule (pink.ts `pinkAmong`: uniform
+// over the aptitudes she ends at A or S, then her stars), with the same random source as the umas, after them. A mob's
+// grades are not in the game's data (master.mdb `mob_data` holds her looks and running style), so every aptitude is
+// taken as one she may end at A or S (assumed). Marked as samples; Remove all clears them.
 function sampleVets(): Veteran[] {
   const all = careerTables().mobs || [],
     withArt = all.filter(([id]) => srcFor('mob', id)),
@@ -131,7 +134,7 @@ function sampleVets(): Veteran[] {
   const node = (id: number, sparks: Sparks): LineageNode => ({
     chara: id,
     sparks,
-    pinks: { [Aptitude.Turf]: 1 },
+    pinks: pinkAmong(APTITUDES, Math.random),
     blues: {},
     greens: {},
     wins: [],
