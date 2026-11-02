@@ -15,16 +15,13 @@ crate-type = ["rlib", "cdylib"]
 serde = { version = "1", features = ["derive", "rc"] }
 # the game's integer codes as enums written as their integers (src/codes.rs; always with ts-rs's `repr(enum)`)
 serde_repr = "=0.1.21"
-# float_roundtrip: a float the solver printed parses back to the same bits (the page sends `next.fit` back)
+# float_roundtrip: a float the solver printed parses back to the same bits (the page sends `next.fit` back, and the
+# worker's kept state, src/career/state.rs)
 serde_json = { version = "1", features = ["float_roundtrip"] }
 # the page's TypeScript types of every report and job, generated from these structs (`./build.sh types`, docs/BUILD.md)
 # (no-serde-warnings: ts-rs notes every serde attribute it does not read; here only `deserialize_with` checks, which
 # keep the shape)
 ts-rs = { version = "=12.0.1", features = ["no-serde-warnings"] }
-# the worker's kept state as the page stores it (src/career/state.rs): postcard's binary serde, every f64 its 8 bytes
-# (infinite step costs included), in base64 text, a string the page keeps without reading
-postcard = { version = "1", default-features = false, features = ["alloc"] }
-base64 = "0.22"
 
 # the native command line's arguments (src/cli.rs); not in the wasm
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

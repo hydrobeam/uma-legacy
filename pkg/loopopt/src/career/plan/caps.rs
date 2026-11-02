@@ -216,7 +216,7 @@ pub(crate) fn plan_caps(
                 Some(cap) if cap.binds(&own_plan) => cap.kept.curve,
                 _ => CapCurve::of(continuation),
             };
-            (odds > 0.0 && own_plan.expected_careers.is_finite())
+            (odds > 0.0 && own_plan.expected_careers.careers().is_some())
                 .then_some((trainees[candidate], KeptCap { curve, odds }))
         })
         .collect()
@@ -234,6 +234,7 @@ pub(crate) fn keep_caps(kept: &mut KeptState, pool: CapPool, caps: Vec<(UmaIndex
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::career::plan::cont::StepCareers;
     use serde_json::{Value, json};
 
     /// The pool of a job's `legacies` and `trainees` (JSON as a job sends them), its fixed parents at `fixed`.
@@ -255,7 +256,7 @@ mod tests {
     /// The cap's careers at her odds now, read through the kept plans of `pool`.
     fn careers(kept: &KeptState, pool: &CapPool) -> Option<f64> {
         least_caps(&held_caps(&kept.step_caps, pool, &[UmaIndex(4)]), &[ODDS_NOW])[0]
-            .map(|cap| cap.now.expected_careers)
+            .map(|cap| cap.now.expected_careers.as_f64())
     }
 
     fn pool(job: Value) -> CapPool {
@@ -272,7 +273,7 @@ mod tests {
         let mut kept = KeptState::default();
         let (slow, fast) = (kept_cap(0.01), kept_cap(0.05));
         let (slow_careers, fast_careers) =
-            (slow.curve.plan(ODDS_NOW).expected_careers, fast.curve.plan(ODDS_NOW).expected_careers);
+            (slow.curve.plan(ODDS_NOW).expected_careers.as_f64(), fast.curve.plan(ODDS_NOW).expected_careers.as_f64());
         assert!(fast_careers < slow_careers);
         keep_caps(&mut kept, kept_pool.clone(), vec![(UmaIndex(4), slow)]);
         let added = pool(json!({"legacies": [third, second, first], "trainees": []}));
@@ -320,18 +321,18 @@ mod tests {
         let kept = kept_cap(0.05);
         let continuation = Cont::with_decay(0.05, 0.5, 0.01, KEPT_ODDS, 1.5);
         let cap = StepCap::at(kept, ODDS_NOW);
-        assert_eq!(cap.now.expected_careers.to_bits(), continuation.cost(ODDS_NOW).to_bits());
+        assert_eq!(cap.now.expected_careers.as_f64().to_bits(), continuation.cost(ODDS_NOW).as_f64().to_bits());
         assert!(cap.now.expected_careers < continuation.cost(KEPT_ODDS), "the kept odds' cost would plateau");
         // a dearer refit is capped at the old curve, at every odds; a cheaper one stands
         let held = StepCaps::new(vec![kept], ODDS_NOW);
-        let dear = BuildPlan { expected_careers: 1e6, building_careers: 0.0, grind_odds: 1e-6 };
+        let dear = BuildPlan { expected_careers: StepCareers::finite(1e6), building_careers: 0.0, grind_odds: 1e-6 };
         assert_eq!(capped(dear, Some(cap)).expected_careers, cap.now.expected_careers);
-        let at_three = held.capped_at(dear, 0.003).expected_careers;
-        assert_eq!(at_three.to_bits(), continuation.cost(0.003).to_bits());
-        let cheap = BuildPlan { expected_careers: 10.0, building_careers: 0.0, grind_odds: 0.1 };
-        assert_eq!(capped(cheap, Some(cap)).expected_careers, 10.0);
-        assert_eq!(held.capped_at(cheap, 0.003).expected_careers, 10.0);
-        assert_eq!(capped(dear, None).expected_careers, 1e6);
+        let at_three = held.capped_at(dear, 0.003).expected_careers.as_f64();
+        assert_eq!(at_three.to_bits(), continuation.cost(0.003).as_f64().to_bits());
+        let cheap = BuildPlan { expected_careers: StepCareers::finite(10.0), building_careers: 0.0, grind_odds: 0.1 };
+        assert_eq!(capped(cheap, Some(cap)).expected_careers.as_f64(), 10.0);
+        assert_eq!(held.capped_at(cheap, 0.003).expected_careers.as_f64(), 10.0);
+        assert_eq!(capped(dear, None).expected_careers.as_f64(), 1e6);
         // a plan's own caps: her curve, or her cap's where it binds at her odds now
         let own = Cont::with_decay(0.01, 0.5, 0.01, ODDS_NOW, 1.5);
         let kept_now = plan_caps(&[UmaIndex(4)], &[ODDS_NOW], std::slice::from_ref(&own), std::slice::from_ref(&held));
@@ -349,14 +350,18 @@ mod tests {
         let grinding = KeptCap { curve: CapCurve::of(&Cont::with_decay(0.0, 0.0, 0.0, 0.001, 1.5)), odds: 0.001 };
         let building = KeptCap { curve: CapCurve::of(&Cont::with_decay(0.1, 1.0, 0.01, 0.001, 1.5)), odds: 0.001 };
         let (now_odds, alternative_odds) = (0.02, 0.001);
-        assert_eq!(grinding.curve.plan(now_odds).expected_careers, 50.0);
-        assert_eq!(building.curve.plan(now_odds).expected_careers, 50.0);
+        assert_eq!(grinding.curve.plan(now_odds).expected_careers.as_f64(), 50.0);
+        assert_eq!(building.curve.plan(now_odds).expected_careers.as_f64(), 50.0);
         let held = StepCaps::new(vec![grinding, building], now_odds);
         assert_eq!(held.now.unwrap().kept, grinding, "tied at her odds now: the earlier");
-        let grind_at_once = BuildPlan { expected_careers: 1000.0, building_careers: 0.0, grind_odds: alternative_odds };
+        let grind_at_once = BuildPlan {
+            expected_careers: StepCareers::finite(1000.0),
+            building_careers: 0.0,
+            grind_odds: alternative_odds,
+        };
         let one_cap = least_caps(&[vec![grinding, building]], &[now_odds])[0].unwrap();
-        assert_eq!(one_cap.kept.curve.plan(alternative_odds).expected_careers, 1000.0, "the one cap's price");
-        let priced = held.capped_at(grind_at_once, alternative_odds).expected_careers;
+        assert_eq!(one_cap.kept.curve.plan(alternative_odds).expected_careers.as_f64(), 1000.0, "the one cap's price");
+        let priced = held.capped_at(grind_at_once, alternative_odds).expected_careers.as_f64();
         assert!((priced - 110.0).abs() < 0.5, "the held caps' price {priced}");
     }
 }

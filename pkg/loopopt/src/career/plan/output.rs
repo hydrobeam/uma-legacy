@@ -117,7 +117,7 @@ pub(crate) fn assemble_plan_output<'data>(
                 .trainees
                 .iter()
                 .position(|&candidate_trainee| candidate_trainee == trainee)
-                .map(|candidate| scores.fit.step_costs[candidate]),
+                .and_then(|candidate| scores.fit.step_costs[candidate].careers()),
             index: row.net_saving(),
             saving: row.net_saving().map(|net_saving| net_saving + 1.0),
             lift: row.scoring.as_ref().map(|scoring| scoring.improvement_chance),
@@ -195,11 +195,10 @@ pub(crate) fn assemble_plan_output<'data>(
         .filter_map(|candidate| {
             let cap = candidates.step_caps[candidate].now?;
             let own_step = fit.continuations[candidate].cost(candidates.current_odds[candidate]);
+            // (a cap below her step is finite: `Never` is below no step)
+            let careers = cap.now.expected_careers.careers()?;
             (cap.now.expected_careers < own_step).then(|| {
-                (
-                    data.umas[candidates.trainees[candidate]].id.to_string(),
-                    StepCap { careers: cap.now.expected_careers, p: cap.kept.odds },
-                )
+                (data.umas[candidates.trainees[candidate]].id.to_string(), StepCap { careers, p: cap.kept.odds })
             })
         })
         .collect();

@@ -29,7 +29,7 @@ pub(crate) struct ScoreBase<'base> {
     /// The stage-1 candidates, as umas.
     pub(crate) candidates: &'base [crate::uma::UmaIndex],
     /// Each candidate's step in expected careers: a fresh full veteran from her best career now (c1).
-    pub(crate) step_costs: &'base [f64],
+    pub(crate) step_costs: &'base [StepCareers],
     /// V0: the plan's expected careers now.
     pub(crate) current_value: f64,
     /// Each candidate's stage-1 odds now.
@@ -95,11 +95,12 @@ pub(crate) enum SideStep {
 }
 
 impl SideStep {
-    /// The side's careers when her step is `step`.
-    pub(crate) const fn cost(self, step: f64) -> f64 {
+    /// The side's careers when her step is `step` (a Current side's step is finite: `plan_sides` gives her none
+    /// where it is `Never`).
+    pub(crate) const fn cost(self, step: StepCareers) -> f64 {
         match self {
             Self::Existing(_) => 0.0,
-            Self::Current => step,
+            Self::Current => step.as_f64(),
             Self::Alternative(alternative_step) => alternative_step,
         }
     }
@@ -224,13 +225,13 @@ impl ScoreBase<'_> {
 }
 
 /// A trio's careers at steps `step_costs`: A's side + B's side + C's step
-pub(crate) fn trio_value(step_costs: &[f64], sides: &[Vec<TrioSideVeteran>], trio: &Trio) -> f64 {
+pub(crate) fn trio_value(step_costs: &[StepCareers], sides: &[Vec<TrioSideVeteran>], trio: &Trio) -> f64 {
     let side = |slot: TrioSlot| sides[slot.candidate.0][slot.side].step.cost(step_costs[slot.candidate.0]);
     side(trio.sides[0]) + side(trio.sides[1]) + trio.finisher_cost
 }
 
 /// V over the trios at steps `step_costs`: the least `trio_value` (infinite with no trio)
-pub(crate) fn trio_v(step_costs: &[f64], sides: &[Vec<TrioSideVeteran>], trios: &[Trio]) -> f64 {
+pub(crate) fn trio_v(step_costs: &[StepCareers], sides: &[Vec<TrioSideVeteran>], trios: &[Trio]) -> f64 {
     // (a plain comparison: no value here is NaN, so the same minimum as f64::min)
     let mut best = f64::INFINITY;
     for trio in trios {
@@ -287,6 +288,16 @@ pub(crate) trait SameBits {
 impl SameBits for f64 {
     fn same_bits(&self, other: &Self) -> bool {
         self.to_bits() == other.to_bits()
+    }
+}
+
+impl SameBits for StepCareers {
+    fn same_bits(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Finite(first), Self::Finite(second)) => first.same_bits(second),
+            (Self::Never, Self::Never) => true,
+            _ => false,
+        }
     }
 }
 
@@ -454,11 +465,49 @@ pub(crate) struct LatticePoint {
     pub(crate) building: f64,
 }
 
+/// A step's expected careers (`BuildPlan::expected_careers`, `ScoreBase::step_costs`): finite, or `Never` where her
+/// odds are 0 (no career of hers lands, so the step never ends). Ordered as the extended reals order them, every finite
+/// step below `Never` (the derived order: `Finite` is declared first), so each comparison reads as it did when `Never`
+/// was an infinite f64. `Finite` holds a finite f64 only (built by `finite`, which asserts it), so the kept state that
+/// stores a step (`KeptBase`, `caps::StepCap`) writes plain JSON numbers (`state::encode`).
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize)]
+pub(crate) enum StepCareers {
+    Finite(f64),
+    Never,
+}
+
+impl StepCareers {
+    /// A finite step's.
+    pub(crate) fn finite(careers: f64) -> Self {
+        debug_assert!(careers.is_finite(), "a step of {careers} careers");
+        Self::Finite(careers)
+    }
+    /// Grinding at odds p: 1 / p careers, never at no odds.
+    pub(crate) fn grinding(p: f64) -> Self {
+        if p <= 0.0 { Self::Never } else { Self::finite(1.0 / p) }
+    }
+    /// Its careers, None where it never ends.
+    pub(crate) const fn careers(self) -> Option<f64> {
+        match self {
+            Self::Finite(careers) => Some(careers),
+            Self::Never => None,
+        }
+    }
+    /// As the scoring's sums and minima read it: `Never` as +infinity (a trio of such a side is never the least, and a
+    /// sum holding it is above every finite one).
+    pub(crate) const fn as_f64(self) -> f64 {
+        match self {
+            Self::Finite(careers) => careers,
+            Self::Never => f64::INFINITY,
+        }
+    }
+}
+
 /// What `Cont::plan` chooses at odds p: build n successes, then grind.
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BuildPlan {
     /// Expected careers to her full veteran.
-    pub(crate) expected_careers: f64,
+    pub(crate) expected_careers: StepCareers,
     /// Expected careers spent building her n successes (each success takes 1 / lam(p_j) careers): the table's
     /// `careers_built` through success n times `building_scale(p)`, 0 with no building. `expected_careers` is this plus
     /// 1 / `grind_odds`.
@@ -590,7 +639,7 @@ impl Cont {
             };
         }
         let at_anchor = self.plan_n(self.anchor_odds);
-        points[0] = LatticePoint { cost: at_anchor.expected_careers, building: at_anchor.building_careers };
+        points[0] = LatticePoint { cost: at_anchor.expected_careers.as_f64(), building: at_anchor.building_careers };
         for j in 1..=CONT_N {
             if points[j].cost > points[j - 1].cost {
                 points[j] = points[j - 1];
@@ -620,11 +669,11 @@ impl Cont {
             (between(low.cost, high.cost), between(low.building, high.building).min(between(low.cost, high.cost)))
         };
         if 1.0 / p <= cost {
-            return BuildPlan { expected_careers: 1.0 / p, building_careers: 0.0, grind_odds: p };
+            return BuildPlan { expected_careers: StepCareers::grinding(p), building_careers: 0.0, grind_odds: p };
         }
         let grind = cost - building;
         BuildPlan {
-            expected_careers: cost,
+            expected_careers: StepCareers::finite(cost),
             building_careers: building,
             grind_odds: if grind > 0.0 { 1.0 / grind } else { self.pinf },
         }
@@ -643,11 +692,8 @@ impl Cont {
     /// The best plan from odds p: build n successes, then grind at p_n; the best n. At pinf and above (phi = 1 lifts
     /// straight there) she grinds: no building is left
     pub(crate) fn plan(&self, p: f64) -> BuildPlan {
-        if p <= 0.0 {
-            return BuildPlan { expected_careers: f64::INFINITY, building_careers: 0.0, grind_odds: p };
-        }
-        if self.lam <= 0.0 || self.phi <= 0.0 || self.pinf <= p {
-            return BuildPlan { expected_careers: 1.0 / p, building_careers: 0.0, grind_odds: p };
+        if self.lam <= 0.0 || self.phi <= 0.0 || p <= 0.0 || self.pinf <= p {
+            return BuildPlan { expected_careers: StepCareers::grinding(p), building_careers: 0.0, grind_odds: p };
         }
         if p > self.anchor_odds && !self.lattice.is_empty() {
             return self.memo.plan.borrow_mut().get_or(|| p.to_bits(), || self.lattice_plan(p));
@@ -672,9 +718,13 @@ impl Cont {
             (best, building_careers) = (x, built);
             n += 1;
         }
-        BuildPlan { expected_careers: best, building_careers, grind_odds: self.pinf * (lr * t[n].gap_left).exp() }
+        BuildPlan {
+            expected_careers: StepCareers::finite(best),
+            building_careers,
+            grind_odds: self.pinf * (lr * t[n].gap_left).exp(),
+        }
     }
-    pub(crate) fn cost(&self, p: f64) -> f64 {
+    pub(crate) fn cost(&self, p: f64) -> StepCareers {
         self.plan(p).expected_careers
     }
     /// The path `plan_n` scans from odds p: per n successes (0 to CONT_N) the careers built through them and her odds
@@ -706,12 +756,9 @@ pub(crate) struct PathPoint {
 /// `Cont::with_decay(lam, phi, pinf, p, lam_decay).cost(p)` without the table or a memo (the same expressions in the same
 /// order, so the same f64): what a continuation anchored at her odds now costs her, for choosing among builders
 /// (`fit_continuation`)
-pub(crate) fn anchored_cost(lam: f64, phi: f64, pinf: f64, p: f64, lam_decay: f64) -> f64 {
-    if p <= 0.0 {
-        return f64::INFINITY;
-    }
-    if lam <= 0.0 || phi <= 0.0 || pinf <= p {
-        return 1.0 / p;
+pub(crate) fn anchored_cost(lam: f64, phi: f64, pinf: f64, p: f64, lam_decay: f64) -> StepCareers {
+    if lam <= 0.0 || phi <= 0.0 || p <= 0.0 || pinf <= p {
+        return StepCareers::grinding(p);
     }
     let (r, lr) = (1.0 - phi, (p / pinf).ln());
     let (mut built, mut best) = (0.0f64, 1.0 / p);
@@ -723,7 +770,7 @@ pub(crate) fn anchored_cost(lam: f64, phi: f64, pinf: f64, p: f64, lam_decay: f6
         }
         best = x;
     }
-    best
+    StepCareers::finite(best)
 }
 
 /// The careers spent building through each success from one odds (W_n, `Cont::building_scale` s there): s x the table's
@@ -757,16 +804,17 @@ impl Building {
 impl ScoreBase<'_> {
     /// Her step at odds p (as the base prices odds, `odds_scale`): her Cont's cost there, or her least held cap curve's
     /// there where cheaper (`caps::StepCaps::capped_at`), and whether she still builds at those odds
-    /// (`BuildPlan::building_careers` > 0); with no Cont (a default one's, lam = 0) she grinds at p
+    /// (`BuildPlan::building_careers` > 0); with no Cont (a default one's, lam = 0) she grinds at p. The step as the
+    /// scoring's sums read it (`StepCareers::as_f64`)
     pub(crate) fn step_plan(&self, candidate: usize, p: f64) -> (f64, bool) {
         let p = p * self.odds_scales.of(self.candidates[candidate]);
         match self.continuations.get(candidate) {
             Some(continuation) => {
                 let own = continuation.plan(p);
                 let plan = self.step_caps.get(candidate).map_or(own, |caps| caps.capped_at(own, p));
-                (plan.expected_careers, plan.building_careers > 0.0)
+                (plan.expected_careers.as_f64(), plan.building_careers > 0.0)
             }
-            None => (if p <= 0.0 { f64::INFINITY } else { 1.0 / p }, false),
+            None => (StepCareers::grinding(p).as_f64(), false),
         }
     }
 }
@@ -815,8 +863,8 @@ mod tests {
             best = x;
             n += 1;
         }
-        assert_eq!(cont.cost(P0).to_bits(), best.to_bits());
-        assert_eq!(anchored_cost(LAM, 0.5, PINF, P0, LAM_DECAY).to_bits(), best.to_bits());
+        assert_eq!(cont.cost(P0).as_f64().to_bits(), best.to_bits());
+        assert_eq!(anchored_cost(LAM, 0.5, PINF, P0, LAM_DECAY).as_f64().to_bits(), best.to_bits());
     }
 
     #[test]
@@ -829,19 +877,19 @@ mod tests {
                     break;
                 }
                 assert!(
-                    close(cont.cost(p), scanned(phi, p), 1e-9),
+                    close(cont.cost(p).as_f64(), scanned(phi, p), 1e-9),
                     "phi {phi} p {p}: {} vs {}",
-                    cont.cost(p),
+                    cont.cost(p).as_f64(),
                     scanned(phi, p)
                 );
             }
         }
         let cont = Cont::new(LAM, 0.5, PINF, P0);
-        assert!(close(cont.cost(0.001), 157.008_997, 1e-8), "{}", cont.cost(0.001));
+        assert!(close(cont.cost(0.001).as_f64(), 157.008_997, 1e-8), "{}", cont.cost(0.001).as_f64());
         // phi = 1: one success reaches pinf; at pinf nothing is left to build
         let lifted_once = Cont::new(LAM, 1.0, PINF, P0);
-        assert!(close(lifted_once.cost(0.001), 102.0, 1e-12));
-        assert_eq!(lifted_once.cost(PINF), 1.0 / PINF);
+        assert!(close(lifted_once.cost(0.001).as_f64(), 102.0, 1e-12));
+        assert_eq!(lifted_once.cost(PINF).as_f64(), 1.0 / PINF);
     }
 
     /// Above p0 the cost falls as the odds rise (the lattice's costs to go, interpolated in the fractional index), meets
@@ -877,28 +925,36 @@ mod tests {
                 continue;
             }
             let cont = Cont::with_decay(lam, phi, pinf, p0, decay);
-            assert_eq!(cont.cost(p0).to_bits(), anchored_cost(lam, phi, pinf, p0, decay).to_bits());
-            let mut last = cont.cost(p0);
+            assert_eq!(cont.cost(p0).as_f64().to_bits(), anchored_cost(lam, phi, pinf, p0, decay).as_f64().to_bits());
+            let mut last = cont.cost(p0).as_f64();
             for k in 1..=2000 {
                 let p = p0 * (pinf / p0).powf(f64::from(k) / 2000.0);
                 if p >= pinf {
                     break;
                 }
-                let cost = cont.cost(p);
+                let cost = cont.cost(p).as_f64();
                 assert!(cost <= last, "lam {lam} phi {phi} pinf {pinf} p0 {p0}: cost({p}) {cost} > {last}");
                 last = cost;
             }
             // never above grinding at once, at any odds
             for k in 0..=400 {
                 let p = p0 * 0.25 * (4.0 * pinf / p0).powf(f64::from(k) / 400.0);
-                assert!(cont.cost(p) <= 1.0 / p, "lam {lam} phi {phi}: cost({p}) {} > 1 / p", cont.cost(p));
+                assert!(
+                    cont.cost(p).as_f64() <= 1.0 / p,
+                    "lam {lam} phi {phi}: cost({p}) {} > 1 / p",
+                    cont.cost(p).as_f64()
+                );
             }
             if phi < 1.0 {
                 for j in 1..6 {
                     let p_j = pinf * ((p0 / pinf).ln() * (1.0 - phi).powi(j)).exp();
                     let point = cont.lattice[j as usize].cost;
                     let want = point.min(1.0 / p_j);
-                    assert!(close(cont.cost(p_j), want, 1e-9), "phi {phi}: cost(p_{j}) {} vs {want}", cont.cost(p_j));
+                    assert!(
+                        close(cont.cost(p_j).as_f64(), want, 1e-9),
+                        "phi {phi}: cost(p_{j}) {} vs {want}",
+                        cont.cost(p_j).as_f64()
+                    );
                 }
             }
         }
@@ -912,21 +968,21 @@ mod tests {
         let cont = Cont::new(0.5, 0.5, 0.01, 0.001);
         // (1 / q = 122.5712: the interpolation alone was 124.415)
         let q = 0.008_158_525;
-        assert!(cont.cost(q) <= 1.0 / q && cont.cost(q) < 122.5712, "{}", cont.cost(q));
+        assert!(cont.cost(q).as_f64() <= 1.0 / q && cont.cost(q).as_f64() < 122.5712, "{}", cont.cost(q).as_f64());
         let once = Cont::new(0.5, 1.0, 0.01, 0.001);
-        assert!(once.cost(0.0099) <= 101.011, "{}", once.cost(0.0099));
-        assert!(close(once.cost(0.0099), 1.0 / 0.0099, 1e-12));
+        assert!(once.cost(0.0099).as_f64() <= 101.011, "{}", once.cost(0.0099).as_f64());
+        assert!(close(once.cost(0.0099).as_f64(), 1.0 / 0.0099, 1e-12));
         assert_eq!(once.plan(0.0099).building_careers, 0.0);
         assert_eq!(once.plan(0.0099).grind_odds, 0.0099);
         // a small phi: the lattice's 500 points end short of pinf; just below pinf she grinds, at about 1 / pinf
         let slow = Cont::new(0.5, 0.001, 0.01, 0.001);
         let near_pinf = 0.01 * (1.0 - 1e-9);
-        assert!(slow.cost(near_pinf) <= 1.0 / near_pinf && close(slow.cost(near_pinf), 100.0, 1e-6));
-        let mut last = slow.cost(0.001);
+        assert!(slow.cost(near_pinf).as_f64() <= 1.0 / near_pinf && close(slow.cost(near_pinf).as_f64(), 100.0, 1e-6));
+        let mut last = slow.cost(0.001).as_f64();
         for k in 1..=1000 {
             let p = 0.001 * 10f64.powf(f64::from(k) / 1000.0) * (1.0 - 1e-12);
-            assert!(slow.cost(p) <= last, "{p}");
-            last = slow.cost(p);
+            assert!(slow.cost(p).as_f64() <= last, "{p}");
+            last = slow.cost(p).as_f64();
         }
     }
 
@@ -941,13 +997,13 @@ mod tests {
         for p in [P0, 0.5 * P0, p1] {
             let lifted = PINF * ((p / PINF).ln() * (1.0 - phi)).exp();
             assert!(cont.plan(p).building_careers > 0.0, "building pays at {p}");
-            let score = rate(p) * (cont.cost(p) - cont.cost(lifted)) - 1.0;
+            let score = rate(p) * (cont.cost(p).as_f64() - cont.cost(lifted).as_f64()) - 1.0;
             assert!(score.abs() < 1e-6, "p {p}: score {score}");
         }
         // the old continuation, its decay started again at the lifted odds, credits the same builder with careers
         let restarted = Cont::new(LAM, phi, PINF, PINF * ((P0 / PINF).ln() * (1.0 - phi)).exp());
         let lifted = PINF * ((P0 / PINF).ln() * (1.0 - phi)).exp();
-        let restart_score = LAM * (cont.cost(P0) - restarted.cost(lifted)) - 1.0;
+        let restart_score = LAM * (cont.cost(P0).as_f64() - restarted.cost(lifted).as_f64()) - 1.0;
         assert!(restart_score > 0.5, "the restart's score {restart_score}");
     }
 }

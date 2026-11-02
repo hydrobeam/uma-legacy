@@ -288,7 +288,7 @@ pub(crate) struct PlanOption {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub(crate) assumes: Option<Assumes>,
-    /// her stage step's careers (null: not a stage candidate)
+    /// her stage step's careers (null: not a stage candidate, or a step that never ends: no odds now)
     pub(crate) stage_cost: Option<f64>,
     /// the careers she saves toward a fully looped parent, net (null: not scored)
     pub(crate) index: Option<f64>,
