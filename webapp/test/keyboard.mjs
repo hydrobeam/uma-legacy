@@ -139,13 +139,12 @@ export default async function keyboard(b) {
   const tipSeen = await pg.evaluate(() => {
     const t = document.querySelector('#gm-tip'),
       a = document.activeElement,
-      at = a?.getBoundingClientRect(),
-      r = t?.getBoundingClientRect(),
-      // the balloon 10 px under its control, or above it
-      beside = !!at && !!r && (Math.abs(r.top - at.bottom - 10) < 2 || Math.abs(at.top - r.bottom - 10) < 2);
-    return `${a?.id} fv ${a?.matches(':focus-visible')} tip ${!!t} hidden ${t?.hidden} beside ${beside} "${t?.textContent}"`;
+      cs = t && getComputedStyle(t),
+      // the game's balloon: its green rim, its own width (an unstyled popover has no rim and spans to the right edge)
+      balloon = !!cs && cs.borderTopWidth === '2px' && cs.right !== '0px';
+    return `${a?.id} fv ${a?.matches(':focus-visible')} tip ${!!t} hidden ${t?.hidden} balloon ${balloon} "${t?.textContent}"`;
   });
-  const tip = / tip true hidden false beside true "Automatically search/.test(tipSeen);
+  const tip = / tip true hidden false balloon true "Automatically search/.test(tipSeen);
   await pg.evaluate(() => /** @type {HTMLElement} */ (document.activeElement).blur());
   check('keyboard, tooltip: keyboard focus on a titled control shows its balloon', tip, tipSeen);
   await expect.soft(pg.locator('#gm-tip'), 'keyboard, tooltip: moving the focus away hides it').toBeHidden();

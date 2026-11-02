@@ -161,7 +161,8 @@ function workerStandIn(how) {
     new Promise((resolve) => {
       setTimeout(resolve, ms);
     });
-  const background = (job) => job?.cmd === 'state_out' || !!job?.next?.robust;
+  // (a plan's check is the career job's `next.robust`: the jobs are nested under `cmd` since 226590a)
+  const background = (job) => job?.cmd === 'state_out' || !!job?.career?.next?.robust;
   // the jobs under way in this page's workers (foreground ones, and state stores), and when a foreground one last ended
   const open = { foreground: 0, store: 0, ended: performance.now() };
   const kindOf = (job) => (job?.cmd === 'state_out' ? 'store' : background(job) ? null : 'foreground');
