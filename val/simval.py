@@ -5,7 +5,7 @@ wall clocks are ignored). For solver work that must not move the simulator's tra
 
 usage: simval.py BIN TAG [REF] [-j N]
   writes val/sim/TAG__NAME.out; compares with val/sim/REF__NAME.out (default REF: ref)
-  -j N  jobs at a time (default 2)
+  -j N  jobs at a time (default: the CPU count less two)
 
 Each job is a pool file (a career job) with the job's `simulate` block put in, run from the era's data folder (the
 pool's file paths are relative to it)."""
@@ -50,7 +50,14 @@ def main():
     parser.add_argument("binary", metavar="BIN")
     parser.add_argument("tag", help="writes val/sim/TAG__NAME.out")
     parser.add_argument("ref", nargs="?", default="ref", help="compares with val/sim/REF__NAME.out (default ref)")
-    parser.add_argument("-j", type=int, default=2, dest="parallelism", metavar="N", help="jobs at a time")
+    parser.add_argument(
+        "-j",
+        type=int,
+        default=max(1, (os.cpu_count() or 4) - 2),
+        dest="parallelism",
+        metavar="N",
+        help="jobs at a time",
+    )
     arguments = parser.parse_intermixed_args()
     parallelism = arguments.parallelism
     binary, tag = os.path.abspath(arguments.binary), arguments.tag
