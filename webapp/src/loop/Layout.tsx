@@ -3,15 +3,15 @@
 // (main.tsx), which fills in `views` once the game data is in (the status line's two parts from the first status worth
 // showing) and the state of what the layout draws itself: the status row's state and tooltip, the dimmed results, the
 // switches, the phone's floating status button. Imports nothing but Preact, the shell and its class helpers
-// (ui/Shell.tsx says why). The results column: on a phone (the columns stacked) it comes first, before the setup, in
+// (setup/Shell.tsx says why). The results column: on a phone (the columns stacked) it comes first, before the setup, in
 // the reading and Tab order too (`phone`; loop.html's script after #app puts it there before the scripts run, so the
 // first paint has it); on a desktop it scrolls with the page beside the setup.
 import type { ComponentChildren, RefObject } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { cx } from 'tailwind-variants/lite';
-import { EnhButtons, EraRow, Footer, Ribbon, setRow } from '../ui/Shell.tsx';
+import { EnhButtons, EraRow, Footer, Ribbon, setRow } from '../setup/Shell.tsx';
 import { panel } from '../ui/Panel.tsx';
-import type { Badge } from '../ui/Shell.tsx';
+import type { Badge } from '../setup/Shell.tsx';
 import type { Era } from '../model/eras.ts';
 import { Button } from '../ui/Button.tsx';
 import { Switch } from '../ui/Switch.tsx';

@@ -42,7 +42,7 @@ export function RunNote() {
     </>
   );
 }
-// the buttons an act names by id (loop/job.ts `blockedStatus`), by what they do: `#r-all` (ui/Roster.tsx), Mark all
+// the buttons an act names by id (loop/job.ts `blockedStatus`), by what they do: `#r-all` (setup/Roster.tsx), Mark all
 // umas owned
 const PRESSES: Partial<Record<string, () => void>> = { 'r-all': ownAllUmas };
 /** the button beside the status line (#r-act): Stop while a search runs, else the one the status offers

@@ -5,7 +5,7 @@
 import { fields } from '../state/settings.ts';
 import { goldGiven } from '../model/job.ts';
 import { namesOf } from '../state/targets.ts';
-import { SkillIcon } from './Images.tsx';
+import { SkillIcon } from '../ui/Images.tsx';
 import { cx } from 'tailwind-variants/lite';
 
 // A list key per tile of `groups`: the group, and its count before when it repeats (only a hand-edited import repeats

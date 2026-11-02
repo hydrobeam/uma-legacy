@@ -3,7 +3,7 @@
 // pals, by rarity, in the chosen order; it is drawn again only when that list changes (targets, scenario, order). A tile
 // is a toggle, pressed = owned; its name is its visible text (name, title, what it gives), so voice control matches it.
 // Its pressed state and the filter's verdict are each bound to a computed, so a click, All / None or a keystroke
-// redraws no tile. Drawn in the Support cards dialog (ui/Setup.tsx).
+// redraws no tile. Drawn in the Support cards dialog (setup/Setup.tsx).
 import { computed, signal, useComputed } from '@preact/signals';
 import { Fragment } from 'preact';
 import { useRef } from 'preact/hooks';
@@ -13,12 +13,12 @@ import { fields, settings } from '../state/settings.ts';
 import { goldGiven } from '../model/job.ts';
 import { cardGives, cardTitle, ownAllCards, ownNoCards, toggleCard } from '../state/cards.ts';
 import type { CardGift } from '../state/cards.ts';
-import { CardAv } from './Images.tsx';
+import { CardAv } from '../ui/Images.tsx';
 import { OWNED_PANEL, OwnedImport, useSaid } from './OwnedImport.tsx';
-import { SettingsSort } from './SortMenu.tsx';
-import { useMoreFade } from './moreFade.ts';
-import { Button } from './Button.tsx';
-import { field } from './Field.ts';
+import { SettingsSort } from './SettingsSort.tsx';
+import { useMoreFade } from '../ui/moreFade.ts';
+import { Button } from '../ui/Button.tsx';
+import { field } from '../ui/Field.ts';
 import { cx } from 'tailwind-variants/lite';
 
 // the filter's text, trimmed and lower-cased: a card shows when its name holds it

@@ -16,7 +16,7 @@ import { Results, drawResult } from '../../src/loop/Results.tsx';
 import { AffinityDialog } from '../../src/loop/Affinity.tsx';
 import { ScheduleDialog } from '../../src/ui/Schedule.tsx';
 import { CardPop } from '../../src/ui/CardPop.tsx';
-import { CardsPanel } from '../../src/ui/Cards.tsx';
+import { CardsPanel } from '../../src/setup/Cards.tsx';
 import { closePop, initPopover } from '../../src/popover.ts';
 import { jobTargets } from '../../src/model/job.ts';
 import type { DrawnReport, LoopReport } from '../../src/loop/types.ts';

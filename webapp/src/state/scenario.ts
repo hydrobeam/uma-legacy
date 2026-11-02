@@ -1,5 +1,5 @@
 // ---------- the scenarios: those this era offers, a pick (with its golds and default lineage rank), their labels ----------
-// The scenario picker and the lineage rank control that draw them are ui/Scenario.tsx.
+// The scenario picker and the lineage rank control that draw them are setup/Scenario.tsx.
 import { SCENARIOS, SCEN_GOLDS, gameData } from '../model/data.ts';
 import type { RankClass } from '../gen/solver.ts';
 import { ERA } from './saved.ts';

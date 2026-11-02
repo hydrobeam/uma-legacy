@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-// The shared setup editors (ui/Presets, ui/Targets) on happy-dom's document, compiled as the page's build compiles
-// them: what each edit stores. Presets by name: Load, Overwrite, a rename, a rename onto a taken name, Delete
+// The shared setup editors (setup/Presets, setup/Targets) on happy-dom's document, compiled as the page's build
+// compiles them: what each edit stores. Presets by name: Load, Overwrite, a rename, a rename onto a taken name, Delete
 // after a rename (review-11a F1); a target's removal and where the focus goes after it; the rank's ? keeps its click
 // (F2); a sort menu over a stored value it doesn't list (F3); two presets of one name in storage (F4); the
 // editors redraw for the settings they show only (F6); their lists' keys are unique (F7, preact/debug's check); two
@@ -14,9 +14,10 @@ import { h, options, render } from 'preact';
 import { within } from '@testing-library/dom';
 import * as S from '../../src/state/settings.ts';
 import * as P from '../../src/state/presets.ts';
-import { PresetDialogs, openPresets } from '../../src/ui/Presets.tsx';
-import { setupViews } from '../../src/ui/Setup.tsx';
-import { SettingsSort, SortMenu } from '../../src/ui/SortMenu.tsx';
+import { PresetDialogs, openPresets } from '../../src/setup/Presets.tsx';
+import { setupViews } from '../../src/setup/Setup.tsx';
+import { SettingsSort } from '../../src/setup/SettingsSort.tsx';
+import { SortMenu } from '../../src/ui/SortMenu.tsx';
 import { gameData, loadData } from '../../src/model/data.ts';
 import { SKILLS, UMAS } from './fakepage.ts';
 import { must } from '../../src/must.ts';
@@ -26,7 +27,7 @@ vi.mock('#page-data', () => import('./fakepage.ts'));
 
 document.documentElement.className = 'game'; // (the planner pages' class)
 // the editors' boxes, as both planner pages' layouts hold them (career/Layout.tsx, loop/Layout.tsx), and the view
-// each draws (ui/Setup.tsx `setupViews`)
+// each draws (setup/Setup.tsx `setupViews`)
 type BoxId = 'scen-dd' | 'rank-ctl' | 'skills-panel' | 'set-umas-root' | 'set-cards-root';
 const BOXES: Record<BoxId, keyof ReturnType<typeof setupViews>> = {
   'scen-dd': 'scenario',

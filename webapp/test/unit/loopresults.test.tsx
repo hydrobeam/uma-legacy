@@ -19,7 +19,7 @@ import { RunAct, RunNote } from '../../src/loop/RunNote.tsx';
 import { beginSearch, initLoopState, interim, loopDrawn, settle, tick } from '../../src/loop/state.ts';
 import type { DrawnReport, LoopResult, ShownResult } from '../../src/loop/types.ts';
 import { loadExample, saveCurrent } from '../../src/state/presets.ts';
-import { PresetDialogs, openPresets } from '../../src/ui/Presets.tsx';
+import { PresetDialogs, openPresets } from '../../src/setup/Presets.tsx';
 import {
   DEFAULTS,
   importSettings,

@@ -18,10 +18,10 @@ import {
   suggestName,
 } from '../state/presets.ts';
 import { must } from '../must.ts';
-import { Dialog, DialogHead, DialogPanel } from './Dialog.tsx';
+import { Dialog, DialogHead, DialogPanel } from '../ui/Dialog.tsx';
 import { TargetTile, groupKeys } from './TargetTile.tsx';
-import { Button } from './Button.tsx';
-import { field } from './Field.ts';
+import { Button } from '../ui/Button.tsx';
+import { field } from '../ui/Field.ts';
 import { cx } from 'tailwind-variants/lite';
 
 // the list dialog: open, and what its status line says (cleared each time it opens)

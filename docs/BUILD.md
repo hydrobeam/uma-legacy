@@ -203,7 +203,7 @@ with a portrait in `webapp/img/`. It writes:
   in `webapp/`. Shared head and header markup lives in `webapp/partials/` (the theme script, the header), each
   `{{> name}}` filled by `vite-plugin-handlebars`, which also fills the values a page shows (`{{version}}`, `{{site}}`,
   /about's figures; a name without a value stops the build). Everything under a planner page's header is one Preact
-  root, `<div id="app">`: its layout (`src/career/Layout.tsx`, `src/loop/Layout.tsx`, which import Preact, `src/ui/Shell.tsx`
+  root, `<div id="app">`: its layout (`src/career/Layout.tsx`, `src/loop/Layout.tsx`, which import Preact, `src/setup/Shell.tsx`
   and the `ui/` primitives, no store) is drawn into the HTML at build time by Preact's `renderToString` (`vite/prerender.mjs`,
   through Vite's `runnerImport`), so the first paint has the setup's markup, and the entry hydrates it.
   (@preact/preset-vite's prerender, vite-prerender-plugin, renders every route into the first HTML input as one
@@ -263,7 +263,7 @@ store's `draft`, edited by path through `draftRef`), changed by its own run mach
 page's, and the career page's status line, tree, node popup, parent picker, deck popup, veterans dialog (its two tab
 lists both kept mounted, a card drawn again only when her record changes), setup summary and Try a run, and the setup
 editors both pages share (`ui/`: the scenario picker, the lineage rank, the Umas and Support cards panels, the target
-skills and their presets, listed by `ui/Setup.tsx`'s `setupViews`), and the career page's results column, popups and
+skills and their presets, listed by `setup/Setup.tsx`'s `setupViews`), and the career page's results column, popups and
 veteran editors, each drawn in its place in its page's one root (the layout; the entry makes the views once and hands
 them in after the game data loads); the deck card panel too (`ui/CardPop.tsx`, opened by its openers' own clicks,
 `usePopOpener`: a slot in the results column and in every dialog, since a popover over a modal dialog is inert in both

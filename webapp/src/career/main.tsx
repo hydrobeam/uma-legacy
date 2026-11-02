@@ -49,8 +49,8 @@ import { initScenario } from '../state/scenario.ts';
 import { initPopover } from '../popover.ts';
 import { CardPop } from '../ui/CardPop.tsx';
 import '../model/agenda.ts'; // (its document listener is added before gmtip's)
-import { openSetupDialog, pickEra, setupBadges, setupViews } from '../ui/Setup.tsx';
-import { useHydrated } from '../ui/Shell.tsx';
+import { openSetupDialog, pickEra, setupBadges, setupViews } from '../setup/Setup.tsx';
+import { useHydrated } from '../setup/Shell.tsx';
 import '../dom/gmtip.ts'; // the game-style tooltips (both planner pages)
 import {
   vets,

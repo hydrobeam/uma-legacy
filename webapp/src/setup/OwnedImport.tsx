@@ -3,7 +3,7 @@
 // `onSaid` gets what the import says, for the panel's status (`useSaid`).
 import { useState } from 'preact/hooks';
 import { importFiles } from '../io/owned.ts';
-import { FileButton } from './Button.tsx';
+import { FileButton } from '../ui/Button.tsx';
 
 /** the two panels' shared rows: the top row (its title for the panel's name alone: the dialog's head shows it) with All /
  *  None owned, Import and the count at the right; the filter row (the box and the order); the hint line */

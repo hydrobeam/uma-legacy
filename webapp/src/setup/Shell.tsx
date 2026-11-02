@@ -9,8 +9,8 @@ import { useLayoutEffect, useState } from 'preact/hooks';
 import { cx } from 'tailwind-variants/lite';
 import { ERA_NAMES } from '../model/eras.ts';
 import type { Era } from '../model/eras.ts';
-import { SegmentedControl } from './SegmentedControl.tsx';
-import { popover } from './Popover.tsx';
+import { SegmentedControl } from '../ui/SegmentedControl.tsx';
+import { popover } from '../ui/Popover.tsx';
 
 /** false for the first draw (the hydration, which must draw what the build drew), true from the next */
 export function useHydrated() {
@@ -159,7 +159,7 @@ export function EnhButton({
     </button>
   );
 }
-/** the Umas and Support cards buttons (ui/Setup.tsx: their dialogs and counts), at the page's size */
+/** the Umas and Support cards buttons (setup/Setup.tsx: their dialogs and counts), at the page's size */
 export function EnhButtons({
   page,
   umas,

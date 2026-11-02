@@ -32,9 +32,9 @@ async function page(stored: object | null) {
   const data = await import('../../src/model/data.ts');
   const S = await import('../../src/state/settings.ts');
   const { initScenario } = await import('../../src/state/scenario.ts');
-  const { setupViews } = await import('../../src/ui/Setup.tsx');
-  const { RosterPanel } = await import('../../src/ui/Roster.tsx');
-  const { CardsPanel } = await import('../../src/ui/Cards.tsx');
+  const { setupViews } = await import('../../src/setup/Setup.tsx');
+  const { RosterPanel } = await import('../../src/setup/Roster.tsx');
+  const { CardsPanel } = await import('../../src/setup/Cards.tsx');
   const { ExportDialog, openExport } = await import('../../src/loop/Export.tsx');
   const { initLoopState } = await import('../../src/loop/state.ts');
   const { buildJob } = await import('../../src/loop/job.ts');

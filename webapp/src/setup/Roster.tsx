@@ -1,7 +1,7 @@
 // ---------- the Umas panel: All / None owned, Import, the count; the filter and the order; one tile per outfit ----------
 // A tile's look follows her ownership (state/roster.ts tileState) and the filter, each bound to its own computed, so a
 // click or a keystroke changes the attributes it moves and redraws no tile; the list redraws only when its order
-// changes. Drawn in the Umas dialog (ui/Setup.tsx).
+// changes. Drawn in the Umas dialog (setup/Setup.tsx).
 import { computed, signal, useComputed } from '@preact/signals';
 import { Fragment } from 'preact';
 import { useRef } from 'preact/hooks';
@@ -9,12 +9,12 @@ import { gameData } from '../model/data.ts';
 import type { Outfit, Uma } from '../model/data.ts';
 import { fields } from '../state/settings.ts';
 import { ownAllUmas, ownNoUmas, rosterCounts, tileOutfits, tileState, toggleTile } from '../state/roster.ts';
-import { UmaAv } from './Images.tsx';
+import { UmaAv } from '../ui/Images.tsx';
 import { OwnedImport, useSaid } from './OwnedImport.tsx';
-import { SettingsSort } from './SortMenu.tsx';
-import { useMoreFade } from './moreFade.ts';
-import { Button } from './Button.tsx';
-import { field } from './Field.ts';
+import { SettingsSort } from './SettingsSort.tsx';
+import { useMoreFade } from '../ui/moreFade.ts';
+import { Button } from '../ui/Button.tsx';
+import { field } from '../ui/Field.ts';
 import { OWNED_PANEL } from './OwnedImport.tsx';
 import { cx } from 'tailwind-variants/lite';
 

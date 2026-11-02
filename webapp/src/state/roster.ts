@@ -1,6 +1,6 @@
 // ---------- roster: what you own of the umas, per outfit (solver: exclude + exclude_outfits) ----------
 // Her ownership and a tile's, a tile's click, All / None owned and the counts; the outfit a result names for her. The
-// Umas panel that draws them is ui/Roster.tsx.
+// Umas panel that draws them is setup/Roster.tsx.
 import { computed } from '@preact/signals';
 import { gameData } from '../model/data.ts';
 import { fields, settings, setOwned } from './settings.ts';

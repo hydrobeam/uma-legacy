@@ -308,7 +308,7 @@
   --nine-tog-on: var(--tog-on, none) 0 30 fill / 0 12px / 0 stretch;
   --nine-tog-off-sm: var(--face-tog-off) 0 30 fill / 0 10px / 0 stretch;
   --nine-tog-on-sm: var(--tog-on, none) 0 30 fill / 0 10px / 0 stretch;
-  /* the game's skill tile (ui/TargetTile.tsx): white, or gold for a gold the scenario guarantees */
+  /* the game's skill tile (setup/TargetTile.tsx): white, or gold for a gold the scenario guarantees */
   --nine-skill-white: var(--face-skill-white) 12 14 16 14 fill / 7px 8px 10px 8px / 0 stretch;
   --nine-skill-gold: var(--skill-gold, linear-gradient(#fff0b0, #ffbf33)) 12 14 16 14 fill / 7px 8px 10px 8px / 0
     stretch;
@@ -547,7 +547,7 @@
   /* the scenario button: the game's scenario select art (--scen-art, set per button) at the right, on a pale fade */
   --art-scen: var(--scen-art, none) right -6px top 18% / 104px auto no-repeat,
     linear-gradient(100deg, var(--color-gm-cell) 45%, var(--color-gm-tab-low));
-  /* a scenario menu tile (ui/Scenario.tsx): its art at the right, under a fade from the cell's white at the left */
+  /* a scenario menu tile (setup/Scenario.tsx): its art at the right, under a fade from the cell's white at the left */
   --art-stile: linear-gradient(90deg, var(--color-gm-cell) 40%, transparent 78%),
     var(--scen-art, none) right -10px top 16% / 52% auto no-repeat, var(--color-gm-tab-low);
   /* a portrait's initials' ground (ui/Images.tsx UmaAv): her hue (--h, per portrait) at the theme's tone */
@@ -572,7 +572,7 @@
 @custom-variant slot-pre (&:where([data-slot~="pre"] *));
 @custom-variant slot-opt (&:where([data-slot~="opt"] *));
 @custom-variant slot-many (&:where([data-slot~="many"] *));
-/* inside an uma's roster tile marked not owned (data-s="out": ui/Roster.tsx), which greys her portrait and name */
+/* inside an uma's roster tile marked not owned (data-s="out": setup/Roster.tsx), which greys her portrait and name */
 @custom-variant unowned (&:where([data-s="out"] *));
 /* a screen without hover (touch): what shows under the pointer elsewhere shows always (ui/Sparks.tsx's corner x) */
 @custom-variant touch (@media (hover: none));

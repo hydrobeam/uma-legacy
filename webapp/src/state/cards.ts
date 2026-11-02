@@ -1,5 +1,5 @@
 // ---------- support cards: a card's name and what it gives, as the page shows them; what you own of them ----------
-// The Support cards panel that draws the picker is ui/Cards.tsx.
+// The Support cards panel that draws the picker is setup/Cards.tsx.
 import { computed } from '@preact/signals';
 import { gameData } from '../model/data.ts';
 import { fields, settings, setOwned } from './settings.ts';

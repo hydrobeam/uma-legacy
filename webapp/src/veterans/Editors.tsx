@@ -15,7 +15,7 @@ import { RenderGuard } from '../ui/RenderGuard.tsx';
 import { UmaAv } from '../ui/Images.tsx';
 import { WinsEditor } from '../ui/Agenda.tsx';
 import { useDropdown } from '../ui/dropdown.ts';
-import { AddPop } from '../ui/Shell.tsx';
+import { AddPop } from '../setup/Shell.tsx';
 import { NEW_STARS } from './store.ts';
 import type { NodeRecord, NodeRef } from './store.ts';
 import { settings } from '../state/settings.ts';
@@ -295,7 +295,7 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
 }
 
 // ---------- "+" beside a node's sparks: the target skills she lacks, as the game's white spark cells (her blue, pink
-// and unique sparks have bars of their own). Its box (#add-pop, ui/Shell.tsx AddPop) sits in the page's layout while
+// and unique sparks have bars of their own). Its box (#add-pop, setup/Shell.tsx AddPop) sits in the page's layout while
 // shut; open from a "+" inside a dialog, it is drawn inside that dialog (a portal: the page behind a modal dialog is out
 // of reach), placed against the "+". A dropdown (ui/dropdown.ts useDropdown): a press outside it and its "+" closes it
 // (another "+" moves it there); Escape closes it, not the dialog around it, back to the "+".

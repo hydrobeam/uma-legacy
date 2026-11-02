@@ -4,7 +4,7 @@
 // The list: per preset its name and count (a click opens its skills as the editor's tiles, with Rename), Load, Overwrite
 // (with the targets now) and a trash can; under it, Save current skills opens a small popup for the name (offered as
 // "Preset N+1", N the presets now). Starting from a preset is load, edit the targets, save under a new name.
-// Here: the edits, each a name lookup (names are unique); the dialogs are ui/Presets.tsx.
+// Here: the edits, each a name lookup (names are unique); the dialogs are setup/Presets.tsx.
 import { PRESET, settings, setPresets, setTargets } from './settings.ts';
 import type { Preset, SettingsView } from './settings.ts';
 

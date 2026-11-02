@@ -3,13 +3,13 @@ import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { fields } from '../state/settings.ts';
 import { addTarget, namesOf, removeTargetAt, suggest } from '../state/targets.ts';
 import { must } from '../must.ts';
-import { SkillIcon } from './Images.tsx';
+import { SkillIcon } from '../ui/Images.tsx';
 import { PresetDialogs, openPresets } from './Presets.tsx';
 import { TargetTile, groupKeys } from './TargetTile.tsx';
-import { Button } from './Button.tsx';
-import { GameBar } from './GameBar.tsx';
-import { field } from './Field.ts';
-import { popover } from './Popover.tsx';
+import { Button } from '../ui/Button.tsx';
+import { GameBar } from '../ui/GameBar.tsx';
+import { field } from '../ui/Field.ts';
+import { popover } from '../ui/Popover.tsx';
 
 // Add a target: typing two characters or more lists the skills that match. Enter adds the first; the arrows walk the
 // list (Up from the first goes back to the box); Escape or a click outside the box and the list closes it. The list hangs

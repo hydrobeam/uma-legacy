@@ -2,11 +2,11 @@
 // Drawn at build time with no views and no state (vite/prerender.mjs: the page's first paint), and hydrated by the entry
 // (main.tsx), which fills in `views` (each view behind its guard) once the game data is in, and the state of what the
 // layout draws itself: the setup bar's fold and summary, the status bar's colours, the dimmed results. Imports nothing
-// but Preact, the shell and its class helpers (ui/Shell.tsx says why).
+// but Preact, the shell and its class helpers (setup/Shell.tsx says why).
 import type { ComponentChildren } from 'preact';
 import { cx } from 'tailwind-variants/lite';
-import { AddPop, EnhButton, EnhButtons, EraRow, Footer, Ribbon, setLabel, setRow } from '../ui/Shell.tsx';
-import type { Badge } from '../ui/Shell.tsx';
+import { AddPop, EnhButton, EnhButtons, EraRow, Footer, Ribbon, setLabel, setRow } from '../setup/Shell.tsx';
+import type { Badge } from '../setup/Shell.tsx';
 import type { Era } from '../model/eras.ts';
 import { Button } from '../ui/Button.tsx';
 import { panel } from '../ui/Panel.tsx';
@@ -30,7 +30,7 @@ const CAREER_DIALOGS = [
 ] as const;
 /** the views, each drawn where the page's markup holds it */
 export interface CareerViews {
-  /** the setup bar's editors (ui/Setup.tsx) and the Borrowed parent choice */
+  /** the setup bar's editors (setup/Setup.tsx) and the Borrowed parent choice */
   rank: ComponentChildren;
   scenario: ComponentChildren;
   borrow: ComponentChildren;
