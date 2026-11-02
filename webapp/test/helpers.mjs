@@ -186,7 +186,7 @@ export async function openEditor(pg, which) {
 export async function closeEditor(pg, which) {
   const editor = pg.locator(`#${EDITORS[which].id}`);
   if ((await editor.getAttribute('open')) === null) return;
-  await editor.locator('.dclose').click();
+  await editor.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(editor).not.toHaveAttribute('open');
 }
 // the page's errors and error-level console lines collect in pg.errors (web-font fetch aborts are network noise)

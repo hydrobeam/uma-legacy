@@ -114,9 +114,9 @@ export default async function popups(b) {
   // is kept when the balloon goes, not overwritten by the one held
   const pill = pg.locator('#why-dlg [aria-label="Trainee"] [role="radio"]').first();
   await pill.hover();
-  await pg.waitForSelector('.gmtip:not([hidden])');
+  await pg.waitForSelector('#gm-tip:not([hidden])');
   const tip = await pg.evaluate(() => {
-    const t = document.querySelector('.gmtip'),
+    const t = document.querySelector('#gm-tip'),
       held = document.querySelector('#why-dlg [aria-label="Trainee"] [role="radio"]');
     const shown = {
       inBody: t.parentElement === document.body,
@@ -130,8 +130,8 @@ export default async function popups(b) {
   await pg.mouse.move(0, 0);
   const after = await pg.evaluate(() => ({
     title: document.querySelector('#why-dlg [aria-label="Trainee"] [role="radio"]').title,
-    hidden: document.querySelector('.gmtip').hidden,
-    top: document.querySelector('.gmtip').matches(':popover-open'),
+    hidden: document.querySelector('#gm-tip').hidden,
+    top: document.querySelector('#gm-tip').matches(':popover-open'),
   }));
   check(
     'tooltip over a modal dialog: the balloon in the top layer, outside the dialog; a title drawn again meanwhile is kept',

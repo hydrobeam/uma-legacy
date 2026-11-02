@@ -649,8 +649,7 @@ export default async function career(b) {
     );
   }
   {
-    const name = 'career: the legacies carry no affinity numbers or labels; the trainee shows her total';
-    await expect.soft(pg.locator('#tree .gate'), `${name}: no labels`).toHaveCount(0);
+    const name = 'career: the legacies carry no affinity numbers; the trainee shows her total';
     await expect.soft(pg.locator('#tree').getByLabel(/^Affinity \d/), `${name}: no numbers`).toHaveCount(1);
     await expect
       .soft(pg.locator('#tree [data-node="trainee"]').getByLabel(/^Affinity \d/), `${name}: her total`)
@@ -779,7 +778,6 @@ export default async function career(b) {
     const name = 'career: the race schedule and the deck are buttons under the trainee, not sections of the page';
     await expect.soft(pg.locator('#tree [data-node="trainee"] #sched-open'), `${name}: the schedule`).toHaveCount(1);
     await expect.soft(pg.locator('#tree [data-node="trainee"] #deck-open'), `${name}: the deck`).toHaveCount(1);
-    await expect.soft(pg.locator('#tree .lraces, #tree .ldeck'), `${name}: no sections`).toHaveCount(0);
   }
   await pg.click('#sched-open');
   await dialog(pg, 'sched-dlg');
@@ -954,7 +952,7 @@ export default async function career(b) {
         !!document.querySelector('#lodds #odds-open') &&
         !!document.querySelector('#lodds #sim-try') &&
         t.nextElementSibling === r &&
-        !r.querySelector('#sim-top, #goal-note, .lhead') &&
+        !r.querySelector('#sim-top, #goal-note') &&
         !!dlg.querySelector('#sim-top #simulation #sim-compare') &&
         dlg.querySelector('#simulation > h3')?.textContent === 'Veteran analysis' &&
         !dlg.open
@@ -1599,9 +1597,9 @@ export default async function career(b) {
       (await pg.locator('#udpane-info [data-deck-cards] > button').count()) >= 1 &&
         rec.length > 0 &&
         rec.filter(Boolean).length === w0 &&
-        new RegExp(`Wins: ${w0}\\b`).test(recLine) &&
+        new RegExp(`Wins: ${w0}(?!\\d)`).test(recLine) &&
         racesShut,
-      `${rec.length} races, ${rec.filter(Boolean).length} won, button ${w0}, ${(recLine.match(/Wins: \d+/) || [''])[0]}`,
+      `${rec.length} races, ${rec.filter(Boolean).length} won, button ${w0}, ${(recLine.match(/Wins: \d+/) || [''])[0]}, shut ${racesShut}, cards ${await pg.locator('#udpane-info [data-deck-cards] > button').count()}`,
     );
     await expect
       .soft(pg.locator('#udpane-info button[aria-label^="Legacy "]'), `${name}: her two legacies`)
@@ -1667,9 +1665,7 @@ export default async function career(b) {
     await expect.soft(pg.locator('#wins-count'), `${name}: the count`).toHaveText(new RegExp(`^${w0 - 1 || 'No'}\\b`));
   }
   await pg.keyboard.press('Enter');
-  const picks = await pg.$$eval('#wins-dlg [data-pop="wins"]:not([hidden]) button[title]', (l) =>
-    l.map((e) => e.textContent),
-  );
+  const picks = await pg.$$eval('#wins-dlg [data-pop="wins"]:not([hidden]) button', (l) => l.map((e) => e.textContent));
   await pg.locator('#wins-dlg [data-pop="wins"] button', { hasText: wname }).click();
   check(
     "career: … the empty slot's menu lists the G1s held then (her schedule's first, with its odds); a pick puts the win back in that slot",
@@ -1677,7 +1673,7 @@ export default async function career(b) {
       /her schedule · \d+% win/.test(picks[0]) &&
       (await winsN()) === w0 &&
       (await pg.evaluate((n) => document.activeElement.getAttribute('aria-label') === n + ', won: remove', wname)),
-    picks.join(' | '),
+    `${picks.join(' | ')}; wins ${await winsN()} of ${w0}; focus ${await pg.evaluate(() => document.activeElement?.getAttribute('aria-label'))}`,
   );
   {
     const name =

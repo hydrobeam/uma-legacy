@@ -18,7 +18,8 @@ import type { VariantProps } from 'tailwind-variants/lite';
 
 // the frame (the <dialog>): its width, its height, and a popup's column of title, body and footer
 const frame = tv({
-  base: 'bg-gm-panel font-game text-gm-ink shadow-dialog backdrop:bg-backdrop overflow-hidden rounded-2xl',
+  // (m-auto: a modal dialog is centred by the browser's own margin: auto, which Preflight's margin reset takes away)
+  base: 'bg-gm-panel font-game text-gm-ink shadow-dialog backdrop:bg-backdrop m-auto overflow-hidden rounded-2xl',
   variants: {
     kind: { popup: 'open:flex open:flex-col', window: '' },
     size: {
