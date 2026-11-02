@@ -6,7 +6,22 @@ set -euo pipefail
 R="$(cd "$(dirname "$0")" && pwd)"
 C="$R/pkg/loopopt"
 W="$R/webapp"
+# A linked worktree (git worktree add) uses the main checkout's cache/: Playwright's browsers, the recorded solver
+# replies (keyed by the solver's bytes, so lanes share what matches), GameTora's files, wasm-bindgen and the TLS
+# certificate, through a symlink made on first use, so a new worktree downloads and records nothing twice
+share_cache() {
+  local common main
+  common=$(git -C "$R" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 0
+  main=$(dirname "$common")
+  if [ "$main" != "$R" ] && [ ! -e "$R/cache" ] && [ -d "$main/cache" ]; then
+    ln -s "$main/cache" "$R/cache"
+    echo "cache: this worktree uses the main checkout's ($main/cache)"
+  fi
+}
+share_cache
 BIN="$C/target/release/loopopt"
+# the solver as the checks build it ([profile.checks], pkg/loopopt/Cargo.toml): what val, valq, mono and lint run
+CHECK_BIN="$C/target/checks/loopopt"
 RAW_WASM="$C/target/wasm32-unknown-unknown/release/loopopt.wasm"
 # wasm-bindgen's output: the wasm with its glue's exports (BOUND_WASM, wasm-opt's input) and the glue itself, whose
 # loopopt.js and loopopt.d.ts the wasm step copies into webapp/src/gen (tracked, so tsc and knip see them unbuilt)
@@ -27,7 +42,7 @@ STEPS=(
   "data||all|the Global and GM-era exports from game/global/master.mdb and game/jp/master.mdb"
   "gametora|||GameTora's data files at the pinned versions into cache/gametora (GAMETORA_LATEST=1 moves the pins)"
   "events||all|each era's card event file from GameTora's files and the manual entries; runs gametora first"
-  "native||all default|the release binary, clippy (as lint runs it), cargo test --release"
+  "native||all default|clippy (as lint runs it), then cargo test in the checks profile"
   "pb||all|the solver, then pairwise affinity ceilings into both data.json; rerun after data or solver changes"
   "wasm||all default|the wasm32 build, wasm-bindgen's glue, wasm-opt (skipped when its key matches), webapp/example.json"
   "art||all default|images and runners when their game files are in game/global/ (each skipped, with a note, if not)"
@@ -131,22 +146,24 @@ step_pb() {
 # ---- the solver ----
 step_native() {
   need_cargo; check native
-  build_solver
   (cd "$C" && clippy_all)
   cargo_test
 }
-# The release binary. pb, val, valq and mono build it first, so they never run a binary left from before a change
-# (cargo's own check makes this a no-op on an unchanged tree).
+# The release binary (fat LTO, as the wasm): pb and research build it first, so they never run a binary left from
+# before a change (cargo's own check makes this a no-op on an unchanged tree).
 build_solver() { (cd "$C" && quiet cargo build --release); }
+# The checks' binary (CHECK_BIN): val, valq, mono and lint build it first, for the same reason. Its outputs equal the
+# release binary's to the byte (docs/BUILD.md, *Tests*), and it builds in a third of the time.
+build_checked() { (cd "$C" && quiet cargo build --profile checks); }
 # clippy as lint runs it (lints chosen in pkg/loopopt/Cargo.toml): quiet unless it finds something
 clippy_all() {
   cargo clippy --quiet --all-targets -- -D warnings \
     && cargo clippy --quiet --target wasm32-unknown-unknown --lib -- -D warnings
 }
-# cargo test --release: every test binary's result line and any failure, with the tests' exit status
+# cargo test in the checks profile: every test binary's result line and any failure, with the tests' exit status
 cargo_test() {
   local out rc=0
-  out=$(cd "$C" && cargo test --release 2>&1) || rc=$?
+  out=$(cd "$C" && cargo test --profile checks 2>&1) || rc=$?
   printf '%s\n' "$out" | grep -E '^test result|FAILED|panicked|^error' || true
   return "$rc"
 }
@@ -203,8 +220,8 @@ step_lint() {
   lint "ruff check" in_dir "$R" uv run --quiet ruff check
   lint "ruff format" in_dir "$R" uv run --quiet ruff format --check
   lint test_validation in_dir "$R" quiet "${PY[@]}" val/test_validation.py
-  # (section 8 reads CHAIN_N from the release binary, `loopopt constants`: built first, a no-op when current)
-  lint test_s08_likelihood build_and_run uv run --quiet --project "$R" --group research python "$R/research/test_s08_likelihood.py"
+  # (section 8 reads CHAIN_N from the solver, `loopopt constants`: the checks' binary, built first, a no-op when current)
+  lint test_s08_likelihood build_and_run env LOOPOPT_SOLVER="$CHECK_BIN" uv run --quiet --project "$R" --group research python "$R/research/test_s08_likelihood.py"
   lint biome in_dir "$W" npx --no-install biome check --error-on-warnings --diagnostic-level=warn
   lint tsc in_dir "$W" npx --no-install tsc -p .
   lint "tsc (worker)" in_dir "$W" npx --no-install tsc -p tsconfig.worker.json
@@ -227,7 +244,7 @@ lint() { local name=$1; shift; "$@" || LINT_FAILED+=("$name"); }   # lint NAME C
 # tsc accepts a `@ts-expect-error` and no Biome rule sees a comment: one in the page's source fails lint (and the hook)
 no_ts_expect_error() { ! grep -rn --include='*.ts' --include='*.tsx' '@ts-expect-error' "$W/src"; }
 in_dir() { (cd "$1" && shift && "$@"); }   # in_dir DIR COMMAND...
-build_and_run() { build_solver && quiet "$@"; }   # build_and_run COMMAND...: the release binary first
+build_and_run() { build_checked && quiet "$@"; }   # build_and_run COMMAND...: the checks' binary first
 step_hooks() {
   git -C "$R" config core.hooksPath .githooks
   echo "hooks: core.hooksPath = .githooks (every worktree of this clone)"
@@ -239,25 +256,27 @@ step_val() {
   local tag="${1:?val needs a tag}" quick=() rc=0
   [ "${2:-}" = --quick ] && quick=(--quick)
   need_uv; need_cargo; check val
-  build_solver
-  "${PY[@]}" "$R/val/runval.py" "$BIN" "$tag" "${quick[@]}" || return 1
+  build_checked
+  "${PY[@]}" "$R/val/runval.py" "$CHECK_BIN" "$tag" "${quick[@]}" || return 1
   "${PY[@]}" "$R/val/cmp2.py" "$tag" ref || rc=1
   "${PY[@]}" "$R/val/cmp2.py" "${tag}pu" refpu || rc=1
   "${PY[@]}" "$R/val/same.py" "$tag" || rc=1
   [ ${#quick[@]} -gt 0 ] || "${PY[@]}" "$R/val/joint_check.py" "$tag" || rc=1
-  "${PY[@]}" "$R/val/simval.py" "$BIN" "$tag" || rc=1
-  "${PY[@]}" "$R/val/planval.py" "$BIN" "$tag" "${quick[@]}" || rc=1
+  "${PY[@]}" "$R/val/simval.py" "$CHECK_BIN" "$tag" || rc=1
+  "${PY[@]}" "$R/val/planval.py" "$CHECK_BIN" "$tag" "${quick[@]}" || rc=1
   "${PY[@]}" "$R/val/same.py" "$tag" --plan || rc=1
   return "$rc"
 }
 step_valq() { step_val "$1" --quick; }
 step_mono() {
   need_uv; need_cargo; check mono
-  build_solver
-  "${PY[@]}" "$R/val/mono.py" "$BIN"
+  build_checked
+  "${PY[@]}" "$R/val/mono.py" "$CHECK_BIN"
 }
 step_research() {
   local py=(uv run --quiet --project "$R" --group research python)
+  need_cargo; check research
+  build_solver   # section 13 runs the release binary (research/common.py SOLVER)
   "${py[@]}" "$R/research/run_all.py"
   "${py[@]}" "$R/research/render.py"
 }
@@ -273,7 +292,7 @@ npm_deps() {
 # (node_modules/.package-lock.json), so a pulled dependency change is never run against a stale node_modules
 npm_ci() {   # npm_ci DIR
   [ -e "$1/node_modules/.package-lock.json" ] && [ ! "$1/package-lock.json" -nt "$1/node_modules/.package-lock.json" ] \
-    || (cd "$1" && npm ci --silent)
+    || (cd "$1" && npm ci --silent --prefer-offline)
 }
 # Vite (webapp/vite.config.mjs)
 step_page() {
