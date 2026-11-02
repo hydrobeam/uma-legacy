@@ -5,7 +5,7 @@
 // (exact MILP, scipy/HiGHS: val/milp_fixtures.py, rerun after a change to the win model) on the frozen data_v1.json:
 //   br_milp.json, br_rest_milp.json  best responses, incl. forced races and rests and the special-goal umas
 //   pb_milp.json                     pair ceilings
-// Run with: cargo test --release
+// Run with: cargo test --profile checks
 // ---------------------------------------------------------------------------------------------
 use crate::chart;
 use crate::data::{Choice, Data, NT, Sched, Uma, dot, load, load_str};
