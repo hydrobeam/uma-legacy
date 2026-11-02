@@ -157,7 +157,7 @@ test("Try a run's legacies: a place no veteran holds any more (the list changed 
   const root = document.body.appendChild(document.createElement('div'));
   render(h(Details, { spec, actions: null, winsButton: null }), root);
   await settle();
-  assert.equal(root.querySelectorAll('div.udleg').length, 1, 'her card draws, with the one legacy');
+  assert.equal(root.querySelectorAll('button[aria-label^="Legacy "]').length, 1, 'her card draws, with the one legacy');
 });
 
 test("the search is held while a pool veteran's G1 wins window or a skills prompt is open (not the draft's window)", () => {

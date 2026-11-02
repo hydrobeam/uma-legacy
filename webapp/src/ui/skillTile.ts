@@ -2,7 +2,8 @@
 import { tv } from 'tailwind-variants/lite';
 
 /** a skill tile: the game's white sprite, its gold one (`gold`), or greyed (`off`: not acquired); `row`, a target's
- *  row's button (opening Skill Details), `popup`, the tile at the top of Skill Details */
+ *  row's button (opening Skill Details), `popup`, the tile at the top of Skill Details, `card`, a button as large
+ *  (Try a run's Skills tab, opening Skill Details) */
 export const skillTile = tv({
   base: 'flex min-w-0 items-center text-left font-bold',
   variants: {
@@ -14,6 +15,7 @@ export const skillTile = tv({
     size: {
       row: 'focus-visible:outline-accent min-h-9.5 w-full cursor-pointer gap-1.75 pt-0.75 pr-3 pb-1.75 pl-1.75 hover:brightness-104 focus-visible:outline-3 focus-visible:outline-offset-2',
       popup: 'min-h-11.5 gap-2 pt-1.25 pr-3 pb-2.25 pl-2',
+      card: 'focus-visible:outline-accent min-h-11.5 w-full cursor-pointer gap-2 pt-1.25 pr-3 pb-2.25 pl-2 hover:brightness-104 focus-visible:outline-3 focus-visible:outline-offset-2',
     },
   },
   defaultVariants: { tone: 'white', size: 'popup' },

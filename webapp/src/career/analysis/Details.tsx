@@ -7,16 +7,18 @@
 // (career/analysis/state.ts says why), so her card's `spec` is made anew with every record (every edit), and the parts
 // that read a signal (the tabs, the races' fold) draw her again from it rather than skip her as
 // unchanged. Her sparks are edited through the store (`draftRef`).
-import type { ComponentChildren } from 'preact';
+import type { ComponentChildren, RefObject } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { gameData } from '../../data.ts';
 import { settings } from '../../settings.ts';
-import { popOpener } from '../../popover.ts';
 import { umaName } from '../../veterans/names.ts';
 import { borrowedLast, deckCards, fitSparks } from '../../details.ts';
 import type { DeckSlot } from '../../details.ts';
 import { openSkill } from '../view/SkillDetails.tsx';
 import { InspView } from '../../ui/InspView.tsx';
+import { usePopOpener } from '../../ui/CardPop.tsx';
+import { chip, FRIENDS_TAG } from '../../ui/deckChip.ts';
+import { skillTile } from '../../ui/skillTile.ts';
 import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
 import { GRADE_LETTER, gradeAt } from '../../grades.ts';
 import { CardAv, Grade, SkillIcon, UmaAv } from '../../ui/Images.tsx';
@@ -64,6 +66,19 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const when = (turn: number) =>
   `${['Junior', 'Classic', 'Senior'][Math.floor(turn / 24)]} ${turn % 2 ? 'Late ' : 'Early '}${MONTHS[Math.floor((turn % 24) / 2)]}`;
 
+// her card: the game's white panel under its green bar (its top edge the bar's), its parts a column; the head her
+// portrait in its white mat and cream ring, the actions and her name over the pale hero gradient (on a phone the
+// actions on a row of their own under the portrait and name)
+const CARD =
+  'bg-gm-panel border-gm-edge shadow-panel font-game text-gm-ink grid min-w-0 gap-2.5 rounded-b-2xl border border-t-0 pb-3';
+const HEAD =
+  'art-hero border-gm-line grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3.5 border-b px-4 pt-3.5 pb-2.5 max-sm:grid-cols-[auto_minmax(0,1fr)]';
+// her aptitudes: a label column, then four grade cells a row (on a phone the label over its four cells)
+const APT_ROW =
+  'grid grid-cols-[74px_repeat(4,minmax(0,1fr))] items-center gap-1.25 max-sm:grid-cols-4 max-sm:gap-x-0.75 max-sm:gap-y-0.5';
+const APT_LABEL = 'text-body font-bold max-sm:col-span-full max-sm:text-note max-sm:leading-tight';
+const APT_CELL =
+  'bg-gm-cell border-gm-line inset-shadow-grade text-body flex min-w-0 items-center justify-between gap-0.5 rounded-md border py-0.5 pr-1.25 pl-2 font-bold max-sm:text-caption max-sm:pr-0.5 max-sm:pl-1.5 max-sm:tracking-tight';
 /** what the card shows of her and her career */
 export interface DetailsSpec {
   /** her draft */
@@ -80,7 +95,8 @@ export interface DetailsSpec {
   /** a parent's number on the page ("#3"), by her legacy index (career/current.ts `legacyNumber`) */
   numberOf: (i: number) => string;
 }
-/** her card: `actions` beside her portrait, `winsButton` (the G1 wins editor's) in Career Info */
+/** her card (data-details; its head data-part="head"): `actions` beside her portrait, `winsButton` (the G1 wins
+ *  editor's) in Career Info */
 export function Details({
   spec,
   actions,
@@ -95,11 +111,12 @@ export function Details({
 }) {
   const { d, r } = spec,
     outfit = r.trainee.outfits[0]?.label || null,
-    apt = d.apt || (r.aptitudes?.start.kind === 'known' ? r.aptitudes.start.start : null);
+    apt = d.apt || (r.aptitudes?.start.kind === 'known' ? r.aptitudes.start.start : null),
+    card = useRef<HTMLDivElement>(null);
   return (
-    <div class={cx('ud', place)}>
-      <div class="udtop">
-        <div class="udpor">
+    <div class={cx(CARD, place)} ref={card} data-details="">
+      <div class={HEAD} data-part="head">
+        <div class="bg-gm-panel shadow-card-face grid rounded-full p-1">
           <UmaAv
             key={`${d.chara}:${d.outfit}`}
             uma={d.chara}
@@ -108,28 +125,30 @@ export function Details({
             label={outfit ? `${umaName(d.chara)} ${outfit}` : umaName(d.chara)}
           />
         </div>
-        <div class="udmid">{actions}</div>
-        <div class="udname">
-          {outfit && <div class="udout">{/^\[.*\]$/.test(outfit) ? outfit : `[${outfit}]`}</div>}
-          <div class="udnm">{umaName(d.chara)}</div>
+        <div class="grid min-w-0 content-center justify-items-center gap-2 max-sm:col-span-full max-sm:row-start-2">
+          {actions}
+        </div>
+        <div class="min-w-0 text-right">
+          {outfit && <div class="text-title font-bold">{/^\[.*\]$/.test(outfit) ? outfit : `[${outfit}]`}</div>}
+          <div class="text-display max-sm:text-heading leading-tight font-black wrap-anywhere">{umaName(d.chara)}</div>
         </div>
       </div>
       {apt && (
         // biome-ignore lint/a11y/useSemanticElements: today's markup (a grid of grade cells read as a table)
-        <div class="udapt" role="table" aria-label="Her aptitudes">
+        <div class="grid gap-1.25 px-3.5 max-sm:px-2" role="table" aria-label="Her aptitudes">
           {APT_ROWS.map(({ label, cells }) => (
             // biome-ignore lint/a11y/useSemanticElements lint/a11y/useFocusableInteractive: (the table's rows, as above; a row is no control)
-            <div key={label} class="udarow" role="row">
+            <div key={label} class={APT_ROW} role="row">
               {/* biome-ignore lint/a11y/useSemanticElements lint/a11y/useFocusableInteractive: (its header cell) */}
-              <span class="udal" role="rowheader">
+              <span class={APT_LABEL} role="rowheader">
                 {label}
               </span>
               {cells.map(({ at, name }) => {
                 const grade = gradeAt(apt, at);
                 return (
                   // biome-ignore lint/a11y/useSemanticElements: (its cells)
-                  <span key={at} class="udac" role="cell" title={`${name} ${GRADE_LETTER[grade]}`}>
-                    <span class="udan">{name}</span>
+                  <span key={at} class={APT_CELL} role="cell" title={`${name} ${GRADE_LETTER[grade]}`}>
+                    <span class="truncate">{name}</span>
                     <Grade g={grade} />
                   </span>
                 );
@@ -138,7 +157,7 @@ export function Details({
           ))}
         </div>
       )}
-      <DetailTabs spec={spec} winsButton={winsButton} />
+      <DetailTabs spec={spec} winsButton={winsButton} card={card} />
     </div>
   );
 }
@@ -164,15 +183,21 @@ const DEFS = [
   { key: 'insp', label: 'Inspiration' },
   { key: 'info', label: 'Career Info' },
 ] as const;
-// the tabs and their panes, all three built up front as in the game; once a switch is drawn, the spark names now on show
-// shrink to fit (details.ts fitSparks)
-function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: ComponentChildren }) {
-  const list = useRef<HTMLDivElement>(null),
-    onShow = tab.value;
+// the tabs and their panes (on the game's grey pane), all three built up front as in the game; once a switch is drawn,
+// the spark names now on show in her `card` shrink to fit (details.ts fitSparks)
+function DetailTabs({
+  spec,
+  winsButton,
+  card,
+}: {
+  spec: DetailsSpec;
+  winsButton: ComponentChildren;
+  card: RefObject<HTMLDivElement | null>;
+}) {
+  const onShow = tab.value;
   // biome-ignore lint/correctness/useExhaustiveDependencies: once per tab drawn (`onShow` is a module signal's value, which Biome reads as constant)
   useLayoutEffect(() => {
-    const card = list.current?.closest<HTMLElement>('.ud');
-    if (card) fitSparks(card);
+    if (card.current) fitSparks(card.current);
   }, [onShow]);
   // (her draft's parents are the career's, in its order: draftOf)
   const legacyIndex = spec.r.parents;
@@ -188,7 +213,6 @@ function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: Compo
         at={draftRef()}
         targets={spec.targets}
         header
-        meClass="simwho"
         parentLabel={(j) => spec.numberOf(legacyIndex[j])}
       />
     ) : (
@@ -212,12 +236,12 @@ function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: Compo
           body: label,
         }))}
       />
-      <div class="udpanes" ref={list}>
+      <div class="bg-gm-pane mx-3 min-w-0 rounded-lg p-2.5 max-sm:mx-2 max-sm:p-2">
         {DEFS.map(({ key }) => (
           <div
             key={key}
             id={`udpane-${key}`}
-            class="udpane"
+            class="grid min-w-0 gap-2"
             role="tabpanel"
             aria-labelledby={`udtab-${key}`}
             hidden={tab.value !== key}
@@ -230,9 +254,10 @@ function DetailTabs({ spec, winsButton }: { spec: DetailsSpec; winsButton: Compo
   );
 }
 
-// Skills: every target skill she could acquire this career, as the game's skill tiles (name only): acquired in this
-// result bright (gold tile for the gold version), the others greyed. A tile opens the game-style skill popup
+// Skills: every target skill she could acquire this career, as the game's skill tiles (name only), two to a row (one on
+// a phone): acquired in this result bright (gold tile for the gold version), the others greyed (data-off). A tile opens the game-style skill popup
 // (view/SkillDetails.tsx): acquired or not, where it can come from, and how likely it is acquired and lands as a spark.
+const PANE_NOTE = 'text-ui text-gm-ink2';
 function SkillsPane({ spec: { d, r } }: { spec: DetailsSpec }) {
   let acquired = 0;
   const tiles = r.targets.flatMap((t) => {
@@ -251,80 +276,94 @@ function SkillsPane({ spec: { d, r } }: { spec: DetailsSpec }) {
       <button
         key={t.group}
         type="button"
-        class={cx('udsk', gold ? 'gold' : '', got ? '' : 'off')}
+        class={skillTile({ tone: !got ? 'off' : gold ? 'gold' : 'white', size: 'card' })}
         data-k={`sim:sk${t.group}`}
+        data-off={got ? undefined : ''}
         aria-haspopup="dialog"
         aria-label={`${name}: ${got ? `acquired${gold ? ' (gold)' : ''}` : 'not acquired'}. Details`}
         onClick={() => openSkill({ b, name, got: got as 'gold' | 'white' | null, group: t.group, goldIcon: goldShown })}
       >
-        <SkillIcon group={t.group} gold={goldShown} />
-        <span class="udskn">{name}</span>
+        <SkillIcon group={t.group} gold={goldShown} dim={!got} cls="size-7.5" />
+        <span class="text-body leading-tight wrap-anywhere">{name}</span>
       </button>,
     ];
   });
-  if (!tiles.length) return <p class="udnone">No target skill can be acquired in this career.</p>;
+  if (!tiles.length) return <p class={PANE_NOTE}>No target skill can be acquired in this career.</p>;
   return (
     <>
-      <div class="udskills">{tiles}</div>
-      <p class="udfoot">{`${acquired} of ${tiles.length} target skills acquired. Tap a skill for where it comes from.`}</p>
+      <div class="grid grid-cols-2 gap-1.5 max-sm:grid-cols-1">{tiles}</div>
+      <p
+        class={PANE_NOTE}
+      >{`${acquired} of ${tiles.length} target skills acquired. Tap a skill for where it comes from.`}</p>
     </>
   );
 }
 
-/** one support card of her deck (a click opens its panel: popover.ts, which reads the data-* and leaves the markup to
- *  this: its greying and aria-expanded are drawn here) */
+/** one support card of her deck, the decks' chip (its art alone; a borrowed one's in the friend frame, or without art
+ *  ringed in pink with a Friends tag): a click opens its panel (ui/CardPop.tsx `usePopOpener`; endAt, its chain-end
+ *  advice). data-tag: borrowed; data-off: greyed, marked not owned */
 function DeckCell({ slot }: { slot: DeckSlot }) {
-  const { base, borrowed: bor, card: c, endAt } = slot, // (endAt: the popover's chain-end advice)
+  const { base, borrowed: bor, card: c, endAt } = slot,
     off = !!c && !bor && settings.value.cardsOff[c.id] === false,
-    ref = useRef<HTMLButtonElement>(null),
-    open = popOpener.value !== null && popOpener.value === ref.current,
-    named = base + (bor ? ' (borrowed)' : '');
+    named = base + (bor ? ' (borrowed)' : ''),
+    opener = usePopOpener(true, () => ({
+      kind: 'card',
+      cid: c ? c.id : null,
+      name: base,
+      borrowed: bor,
+      end: endAt || 0,
+    }));
   return (
     <button
-      ref={ref}
       type="button"
-      class={cx('udcard', 'dc', bor ? 'bor' : '', off ? 'off' : '')}
+      class={chip({ tag: bor ? 'borrowed' : 'plain', friends: bor })}
       title={named}
       data-cid={c ? String(c.id) : undefined}
       data-name={base}
       data-end={endAt ? String(endAt) : undefined}
+      data-tag={bor ? 'borrowed' : undefined}
+      data-off={off ? '' : undefined}
       aria-label={`${named}. Card details`}
       aria-haspopup="dialog"
-      aria-expanded={open}
+      {...opener}
     >
-      <CardAv c={c || null} size={64} />
-      {bor && <span class="udfr">Friends</span>}
+      <CardAv c={c || null} size={22} titled={false} shape="deck" friend={bor} dim={off ? 'always' : undefined} />
+      {bor && <span class={FRIENDS_TAG}>Friends</span>}
     </button>
   );
 }
-// one of her two legacies: her portrait (it opens her node), her place and name, her two parents; the whole box opens
-// her popup, as her portrait does
+// one of her two legacies, a box in Legacy 1's blue (both, as the old sheet drew them) lit under the pointer: her
+// portrait (it opens her node), her place and name, her two parents joined by a bracket; the whole box opens her popup,
+// as her portrait does
+// her two parents, a column joined to her portrait by a bracket at its left
+const GRANDPARENTS =
+  'before:border-gm-edge after:border-gm-edge relative grid gap-2 before:absolute before:top-[22%] before:bottom-[22%] before:-left-3 before:rounded-l-sm before:border-2 before:border-r-0 after:absolute after:top-1/2 after:-left-4.5 after:w-1.5 after:border-t-2';
 function Legacy({ v, label, open, j }: DetailsSpec['legacies'][number] & { j: number }) {
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: the box is the pointer's larger target; her portrait is the keyboard's button
     <div
-      class={cx('udleg', j ? 'l2' : 'l1', 'pnclick')}
+      class="border-legacy-blue bg-gm-cell hover:shadow-node-hover relative min-w-0 cursor-pointer rounded-lg border-3 px-2 pt-5.5 pb-2"
       onClick={(e) => {
         if (!(e.target as HTMLElement).closest('button')) open();
       }}
     >
-      <span class="udlegh">{`Legacy ${j + 1}`}</span>
-      <div class="udlegt">
+      <span class="bg-legacy-blue text-ui absolute top-0 left-0 rounded-tl-sm rounded-br-lg pt-px pr-3 pb-0.5 pl-2 font-black text-white">{`Legacy ${j + 1}`}</span>
+      <div class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-4.5">
         <button
           type="button"
-          class="udlegp"
+          class="focus-visible:outline-accent grid cursor-pointer justify-items-center gap-0.5 rounded-lg p-0.5 text-center focus-visible:outline-3 focus-visible:outline-offset-2"
           aria-haspopup="dialog"
           aria-label={`Legacy ${j + 1}: ${umaName(v.chara)} (${label}). Her sparks`}
           onClick={open}
         >
           <UmaAv key={`${v.chara}:${v.outfit}`} uma={v.chara} outfit={v.outfit} size={64} />
-          <span class="udlegn">{`${label} ${umaName(v.chara)}`}</span>
-          {v.borrowed && <span class="udguest">Guest</span>}
+          <span class="text-note max-w-23 leading-tight font-bold wrap-anywhere">{`${label} ${umaName(v.chara)}`}</span>
+          {v.borrowed && <span class="bg-legacy-pink text-caption rounded-full px-2 font-black text-white">Guest</span>}
         </button>
-        <div class="udleggp">
+        <div class={GRANDPARENTS}>
           {v.parents.map((g, k) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places
-            <div key={k} class="udleggx">
+            <div key={k} class="text-note flex min-w-0 items-center gap-1.5 font-bold">
               <UmaAv
                 key={`${g.chara}:${g.outfit}`}
                 uma={g.chara || 0}
@@ -332,7 +371,7 @@ function Legacy({ v, label, open, j }: DetailsSpec['legacies'][number] & { j: nu
                 size={40}
                 label={umaName(g.chara)}
               />
-              <span>{umaName(g.chara)}</span>
+              <span class="wrap-anywhere">{umaName(g.chara)}</span>
             </div>
           ))}
         </div>
@@ -340,6 +379,12 @@ function Legacy({ v, label, open, j }: DetailsSpec['legacies'][number] & { j: nu
     </div>
   );
 }
+// Career Info's parts: a heading ruled off to its right; a race of her record, a row (on a phone narrower) and its
+// result, a win in the game's orange
+const SUB = 'text-body after:bg-gm-line flex items-center gap-2 font-black after:h-px after:flex-1';
+const RACE =
+  'bg-gm-cell border-gm-line text-body grid grid-cols-[112px_auto_minmax(0,1fr)_40px] items-center gap-2 rounded-md border px-2.5 py-1.25 font-bold max-sm:grid-cols-[84px_auto_minmax(0,1fr)_30px] max-sm:gap-1.5';
+const RESULT = { won: 'text-gm-won text-right font-black', lost: 'text-gm-lost text-right font-black' } as const;
 // Career Info, as the game's: her support cards, her two legacies (each with her parents, the borrowed one a guest),
 // and her career record (G1 races entered and won; the race-by-race record behind a button, with the G1 wins editor)
 function InfoPane({
@@ -360,8 +405,8 @@ function InfoPane({
     <>
       {deck && (
         <>
-          <div class="udsub">Support Cards</div>
-          <div class="udcards deck">
+          <div class={SUB}>Support Cards</div>
+          <div class="grid grid-cols-[repeat(6,minmax(0,64px))] justify-center gap-1.5" data-deck-cards="">
             {borrowedLast(deckCards(deck)).map((slot) => (
               <DeckCell key={`${slot.i}:${slot.named}`} slot={slot} />
             ))}
@@ -370,21 +415,21 @@ function InfoPane({
       )}
       {legacies.length > 0 && (
         <>
-          <div class="udsub">Legacy Umamusume</div>
-          <div class="udlegs">
+          <div class={SUB}>Legacy Umamusume</div>
+          <div class="grid grid-cols-2 gap-2 max-sm:grid-cols-1">
             {legacies.map((leg, j) => (
               <Legacy key={leg.v.id} {...leg} j={j} />
             ))}
           </div>
         </>
       )}
-      <div class="udsub">Career</div>
-      <div class="udrec">
-        <span class="udrecl">Career Record</span>
-        <span class="udstat">{`G1 races: ${races.length}`}</span>
-        <span class="udstat">{`Wins: ${d.wins.length}`}</span>
+      <div class={SUB}>Career</div>
+      <div class="bg-gm-cell border-gm-line flex flex-wrap items-center gap-x-3.5 gap-y-1.5 rounded-md border px-2.5 py-1.25 font-bold">
+        <span class="bg-gm-pane text-note rounded-full px-2.5 py-px">Career Record</span>
+        <span>{`G1 races: ${races.length}`}</span>
+        <span>{`Wins: ${d.wins.length}`}</span>
       </div>
-      <div class="udact">
+      <div class="flex flex-wrap justify-end gap-2">
         <Button
           class="mr-auto"
           aria-expanded={racesShown.value}
@@ -396,14 +441,14 @@ function InfoPane({
         </Button>
         {winsButton}
       </div>
-      <ol class="udraces" hidden={!racesShown.value} id="ud-races">
+      <ol class="grid gap-1" hidden={!racesShown.value} id="ud-races">
         {entries.map((x) => (
-          <li key={x.ix} class={cx('udrace', x.won ? 'won' : '')}>
-            <span class="udrw">{x.turn == null ? 'Entered here' : when(x.turn)}</span>
-            <span class="udgr">G1</span>
-            <span class="udrn">{x.name}</span>
+          <li key={x.ix} class={RACE}>
+            <span class="text-note text-gm-ink2">{x.turn == null ? 'Entered here' : when(x.turn)}</span>
+            <span class="bg-gm-g1 text-caption rounded-sm px-1.5 py-px font-black text-white">G1</span>
+            <span class="wrap-anywhere">{x.name}</span>
             {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (details.ts infoPane): the label reads the result; a role for it is recorded, not changed here */}
-            <span class="udres" aria-label={x.won ? 'won' : 'not won'}>
+            <span class={x.won ? RESULT.won : RESULT.lost} aria-label={x.won ? 'won' : 'not won'}>
               {x.won ? '1st' : '–'}
             </span>
           </li>

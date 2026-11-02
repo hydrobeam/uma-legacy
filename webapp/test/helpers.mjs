@@ -450,7 +450,7 @@ export async function careerPage(b) {
             ? 'search'
             : '',
         who: document.querySelector('#tree [data-node="trainee"] [data-nm]')?.textContent || '',
-        draft: document.querySelector('#simulation .ud')
+        draft: document.querySelector('#simulation [data-details]')
           ? 'v:' +
             [...document.querySelectorAll('#simulation [aria-label="Her sparks"] [data-bar]')]
               .map((b) => b.getAttribute('aria-label'))
@@ -498,7 +498,7 @@ export async function careerPage(b) {
       () =>
         (document.querySelector('#tree [data-node="trainee"] [data-nm]')?.textContent || '') +
         '/' +
-        (document.querySelector('#simulation .ud')
+        (document.querySelector('#simulation [data-details]')
           ? 'v:' +
             [...document.querySelectorAll('#simulation [aria-label="Her sparks"] [data-bar]')]
               .map((b) => b.getAttribute('aria-label'))

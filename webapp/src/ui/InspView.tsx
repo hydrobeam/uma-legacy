@@ -10,7 +10,6 @@ import type { NodeRecord, NodeRef, ParentPlace } from '../veterans/store.ts';
 import { UmaAv } from './Images.tsx';
 import { Sparks } from './Sparks.tsx';
 import { GameBar } from './GameBar.tsx';
-import { cx } from 'tailwind-variants/lite';
 
 interface InspViewProps {
   /** the veteran shown */
@@ -31,8 +30,6 @@ interface InspViewProps {
   readOnly?: boolean;
   /** the "Sparks" heading */
   header?: boolean;
-  /** a class beside her row's own */
-  meClass?: string;
   /** parent j's place, read out with her portrait ("#3"; null: "Her parent") */
   parentLabel?: ((j: ParentPlace) => string) | null;
 }
@@ -57,14 +54,13 @@ export function InspView({
   parentAt = null,
   readOnly = false,
   header = false,
-  meClass = '',
   parentLabel = null,
 }: InspViewProps) {
   return (
     <div class="grid gap-2">
       {header && <GameBar as="div">Sparks</GameBar>}
       <div class={parents.length ? LINEAGE.joined : LINEAGE.solo}>
-        <div class={cx(ROW, meClass)} data-row="me">
+        <div class={ROW} data-row="me">
           <UmaAv
             key={`${nd.chara}:${nd.outfit}`}
             uma={nd.chara || 0}

@@ -23,7 +23,7 @@ export default async function careerphone(b) {
   await pg.waitForFunction(
     () =>
       /Planned in/.test(document.getElementById('run-note').textContent) &&
-      document.querySelector('.ud [role="tablist"]'),
+      document.querySelector('[role="tablist"][aria-label="Her details"]'),
     null,
     { timeout: 300000 },
   );

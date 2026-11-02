@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { drawPink } from '../src/pink.ts';
 import { scheduledRaces, rolledBought, starDraw, rolledOutcome, rolledBlueGreen } from '../src/career/roll.ts';
 import { searchCaveat, planCaveat } from '../src/proofs.ts';
+import { chip, FRIENDS_TAG } from '../src/ui/deckChip.ts';
 import { expect } from 'playwright/test';
 import { QUICK, check, ART, dialog, careerPage, openEditor, closeEditor, repoUrl, json } from './helpers.mjs';
 
@@ -745,13 +746,9 @@ export default async function career(b) {
   );
   {
     // with a card borrowed, every deck on the page (the tree's, Career Info's) lists it last: the sixth slot, as in the game
-    const rows = await pg.$$eval('[data-deck-cards], .udcards', (l) =>
+    const rows = await pg.$$eval('[data-deck-cards]', (l) =>
       l
-        .map((r) =>
-          [...r.querySelectorAll(':scope > button')].map(
-            (e) => e.dataset.tag === 'borrowed' || e.classList.contains('bor'),
-          ),
-        )
+        .map((r) => [...r.querySelectorAll(':scope > button')].map((e) => e.dataset.tag === 'borrowed'))
         .filter((k) => k.length),
     );
     const bad = rows.filter((k) => k.some((b, i) => b && k.slice(i + 1).some((x) => !x))).length,
@@ -960,9 +957,9 @@ export default async function career(b) {
   // screen and a phone, with no sideways scroll
   const simLayout = () =>
     pg.evaluate(() => {
-      const c = document.querySelector('#simulation .ud');
+      const c = document.querySelector('#simulation [data-details]');
       if (!c) return 'no card';
-      const f = c.querySelector('.udtop [data-av]'),
+      const f = c.querySelector('[data-part="head"] [data-av]'),
         tabs = [...c.querySelectorAll('[role="tab"]')],
         ins = c.querySelector('#udpane-insp'),
         who = ins.querySelector('[data-row="me"]'),
@@ -970,7 +967,7 @@ export default async function career(b) {
         me = who.querySelector(':scope > [data-av]'),
         fr = me.getBoundingClientRect(),
         sr = s.getBoundingClientRect();
-      const apt = c.querySelector('.udapt');
+      const apt = c.querySelector('[role="table"][aria-label="Her aptitudes"]');
       return (
         f.getAttribute('role') === 'img' &&
         /\S/.test(f.getAttribute('aria-label') || '') &&
@@ -1006,8 +1003,8 @@ export default async function career(b) {
       "career: the Skills tab lists the target skills she could acquire as the game's tiles, acquired ones bright";
     await expect.soft(pg.locator('#udpane-skills'), `${name}: its pane shows`).toBeVisible();
     await expect.soft(pg.locator('#udpane-insp'), `${name}: … in place of Inspiration's`).toBeHidden();
-    const tiles = await pg.$$eval('#udpane-skills .udsk', (l) =>
-      l.map((t) => [t.classList.contains('off'), t.getAttribute('aria-label') || '']),
+    const tiles = await pg.$$eval('#udpane-skills button[data-k^="sim:sk"]', (l) =>
+      l.map((t) => [t.hasAttribute('data-off'), t.getAttribute('aria-label') || '']),
     );
     const sparkN = await pg.locator('#udpane-insp [aria-label="Her sparks"] [data-spark="white"]').count();
     check(
@@ -1018,7 +1015,7 @@ export default async function career(b) {
       JSON.stringify(tiles) + ' | sparks ' + sparkN,
     );
   }
-  await pg.locator('#udpane-skills .udsk').first().click();
+  await pg.locator('#udpane-skills button[data-k^="sim:sk"]').first().click();
   await dialog(pg, 'sk-dlg');
   {
     const name =
@@ -1029,7 +1026,9 @@ export default async function career(b) {
     await expect.soft(sk, `${name}: where it comes from`).toHaveText(/Where it comes from/);
     await expect.soft(sk, `${name}: how likely`).toHaveText(/Lands as a spark/);
     await pg.keyboard.press('Escape');
-    await expect.soft(pg.locator('#udpane-skills .udsk:focus'), `${name}: the focus back on a tile`).toHaveCount(1);
+    await expect
+      .soft(pg.locator('#udpane-skills button[data-k^="sim:sk"]:focus'), `${name}: the focus back on a tile`)
+      .toHaveCount(1);
   }
   await pg.focus('#udtab-skills');
   await pg.keyboard.press('ArrowRight');
@@ -1450,7 +1449,7 @@ export default async function career(b) {
     await expect
       .soft(
         pg.locator(
-          '#simulation .ud .udtop #sim-compare, #simulation .ud .udtop #sim-roll, #simulation .ud .udtop #sim-add',
+          '#simulation [data-part="head"] #sim-compare, #simulation [data-part="head"] #sim-roll, #simulation [data-part="head"] #sim-add',
         ),
         `${name}: the header's three`,
       )
@@ -1554,7 +1553,7 @@ export default async function career(b) {
   await simOpen();
   await pg.click('#udtab-info');
   // (Try a run's dialog is outside the page's .rb: its deck keeps the six-column row, each card at most 64 px)
-  const deckCards = await pg.$$eval('#udpane-info .udcards.deck .udcard', (l) =>
+  const deckCards = await pg.$$eval('#udpane-info [data-deck-cards] > button', (l) =>
     l.map((c) => {
       const r = c.getBoundingClientRect();
       return [Math.round(r.width), Math.round(r.top)];
@@ -1565,48 +1564,67 @@ export default async function career(b) {
     deckCards.length >= 1 && deckCards.every(([w]) => w <= 64) && new Set(deckCards.map(([, top]) => top)).size === 1,
     JSON.stringify(deckCards),
   );
-  const rec = await pg.$$eval('#udpane-info .udrace', (l) => l.map((r) => r.classList.contains('won')));
-  const recLine = await pg.textContent('#udpane-info .udrec'),
+  // a card there opens its panel in the popup, and a second click closes it
+  {
+    const card = pg.locator('#udpane-info [data-deck-cards] > button').first();
+    await card.click();
+    await expect
+      .soft(pg.locator('#sim-dlg [data-pop="card"]:not([hidden])'), "career: a Career Info card opens the card's panel")
+      .toHaveCount(1);
+    await card.click();
+    await expect.soft(pg.locator('#sim-dlg [data-pop="card"]:not([hidden])'), 'career: … and closes it').toHaveCount(0);
+  }
+  const rec = await pg.$$eval('#ud-races > li', (l) =>
+    l.map((r) => r.querySelector('[aria-label]').getAttribute('aria-label') === 'won'),
+  );
+  const recLine = await pg.textContent('#udpane-info'),
     racesShut = await pg.locator('#ud-races').isHidden();
-  await pg.click('#udpane-info .udmore');
+  await pg.click('#udpane-info [data-k="sim:races"]');
   {
     const name =
       'career: the Career Info tab shows her support cards, her two legacies with their parents, and her record (the races behind a button) matching the wins button';
     check(
       name,
-      (await pg.locator('#udpane-info .udcard').count()) >= 1 &&
+      (await pg.locator('#udpane-info [data-deck-cards] > button').count()) >= 1 &&
         rec.length > 0 &&
         rec.filter(Boolean).length === w0 &&
         new RegExp(`Wins: ${w0}\\b`).test(recLine) &&
         racesShut,
-      `${rec.length} races, ${rec.filter(Boolean).length} won, button ${w0}, ${recLine}`,
+      `${rec.length} races, ${rec.filter(Boolean).length} won, button ${w0}, ${(recLine.match(/Wins: \d+/) || [''])[0]}`,
     );
-    await expect.soft(pg.locator('#udpane-info .udleg'), `${name}: her two legacies`).toHaveCount(2);
-    await expect.soft(pg.locator('#udpane-info .udleggx'), `${name}: … with their parents`).toHaveCount(4);
+    await expect
+      .soft(pg.locator('#udpane-info button[aria-label^="Legacy "]'), `${name}: her two legacies`)
+      .toHaveCount(2);
+    // (their parents' portraits are the pane's only ones named: role img)
+    await expect.soft(pg.locator('#udpane-info [data-av][role="img"]'), `${name}: … with their parents`).toHaveCount(4);
     await expect.soft(pg.locator('#ud-races'), `${name}: the races shown by their button`).toBeVisible();
   }
   // a borrowed card there wears the friend frame within its own card (`all: unset` on these cards once dropped the
-  // container the frame's 100cqw is measured on, and the frame grew to the page's width)
+  // container the frame's 100cqw is measured on, and the frame grew to the page's width): a card made borrowed, as
+  // DeckCell draws one (the chip's borrowed look, ringed without art, its Friends tag)
   if (ART) {
-    const fr = await pg.evaluate(() => {
-      const row = document.querySelector('#udpane-info .udcards'),
-        c = row.querySelector('.udcard').cloneNode(true);
-      c.classList.add('bor');
-      c.appendChild(Object.assign(document.createElement('span'), { className: 'udfr', textContent: 'Friends' }));
-      row.appendChild(c);
-      const r = c.getBoundingClientRect(),
-        a = getComputedStyle(c, '::after'),
-        out = [
-          parseFloat(a.width),
-          parseFloat(a.height),
-          r.width,
-          r.height,
-          getComputedStyle(c).boxShadow,
-          getComputedStyle(c.querySelector('.udfr')).display,
-        ];
-      c.remove();
-      return out;
-    });
+    const fr = await pg.evaluate(
+      ({ look, tag }) => {
+        const row = document.querySelector('#udpane-info [data-deck-cards]'),
+          c = row.querySelector(':scope > button').cloneNode(true);
+        c.className = look;
+        c.appendChild(Object.assign(document.createElement('span'), { className: tag, textContent: 'Friends' }));
+        row.appendChild(c);
+        const r = c.getBoundingClientRect(),
+          a = getComputedStyle(c, '::after'),
+          out = [
+            parseFloat(a.width),
+            parseFloat(a.height),
+            r.width,
+            r.height,
+            getComputedStyle(c).boxShadow,
+            getComputedStyle(c.querySelector(':scope > span:last-child')).display,
+          ];
+        c.remove();
+        return out;
+      },
+      { look: chip({ tag: 'borrowed', friends: true }), tag: FRIENDS_TAG },
+    );
     // and wears it alone: the old pink ring and Friends tag (for cards without art) once framed the frame
     check(
       "career: in Career Info a borrowed card's friend frame stays on its card, without the ring and tag",
