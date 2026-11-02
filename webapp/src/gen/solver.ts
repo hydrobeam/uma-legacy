@@ -870,7 +870,8 @@ best_trio_changes: boolean, trios: Array<OracleTrio>, oracle_ms: number, scoring
 export type Key = string;
 
 /**
- * A veteran as a job sends her: her record (character, sparks, G1 wins, pinks) and her recorded parents.
+ * A veteran as a job sends her: her record (character, sparks, G1 wins, pinks) and her recorded parents. A veteran
+ * the planner imagines is not one (`imagined::ImaginedVeteran`).
  */
 export type Legacy = { chara: number, borrowed?: boolean, sparks?: Array<Spark>, wins?: Array<number>, pinks?: Array<Pink>, 
 /**
