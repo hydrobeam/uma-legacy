@@ -25,6 +25,13 @@ pub(super) fn run_deck_relaxed(data: &Data, skills: &SkillsRaw, cards: &CardsRaw
     let model = Model::new(data, skills, skill_job);
     let target_groups: Vec<u32> = model.uncertain.iter().map(|&i| skill_job.targets[i].group).collect();
     let target_count = target_groups.len();
+    // (with no uncertain target no deck or loop changes the odds: the deck search has nothing to rank, and its
+    // enumeration takes at least one target)
+    if target_count == 0 {
+        return DeckReply::Refusal(Refusal::new(
+            "Every target is guaranteed by the scenario: no deck changes the odds.",
+        ));
+    }
     let pool_ids: Vec<u32> = data
         .umas
         .iter()

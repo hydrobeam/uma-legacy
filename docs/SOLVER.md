@@ -236,7 +236,7 @@ The job file's `files.skills` holds the outfit skill lists, the skill catalog an
 
 | Field | Meaning | Default |
 |---|---|---|
-| `targets[]` | `group` = skill group id; `guaranteed` 0 none / 1 white / 2 gold; `deck_white`, `deck_gold` = deck hint chance 0–1 | required |
+| `targets[]` | `group` = skill group id; `guaranteed` 0 none / 1 white / 2 gold; `deck_white`, `deck_gold` = deck hint chance 0–1. Where every target is `guaranteed` 2, no deck changes the odds: a deck job is refused, and a career job gives each career the job's locked cards and filler with no deck search | required |
 | `rank_class` | the rank band the legacies were bred at, which sets their sparks' star mix (`RankClass::star_mix`, assumed: docs/RESEARCH.md section 2): `"below_ss"` (rank score 6,500 to 17,499) [0.50, 0.45, 0.05], `"ss_and_up"` (17,500 and up) [0.20, 0.70, 0.10] | `"below_ss"` |
 | `owned` | uma ids you own (empty = whole roster) | `[]` |
 | `exclude` | uma ids to leave out | `[]` |

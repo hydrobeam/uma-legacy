@@ -650,6 +650,31 @@ impl<'data> DeckSpace<'data> {
     pub(crate) fn plain_ids(&self, trainee_ids: &[u32], count: usize) -> Vec<u32> {
         self.legal_plain(trainee_ids).iter().take(count).map(|plain_pal| plain_pal.id).collect()
     }
+    /// The deck of the job's locked cards and filler for `trainee_ids`, None where a locked card blocks one of them.
+    /// With no uncertain target (every target is the scenario's gold) no card changes the odds, so this deck is as good
+    /// as any: the deck a job whose targets are all guaranteed takes with no search (`Env::best_deck`).
+    pub(crate) fn locked_filler_deck(&self, trainee_ids: &[u32]) -> Option<SelectedDeck> {
+        if self
+            .locked
+            .iter()
+            .any(|&card| trainee_ids.iter().any(|&id| self.cards[card].blocks(id, crate::checks::get())))
+        {
+            return None;
+        }
+        let mut entries: Vec<usize> = self
+            .locked
+            .iter()
+            .filter_map(|&card| (0..self.card_indices.len()).find(|&j| self.card_indices[j] == card))
+            .collect();
+        entries.sort_unstable();
+        Some(SelectedDeck {
+            filler_cards: self.deck_job.deck_size - entries.len(),
+            entries,
+            plain_pals: 0,
+            white_hint_chances: vec![],
+            gold_hint_chances: vec![],
+        })
+    }
     /// Whether named entries `entries` hold every locked card and at most the borrowed cards the job allows
     pub(crate) fn locks_and_borrowing_hold(&self, entries: &[usize]) -> bool {
         self.locked.iter().all(|&locked_card| entries.iter().any(|&j| self.card_indices[j] == locked_card))
