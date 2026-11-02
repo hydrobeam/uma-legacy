@@ -127,7 +127,8 @@ export default async function careervets(b) {
   await pg.locator('#wins-dlg').getByRole('button', { name: 'Done', exact: true }).click();
   await done();
   await vetsShut();
-  // parent 1: a new veteran, with the skills prompt
+  // parent 1: a new veteran entered step by step (veterans/entry.ts): her uma, her sparks, her pink, then each parent's
+  // uma, sparks and pink
   await node('node:p0');
   await inNode(/^(Choose|Change) parent$/).click();
   await dialog(pg, 'vpick-dlg');
@@ -140,6 +141,38 @@ export default async function careervets(b) {
     .soft(pg.locator('#ask-title'), 'career: picking a new uma asks whether to add the skills')
     .toHaveText(/Add skills to Special Week/);
   await ask('All 8 at 2★');
+  // a pink in the colour picker, which names whose it is
+  const pinkOf = async (who, aptitude) => {
+    await dialog(pg, 'col-dlg');
+    await expect
+      .soft(pg.locator('#col-title'), `career: the entry asks for ${who}'s pink`)
+      .toHaveText(`Pink spark: ${who}`);
+    await pg.locator('#col-dlg [data-bar]', { hasText: aptitude }).click();
+    await pg.locator('#col-dlg').getByRole('button', { name: 'Done', exact: true }).click();
+  };
+  await pinkOf('Special Week', 'Medium');
+  for (const [j, uma] of [
+    [1, 'Maruzensky'],
+    [2, 'Oguri Cap'],
+  ]) {
+    await dialog(pg, 'pick-dlg');
+    await expect
+      .soft(pg.locator('#pick-title'), `career: … then her parent ${j}'s uma`)
+      .toHaveText(`Parent ${j} of Special Week: which uma?`);
+    if (j === 1) {
+      await expect
+        .soft(runNote, 'career: … while her parents are not entered, she is incomplete and nothing is searched')
+        .toHaveText(/Parent 1 \(Special Week\) is incomplete: missing parent 1, parent 2/);
+      await pg.fill('#pick-filter', 'Special Week');
+      await expect
+        .soft(pg.locator('#pick-list button:visible'), "career: … her own uma isn't offered as her parent")
+        .toHaveCount(0);
+    }
+    await pg.fill('#pick-filter', uma);
+    await pg.locator('#pick-list button:visible').first().click();
+    await ask('All 8 at 2★');
+    await pinkOf(`Parent ${j}, ${uma}`, 'Turf');
+  }
   await done();
   const closedEmpty =
     'career: the closed parent picker and node popup hold no rows or node (an edit elsewhere redraws none of them)';
@@ -162,11 +195,20 @@ export default async function careervets(b) {
   check('career: … with the eight targets at 2 stars (in her popup)', await sparksIn('node:p0', 2));
   await vetsSeen(); // the veterans dialog draws its cards when open (and on opening)
   const herParents =
-    'career: … her parents are not known yet but carry the same eight sparks, and she joins your veterans';
+    'career: … her parents are the umas entered, with their sparks and pinks, and she joins your veterans';
   await expect
-    .soft(pg.locator('#tree [data-legacy="1"] [data-node="gp"]', { hasText: 'Unknown' }), `${herParents}: unknown`)
-    .toHaveCount(2);
+    .soft(pg.locator('#tree [data-legacy="1"] [data-node="gp"]'), `${herParents}: named`)
+    .toHaveText([/Maruzensky/, /Oguri Cap/]);
   check(`${herParents}: their sparks`, (await sparksIn('node:p0g0', 2)) && (await sparksIn('node:p0g1', 2)));
+  await saved();
+  const entered = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.at(-1));
+  check(
+    `${herParents}: as stored`,
+    entered.src === 'hand' &&
+      JSON.stringify(entered.pinks) === '{"33":2}' &&
+      entered.parents.map((p) => `${p.chara}:${JSON.stringify(p.pinks)}`).join() === '1004:{"11":2},1006:{"11":2}',
+    JSON.stringify(entered),
+  );
   await expect.soft(cards, `${herParents}: 13 veterans`).toHaveCount(13);
   await expect.soft(pg.locator('#vet-12 [data-part="tab"]'), `${herParents}: her card`).toHaveText(/Parent 1/);
   await expect.soft(runNote, 'career: the planner fills the rest').toHaveText(/Weighed 804 careers/);

@@ -157,7 +157,7 @@ function AskSkills({ asked }: { asked: SkillsAsk | null }) {
         </h3>
         <p class="max-w-[75ch]" id="ask-text">
           {shown
-            ? `Her sparks of your ${n} target skills decide what she passes on. A fully looped parent has all of them${shown.withParents ? ', and so do her own two parents: the same choice goes on them.' : '.'} You can change the stars of each afterwards.`
+            ? `Her sparks of your ${n} target skills decide what she passes on. A fully looped parent has all of them. You can change the stars of each afterwards.`
             : ''}
         </p>
         <div class="flex flex-wrap items-center gap-2" id="ask-btns">
@@ -226,7 +226,9 @@ function ColourDialog({ edit }: { edit: ColourEdit | null }) {
   }, [edit]);
   return (
     <Dialog size="md" id="col-dlg" kind="popup" labelledBy="col-title" open={!!nd} onClose={colourClosed}>
-      <DialogTitle id="col-title">{edit ? KIND[edit.kind].title : ''}</DialogTitle>
+      <DialogTitle id="col-title">
+        {edit ? `${KIND[edit.kind].title}${edit.opts.who ? `: ${edit.opts.who}` : ''}` : ''}
+      </DialogTitle>
       {edit && nd && <Colours nd={nd} at={edit.at} kind={edit.kind} />}
       <DialogFoot>
         <DialogClose ref={done} onClick={colourClosed} label="Done" />
@@ -285,9 +287,7 @@ function Colours({ nd, at, kind }: { nd: NodeRecord; at: NodeRef; kind: ColourEd
       )}
       {kind === 'pink' && (
         <p class={STAT}>
-          {nd.apt
-            ? 'The aptitudes she ends this career at A or S.'
-            : "Her uma's aptitudes at A or S (a pink needs A or better)."}
+          {nd.apt ? 'The aptitudes she ends this career at A or S.' : 'An aptitude she ended at A or S.'}
         </p>
       )}
     </DialogBody>

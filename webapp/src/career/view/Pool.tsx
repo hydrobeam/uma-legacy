@@ -12,6 +12,7 @@ import type { Target } from '../../settings.ts';
 import { vets, places, clearVets } from '../../veterans/store.ts';
 import type { VetRecord } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
+import { lacks, lacksSaid } from '../../veterans/complete.ts';
 import { SortMenu } from '../../ui/SortMenu.tsx';
 import { VetCell } from '../../ui/VetCell.tsx';
 import { idxOf } from '../current.ts';
@@ -112,6 +113,7 @@ interface CardProps {
 function PoolCard({ v, i, k, targets, grid }: CardProps) {
   const sel = useComputed(() => selected.value === v.id).value,
     have = targets.filter((t) => (v.sparks as Record<number, number>)?.[t.group]).length,
+    lacking = lacks(v),
     id = v.id;
   return (
     <VetCell
@@ -121,8 +123,10 @@ function PoolCard({ v, i, k, targets, grid }: CardProps) {
       sel={sel}
       current={sel && wideVets()}
       name={v.lender ? v.lender.name || 'uma.moe' : `#${i + 1}`}
-      label={`Veteran #${i + 1}: ${umaName(v.chara)}, ${have} of ${targets.length} target skills. Her sparks`}
+      label={`Veteran #${i + 1}: ${umaName(v.chara)}, ${have} of ${targets.length} target skills${lacking.length ? `, incomplete (missing ${lacksSaid(lacking)})` : ''}. Her sparks`}
       tab={k >= 0 ? `Parent ${k + 1}` : undefined}
+      sub={lacking.length ? 'Incomplete' : undefined}
+      subTitle={`Missing ${lacksSaid(lacking)}: the planner leaves her out`}
       onClick={() => {
         if (!wideVets())
           openNode({ kind: 'v', id }, () => grid.current?.querySelector<HTMLElement>(`#vet-${idxOf(id)}`)?.focus());

@@ -5,7 +5,8 @@ import { gameData } from '../data.ts';
 import { stateKey } from '../engine.ts';
 import { deckPart, isOwned, skillsPart } from '../job.ts';
 import { starsOf, umaName } from '../veterans/names.ts';
-import { must } from '../must.ts';
+import { lacks, lacksSaid } from '../veterans/complete.ts';
+import { assert, must } from '../must.ts';
 import type { SolverAnswer } from '../solver.ts';
 import type * as Gen from '../gen/solver.ts';
 import type { SettingsView } from '../settings.ts';
@@ -123,12 +124,16 @@ export class Blocked extends Error {
 export const BORROW_CHOICES = { allow: 'Allowed', later: 'None left today', never: 'Never' };
 export const borrowChoice = (s: SettingsView): keyof typeof BORROW_CHOICES =>
   Object.hasOwn(BORROW_CHOICES, s.borrowPar) ? (s.borrowPar as keyof typeof BORROW_CHOICES) : 'allow';
-/** What a career job is made of: the settings and the veterans store's record (the veterans, each as the job takes her,
- *  the places and the career chosen with Use this). */
+/** What a career job is made of: the settings and the veterans store's record (the veterans, the complete ones each as
+ *  the job takes her, the places and the career chosen with Use this). */
 export interface JobFrom {
   settings: SettingsView;
+  /** every veteran (a place names any of them) */
   vets: readonly VetRecord[];
-  /** every veteran as the job takes her (veterans/store.ts `legaciesJob`: the same array until the veterans change) */
+  /** the complete veterans (veterans/store.ts `readyVets`), in the order of the job's legacies */
+  ready: readonly VetRecord[];
+  /** each complete veteran as the job takes her (veterans/store.ts `legaciesJob`: the same array until the veterans
+   *  change) */
   legacies: readonly JobLegacy[];
   places: PlacesRecord;
   chosen: DeepReadonly<ChosenCareer> | null;
@@ -138,13 +143,29 @@ export interface PoolActs {
   importVets: () => void;
   trySamples: () => void;
 }
-// the career job `from` the settings, veterans and places (throws Blocked when they make none; `acts`: its buttons)
+// the career job `from` the settings, veterans and places (throws Blocked when they make none; `acts`: its buttons).
+// It is built on the complete veterans alone (veterans/complete.ts): a legacy index is a place among them
 export function buildJob(from: JobFrom, acts: PoolActs): CareerJob {
-  const { settings: s, vets: pool, places: plan } = from;
+  const { settings: s, ready: pool, places: plan } = from;
+  assert(pool.length === from.legacies.length, 'the job takes each complete veteran once');
   if (!s.targets.length) throw new Blocked('empty', 'No target skills: add them with Target skills above.');
+  // a place holding an incomplete veteran: no job until she is finished
+  for (const [k, id] of plan.parents.entries()) {
+    const v = id ? from.vets.find((x) => x.id === id) : undefined,
+      lacking = v ? lacks(v) : [];
+    if (v && lacking.length)
+      throw new Blocked('error', `Parent ${k + 1} (${umaName(v.chara)}) is incomplete: missing ${lacksSaid(lacking)}.`);
+  }
   const vetById = (id: string) => pool.find((v) => v.id === id);
   const fixed = (plan.parents.filter(Boolean) as string[]).map(vetById);
   if (pool.length < 2 || !pool.some((v) => !v.borrowed)) {
+    const incomplete = from.vets.length - pool.length;
+    if (incomplete)
+      throw new Blocked(
+        'empty',
+        `${incomplete} veteran${incomplete === 1 ? ' is' : 's are'} incomplete: the planner needs two complete ones, one of them yours.`,
+        { label: 'Veteran Umamusume', run: acts.importVets },
+      );
     const importVets = { label: 'Import veterans', run: acts.importVets };
     throw new Blocked(
       'empty',

@@ -9,7 +9,7 @@ import { settings } from '../settings.ts';
 import { run as engineRun } from '../engine.ts';
 import { goldGiven } from '../job.ts';
 import { srcFor } from '../images.ts';
-import { vets, places, chosen, setChosen, vetById, addVets, legaciesJob } from '../veterans/store.ts';
+import { vets, places, chosen, setChosen, vetById, addVets, legaciesJob, readyVets } from '../veterans/store.ts';
 import { targetGroups } from '../veterans/names.ts';
 import { answer, answerCareer, answerPool, choiceDropped, dropAnswer, reference } from './state.ts';
 import { on } from '../store.ts';
@@ -23,6 +23,7 @@ import { Blocked, buildJob, isFull, placesKey, umasNotOwned } from './job.ts';
 import { searchIn } from './reply.ts';
 import type { CareerAnswer, CareerJob, CareerReport, CareerTrainee, OptionRow, PoolActs } from './job.ts';
 import type { PlanProgress, SolverAnswer } from '../solver.ts';
+import { Aptitude } from '../gen/solver.ts';
 import type * as Gen from '../gen/solver.ts';
 import type { LineageNode, Sparks, Veteran, VetRecord } from '../veterans/store.ts';
 import type { DeepReadonly } from '../store.ts';
@@ -59,6 +60,7 @@ export const currentJob = (): CareerJob =>
     {
       settings: settings.peek(),
       vets: vets.peek(),
+      ready: readyVets.peek(),
       legacies: legaciesJob(),
       places: places.peek(),
       chosen: chosen.peek(),
@@ -116,7 +118,8 @@ export function parentAt(
 // portrait), six veterans with two mob parents each, the bare minimum to start a loop: each veteran carries, at 1 star,
 // only the targets nothing but inheritance gives (no card hints or events them, no outfit has them, the scenario
 // doesn't hand them out); her parents carry nothing. No relation points with anyone (the solver knows no mob), no G1
-// wins. Marked as samples; Remove all clears them.
+// wins. Each, parents too, has the one pink every veteran has: Turf at 1 star (the aptitude nearly every uma starts at
+// A). Marked as samples; Remove all clears them.
 function sampleVets(): Veteran[] {
   const all = careerTables().mobs || [],
     withArt = all.filter(([id]) => srcFor('mob', id)),
@@ -128,7 +131,7 @@ function sampleVets(): Veteran[] {
   const node = (id: number, sparks: Sparks): LineageNode => ({
     chara: id,
     sparks,
-    pinks: {},
+    pinks: { [Aptitude.Turf]: 1 },
     blues: {},
     greens: {},
     wins: [],
@@ -202,14 +205,15 @@ function asTableRows(m: SolverAnswer<Gen.CareerReply>): CareerAnswer {
 }
 
 // ---------- the veterans and places, followed
-// A result names parents by their place in the veteran list: adding, removing or importing veterans changes the places,
-// so the answer on screen goes; an edit to a veteran or a place keeps it on screen, dimmed, until the new one is ready.
-// While a pool veteran's G1 wins window or a skills prompt is open its edits are saved, and the search waits for it to
-// close (veterans/pickers.ts `searchHeld`). The entry calls it once, with its run machine and comparison.
+// A result names parents by their place among the complete veterans (the job's legacies): adding, removing or importing
+// veterans, or one becoming complete or incomplete, changes the places, so the answer on screen goes; an edit to a
+// veteran or a place keeps it on screen, dimmed, until the new one is ready. While a pool veteran's G1 wins window or a
+// skills prompt is open its edits are saved, and the search waits for it to close (veterans/pickers.ts `searchHeld`).
+// The entry calls it once, with its run machine and comparison.
 export function followPool(run: { schedule: () => void }, comparison: { clear: () => void }) {
-  const idsOf = (list: typeof vets.value) => list.map((v) => v.id).join(',');
-  let ids = idsOf(vets.peek());
-  return on([vets, places, searchHeld], (list, _places, held) => {
+  const idsOf = (list: typeof readyVets.value) => list.map((v) => v.id).join(',');
+  let ids = idsOf(readyVets.peek());
+  return on([readyVets, places, searchHeld], (list, _places, held) => {
     if (held) return;
     if (idsOf(list) !== ids) {
       ids = idsOf(list);

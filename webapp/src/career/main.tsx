@@ -61,6 +61,8 @@ import {
   dropMissing,
   handBackPlaces,
   setListings,
+  readyVets,
+  parentsPlaced,
 } from '../veterans/store.ts';
 import { AddList, VetEditors } from '../veterans/Editors.tsx';
 import { ScheduleDialog } from '../ui/Schedule.tsx';
@@ -140,7 +142,7 @@ const run = createRun({
   store: answerStore,
   page: {
     job: currentJob,
-    pool: () => vets.peek().map((v) => v.id),
+    pool: () => readyVets.peek().map((v) => v.id),
     places: () => placesKey(places.peek()),
     trainee: () => places.peek().trainee,
     refBase: (job) => refBase(job, umasNotOwned(settings.peek())),
@@ -165,7 +167,7 @@ function searchStatus(m: { r: CareerSearch; ms: number }, found: string): Status
   const carried = new Set(
     vets
       .peek()
-      .flatMap((v) => [v, ...v.parents])
+      .flatMap((v) => [v, ...parentsPlaced(v.parents).map(([parent]) => parent)])
       .flatMap((x) => Object.keys(x.sparks || {}).map(Number)),
   );
   const none = settings.value.targets

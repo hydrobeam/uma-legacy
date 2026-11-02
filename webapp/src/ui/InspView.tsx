@@ -1,6 +1,6 @@
 // ---------- the game's Inspiration view of a veteran ----------
 // "Sparks" (Try a run's card: `header`), her sparks as the game's spark bars, then "Legacy Origin": her parents' (each a
-// row with her portrait). Her parents' sparks are editable when `parentKey` names their controls. It reads no store (as
+// row with her portrait; an absent one has none). Her parents' sparks are editable when `parentKey` names their controls. It reads no store (as
 // Sparks): it draws again whenever its parent does. Each row her portrait in the game's white and cream rings beside her
 // sparks (48 px on a narrow phone, 64 elsewhere), a line joining hers to her parents' down the portraits' middle; the
 // rows are data-row (me, parent).
@@ -14,8 +14,8 @@ import { GameBar } from './GameBar.tsx';
 interface InspViewProps {
   /** the veteran shown */
   nd: NodeRecord;
-  /** her parents (none: her row alone) */
-  parents: readonly NodeRecord[];
+  /** her parents in their places, an absent one null (none: her row alone) */
+  parents: readonly (NodeRecord | null)[];
   /** her sparks' control names */
   k: string;
   /** where her edits go */
@@ -90,7 +90,7 @@ export function InspView({
               shape="insp"
               ring="insp"
               cls="relative"
-              label={`${parentLabel ? `Parent ${parentLabel(j)}` : 'Her parent'}: ${umaName(g.chara)}`}
+              label={`${parentLabel ? `Parent ${parentLabel(j)}` : 'Her parent'}: ${g.chara ? umaName(g.chara) : 'not entered'}`}
             />
             <div>
               {parentKey && parentAt && !readOnly ? (

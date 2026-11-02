@@ -13,7 +13,8 @@ import { memory } from './fakes.mjs';
 
 const KEY = 'llp:career',
   OTHER = ERA === 'gm' ? 'global' : 'gm';
-const node = (chara, sparks = {}) => ({ chara, sparks, pinks: {}, blues: {}, greens: {}, wins: [] });
+// (each with the one pink a complete veteran has: Turf, 1 star)
+const node = (chara, sparks = {}) => ({ chara, sparks, pinks: { 11: 1 }, blues: {}, greens: {}, wins: [] });
 const vet = (id, extra = {}) => ({
   id,
   src: 'import',
@@ -51,7 +52,7 @@ const ids = () => vs.vets.peek().map((v) => v.id);
 test('every mutator copies on write: old records unchanged, untouched veterans the same objects, new records frozen', () => {
   const cases = [
     ['addVets', () => vs.addVets([vet('d')]), []],
-    ['newVet', () => vs.newVet(5, { 7: 2 }), []],
+    ['newVet', () => vs.newVet({ ...node(5, { 7: 2 }), parents: [node(1), null] }, 'hand'), []],
     ['editVet', () => vs.editVet('b', (v) => ({ sparks: { ...v.sparks, 8: 3 } })), ['b']],
     ['editVet borrowed', () => vs.editVet('b', () => ({ borrowed: true })), ['b']],
     ['parentRef edit', () => vs.parentRef('c', 1).edit((p) => ({ wins: [...p.wins, 4], winAt: { 4: 30 } })), ['c']],
@@ -112,12 +113,13 @@ test('the mutators: what each writes', () => {
   assert.deepEqual(ids(), ['a', 'b', 'c', 'e', 'u1', 'u3'], 'an import goes after your imports, before the listings');
   assert.equal(vs.vetById('b').borrowed, false, 'an updated veteran keeps her tab');
   assert.deepEqual(r, { added: 1, updated: 0, borrowed: 1, dropped: 0 }, 'a borrowed one in the file is borrowed');
-  const v = vs.newVet(5, { 7: 2 }, { src: 'entered', outfit: 501 });
+  const her = { ...node(5, { 7: 2 }), outfit: 501, parents: [node(1), node(2)] },
+    v = vs.newVet(her, 'entered');
   assert.equal(ids().indexOf(v.id), 4, 'a new veteran goes before the listings');
   assert.deepEqual(
-    Object.keys(v).slice(-2),
-    ['parents', 'outfit'],
-    'extra fields after hers, as Object.assign put them',
+    [v.src, v.borrowed, v.outfit, v.parents],
+    ['entered', false, 501, her.parents],
+    'she is entered here, yours, with her record and her parents as given',
   );
 });
 
@@ -232,7 +234,7 @@ test("effects wake for their part only; a places write keeps the veterans' ident
     'a batch: a new veteran and the places cleared',
     () =>
       batch(() => {
-        vs.newVet(1, {});
+        vs.newVet({ ...node(1), parents: [null, null] }, 'hand');
         vs.clearPlaces();
       }),
     { vets: 1, places: 1, chosen: 0 },
@@ -247,9 +249,12 @@ test('loading: a v1 save, a damaged veteran and a damaged choice left out, block
   vs.initVets(host);
   assert.deepEqual(ids(), ['a']);
   assert.deepEqual(vs.places.peek(), { trainee: null, parents: [null, null] });
-  storage.setItem(KEY, JSON.stringify({ v: 2, [ERA]: { vets: [{ id: 'n', parents: [{}, {}] }], chosen: { id: 1 } } }));
+  storage.setItem(
+    KEY,
+    JSON.stringify({ v: 2, [ERA]: { vets: [{ id: 'n', parents: [{}, null] }], chosen: { id: 1 } } }),
+  );
   vs.initVets(host);
-  assert.deepEqual(vs.vetById('n').parents[0], { chara: null, sparks: {}, pinks: {}, wins: [] });
+  assert.deepEqual(vs.vetById('n').parents, [null, null], "an imported veteran's parent with no uma is absent");
   assert.equal(vs.chosen.peek(), null);
   vs.initVets({
     storage: () => {

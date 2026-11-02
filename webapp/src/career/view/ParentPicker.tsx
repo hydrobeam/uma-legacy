@@ -3,11 +3,13 @@
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { settings } from '../../settings.ts';
 import { batch } from '@preact/signals';
-import { vets, places, vetById, newVet, setParent } from '../../veterans/store.ts';
+import { vets, places, vetById, setParent } from '../../veterans/store.ts';
 import { starsOf, umaName } from '../../veterans/names.ts';
-import { askSkills } from '../../veterans/pickers.ts';
+import { lacks, lacksSaid } from '../../veterans/complete.ts';
+import { enterVeteran } from '../../veterans/entry.ts';
 import { UmaList } from '../../veterans/Editors.tsx';
-import type { VetRecord } from '../../veterans/store.ts';
+import type { ParentNode, VetRecord } from '../../veterans/store.ts';
+import type { DeepReadonly } from '../../store.ts';
 import { Dialog, DialogHead, DialogPanel } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { BORROW_CHOICES, borrowChoice, pairBlock } from '../job.ts';
@@ -18,13 +20,15 @@ import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
 import { field } from '../../ui/Field.ts';
 import { cx } from 'tailwind-variants/lite';
 
-// why veteran v can't go in place k (or '')
+// why veteran v can't go in place k (or ''): she is incomplete (complete.ts), or a parent rule
 const BLOCKED: Record<string, string> = {
   trainee: 'the trainee herself',
   same: 'same uma as the other parent',
   both: 'the other parent is borrowed',
 };
 function blockedFor(v: VetRecord, k: number) {
+  const lacking = lacks(v);
+  if (lacking.length) return `incomplete (${lacksSaid(lacking)})`;
   const plan = places.value,
     otherId = plan.parents[1 - k];
   const why = pairBlock(plan.trainee, v, otherId ? vetById(otherId) : null, settings.value);
@@ -32,6 +36,8 @@ function blockedFor(v: VetRecord, k: number) {
     ? `borrowed (Borrowed parent: ${BORROW_CHOICES[borrowChoice(settings.value)]})`
     : BLOCKED[why] || '';
 }
+// a parent place's name: her uma, or that she is not entered or absent (complete.ts)
+const parentName = (g: DeepReadonly<ParentNode>) => (g ? (g.chara ? umaName(g.chara) : 'not entered') : 'absent');
 // a veteran's lines under her name: the targets she carries, her parents
 const NOTE = 'text-note text-muted flex flex-wrap items-center gap-0.75';
 /** one veteran: her face, name, number, targets carried, parents; why she can't go here, if so */
@@ -74,9 +80,9 @@ function VetChoice({ v, i, k }: { v: VetRecord; i: number; k: number }) {
         Parents:{' '}
         {v.parents.map((g, j) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: her two parents, in their fixed places, each keyed by her uma too
-          <UmaAv key={`${j}:${g.chara}:${g.outfit}`} uma={g.chara || 0} outfit={g.outfit} size={22} />
+          <UmaAv key={`${j}:${g?.chara}:${g?.outfit}`} uma={g?.chara || 0} outfit={g?.outfit} size={22} />
         ))}
-        {` ${v.parents.map((g) => (g.chara ? umaName(g.chara) : 'unknown')).join(', ')}`}
+        {` ${v.parents.map(parentName).join(', ')}`}
       </div>
       {/* (data-why: the checks find the reason by it) */}
       {why && <div class="text-note text-out font-bold" data-why="">{`Can't: ${why}`}</div>}
@@ -104,21 +110,13 @@ export function ParentPicker() {
     tab: Tab = chosenTab && chosenTab[1] === opening.current ? chosenTab[0] : vets.value.length ? 'vets' : 'new';
   const close = pickerClosed;
   // A new one: every uma, filterable (Editors.tsx UmaList; the filter hides, never rebuilds), drawn while on show; each
-  // opening, and each click on its tab, starts with an empty filter
+  // opening, and each click on its tab, starts with an empty filter. Her uma picked, the entry asks for the rest of her
+  // and her parents (veterans/entry.ts)
   const newFilter = typed[1] === opening.current ? typed[0] : '';
   const pickNew = (id: number) => {
     if (k === null) return;
     close();
-    askSkills(
-      umaName(id),
-      false,
-      (sp: Record<number, number> | null) =>
-        batch(() => {
-          const v = newVet(id, sp || {});
-          setParent(k, v.id, false);
-        }),
-      true,
-    );
+    enterVeteran(id, k);
   };
   useLayoutEffect(() => {
     shownFor.current = k;
