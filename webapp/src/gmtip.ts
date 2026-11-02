@@ -61,7 +61,7 @@ document.addEventListener('mouseover', (e) => {
   if (tipFor?.contains(e.target as Element)) return;
   const target = (e.target as Element).closest?.('[title]');
   tipHide();
-  if (target) tipTimer = setTimeout(() => tipShow(target), 400);
+  if (target) tipTimer = window.setTimeout(() => tipShow(target), 400);
 });
 document.addEventListener('mouseout', (e) => {
   const keep = tipFor || (e.target as Element).closest?.('[title]');

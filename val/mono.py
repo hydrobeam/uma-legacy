@@ -29,7 +29,7 @@ picks, each candidate's (lam, phi, pinf, p0) under both fits, and whether the bu
 
 usage: mono.py BIN [JOB ...] [-j N] [-n ROLLS]   (default: every job in val/plan/jobs.json but those asking for the
   robustness check, `checks_only`; -j jobs at a time, default
-  2; -n rolled veterans per pool, default 3, 0 for the last-veteran check alone)
+  the CPU count less two; -n rolled veterans per pool, default 3, 0 for the last-veteran check alone)
   writes its job files and outputs to a temporary folder (printed at the end); exits 1 when a V rises by more than 1e-9 relative under a fixed fit, or a plan or roll
   fails (above)"""
 
@@ -123,7 +123,9 @@ def route_steps(plan):
 parser = argparse.ArgumentParser(description="Monotonicity tripwire for the career planner.", allow_abbrev=False)
 parser.add_argument("binary", metavar="BIN")
 parser.add_argument("jobs", nargs="*", metavar="JOB", help="val/plan jobs (default: every job in val/plan/jobs.json)")
-parser.add_argument("-j", type=int, default=2, dest="parallelism", metavar="N", help="jobs at a time")
+parser.add_argument(
+    "-j", type=int, default=max(1, (os.cpu_count() or 4) - 2), dest="parallelism", metavar="N", help="jobs at a time"
+)
 parser.add_argument(
     "-n",
     type=int,

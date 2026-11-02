@@ -2,8 +2,8 @@
 // of packages not in package.json or of files that do not exist.
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/worker.ts", "test/**/*.{mjs,ts}", "*.mjs", "chibi/*.mjs"],
-  "project": ["src/**/*.{ts,tsx}", "test/**/*.{mjs,ts}", "vite/**/*.mjs", "*.mjs", "chibi/*.mjs"],
+  "entry": ["src/worker.ts", "test/**/*.{mjs,ts,tsx}", "*.mjs", "playwright.config.ts", "chibi/*.mjs"],
+  "project": ["src/**/*.{ts,tsx}", "test/**/*.{mjs,ts,tsx}", "vite/**/*.mjs", "*.mjs", "chibi/*.mjs"],
   "rules": {
     // exported types and interfaces stay unchecked, as before knip (24 are used only in their own module)
     "types": "off"

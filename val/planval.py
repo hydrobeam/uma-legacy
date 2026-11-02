@@ -53,7 +53,9 @@ usage: planval.py BIN TAG [REF] [-j N] [--quick]
   --quick  leave out the jobs in val/plan/slow.json and run no proxy gate: ./build.sh valq (docs/BUILD.md, *Tests*)
   writes val/plan/TAG__NAME.out, val/plan/TAG_proxy__NAME.out and val/plan/TAG_times.txt; compares with
   val/plan/REF__NAME.out (default REF: ref)
-  -j N  jobs at a time (default 2; timings are only comparable at the same load)"""
+  -j N  jobs at a time (default: the CPU count less two; timings are only comparable at the same load)
+The plan jobs and the proxy runs share one queue, longest first by the reference times, so the slowest job never
+starts last."""
 
 import argparse
 import json
@@ -88,10 +90,10 @@ parser.add_argument("ref", nargs="?", default="ref", help="compares with val/pla
 parser.add_argument(
     "-j",
     type=int,
-    default=2,
+    default=max(1, (os.cpu_count() or 4) - 2),
     dest="parallelism",
     metavar="N",
-    help="jobs at a time (default 2; timings are only comparable at the same load)",
+    help="jobs at a time (default: the CPU count less two; timings are only comparable at the same load)",
 )
 parser.add_argument(
     "--quick",
@@ -116,11 +118,6 @@ def run(job_entry):
     times[name] = round(time.time() - started, 2)
 
 
-with ThreadPoolExecutor(parallelism) as ex:
-    list(ex.map(run, jobs))
-open(os.path.join(PLAN_DIR, f"{tag}_times.txt"), "w").write(
-    "".join(f"{name} {s}\n" for name, s in sorted(times.items()))
-)
 # This comparison skips work and bound diagnostics as well as timings; it does not enforce byte-identical outputs.
 SKIP = {
     "timing_s",
@@ -550,20 +547,38 @@ def scoring_incomplete(name, proxy_run):
     return bool(reasons)
 
 
+exactly = {name: builders_searched_exactly(job_files[name]) for _era, name in jobs}
+proxy_jobs = [] if arguments.quick else [(era, name) for era, name in jobs if not exactly[name]]
+# one queue: every plan job and every proxy run (the same job with `proxy_check`, which reads none of the plan's output),
+# longest first by the reference times (a proxy run taken as long as its plan)
+reference_file = os.path.join(PLAN_DIR, "ref_times.txt")
+reference_times = (
+    {name: float(seconds) for name, seconds in (line.split() for line in open(reference_file))}
+    if os.path.exists(reference_file)
+    else {}
+)
+tasks = [("plan", tuple(job_entry)) for job_entry in jobs] + [("proxy", tuple(job_entry)) for job_entry in proxy_jobs]
+tasks.sort(key=lambda task: -reference_times.get(task[1][1], 0.0))
+with tempfile.TemporaryDirectory() as job_dir, ThreadPoolExecutor(parallelism) as ex:
+    running = {
+        task: ex.submit(run, task[1]) if task[0] == "plan" else ex.submit(proxy_gate, task[1], job_dir)
+        for task in tasks
+    }
+    finished = {task: future.result() for task, future in running.items()}
+gates = [finished["proxy", tuple(job_entry)] for job_entry in proxy_jobs]
+open(os.path.join(PLAN_DIR, f"{tag}_times.txt"), "w").write(
+    "".join(f"{name} {s}\n" for name, s in sorted(times.items()))
+)
 failures = sum(compare_job(name) for _era, name in jobs)
 print(f"{len(jobs)} plan jobs, {failures} differ")
 first_step_failures = sum(first_step_tripwire(name) for _era, name in jobs)
 print(f"{len(jobs)} first steps, {first_step_failures} fail (below {FIRST_STEP_FLOOR} careers, or unpriced)")
-exactly = {name: builders_searched_exactly(job_files[name]) for _era, name in jobs}
-proxy_jobs = [] if arguments.quick else [(era, name) for era, name in jobs if not exactly[name]]
 if arguments.quick:
     print("--quick: no proxy gate")
 else:
     for name, reason in exactly.items():
         if reason:
             print(f"{name}: no proxy check: every builder is searched exactly ({reason})")
-with tempfile.TemporaryDirectory() as job_dir, ThreadPoolExecutor(parallelism) as ex:
-    gates = list(ex.map(lambda job_entry: proxy_gate(job_entry, job_dir), proxy_jobs))
 proxy_failures = 0
 for (_era, name), gate in zip(proxy_jobs, gates):
     if gate is None:

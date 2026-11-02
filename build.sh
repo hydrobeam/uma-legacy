@@ -51,10 +51,11 @@ STEPS=(
   "runners|||each uma's running mini model as a sprite strip into webapp/img/run (webapp/chibi/chibi.py)"
   "lint|||every formatter and linter, warnings denied: Rust, shell, Python, the page's JS; the generated TypeScript current (Rust only when its inputs differ from main's)"
   "check|[TIER]||the checks a change needs, by what differs from main: edit, handback (the default), merge or full (docs/BUILD.md, Tests)"
+  "setup|||a worktree ready: the main checkout's cache/, the page's packages when its lockfile changed, the wasm and the checks' binary when built before from these inputs (nothing compiled)"
   "hooks|||use the tracked git hooks (.githooks: the pre-commit check); once per clone"
   "browsers|||Playwright's Chromium and Firefox at the pinned revisions into cache/ms-playwright"
-  "test|||the page, then the browser suite on it (Chromium, and Firefox on the @both groups): releases"
-  "testq|||the page, then the suite's fast tier (Chromium, the @quick tests, about 30 s): after each page change"
+  "test|||the page, then the browser flows on it (Chromium and Firefox; recorded solver replies, no solver build)"
+  "testq|||the page, then the browser flows in Chromium: after each page change"
   "serve|||webapp/dist on https://localhost:8000 over HTTP/2 (vite preview; PORT=...; a self-signed certificate)"
   "deploy|||wasm and page, then webapp/dist to Cloudflare Pages; refuses with uncommitted changes"
   "val|TAG||the solver, then every validation check against the references (about 7 CPU-min)"
@@ -70,7 +71,6 @@ STEPS=(
 GLOBAL_MDB="game/global/master.mdb: the Global client's game database"
 JP_MDB="game/jp/master.mdb: the JP client's game database (Grand Masters era)"
 NEED_DIST="webapp/dist/index.html: the built page (./build.sh page)"
-NEED_OPT_WASM="webapp/loopopt.opt.wasm: the solver (./build.sh wasm)"
 DECRYPTED="game/global/decrypted: the Global client's asset bundles, decrypted, by asset path"
 IMAGE_FILES=("$DECRYPTED")
 RUNNER_FILES=("$DECRYPTED" "game/global/meta.db: the Global client's asset index as plain SQLite" "$GLOBAL_MDB")
@@ -156,8 +156,25 @@ step_native() {
 # before a change (cargo's own check makes this a no-op on an unchanged tree).
 build_solver() { (cd "$C" && quiet cargo build --release); }
 # The checks' binary (CHECK_BIN): val, valq, mono and lint build it first, for the same reason. Its outputs equal the
-# release binary's to the byte (docs/BUILD.md, *Tests*), and it builds in a third of the time.
-build_checked() { (cd "$C" && quiet cargo build --profile checks); }
+# release binary's to the byte (docs/BUILD.md, *Tests*). One built from these exact inputs, by this tree or another
+# worktree, is copied from cache/bin/KEY instead: a worktree that changed no Rust runs no cargo for it.
+build_checked() {
+  take_checked && return 0
+  (cd "$C" && quiet cargo build --profile checks)
+  mkdir -p "$(checked_cache)"
+  cp "$CHECK_BIN" "$(checked_cache)/loopopt"
+}
+checked_cache() { echo "$R/cache/bin/$(inputs_key solver checks)"; }
+take_checked() {   # the cached binary of these inputs into CHECK_BIN, if there is one
+  local built
+  built="$(checked_cache)/loopopt"
+  [ -x "$built" ] || return 1
+  if ! cmp -s "$built" "$CHECK_BIN"; then
+    mkdir -p "$(dirname "$CHECK_BIN")"
+    cp "$built" "$CHECK_BIN"
+    echo "checks' binary: built before from these inputs (${built#"$R"/}), copied"
+  fi
+}
 # clippy as lint runs it (lints chosen in pkg/loopopt/Cargo.toml): quiet unless it finds something
 clippy_all() {
   cargo clippy --quiet --all-targets -- -D warnings \
@@ -188,18 +205,30 @@ step_wasm() {
   npm_deps
   # an optimised wasm and its glue built from these exact inputs, by this tree or another worktree, are copied, not
   # built again (cache/wasm/KEY: about 4 minutes of fat-LTO build and wasm-opt saved per worktree)
-  local built
-  built="$R/cache/wasm/$(inputs_key solver "${WASM_OPT_FLAGS[@]}")"
-  if [ -f "$built/loopopt.opt.wasm" ]; then
-    cp "$built/loopopt.opt.wasm" "$W/loopopt.opt.wasm"
-    cp "$built/loopopt.js" "$built/loopopt.d.ts" "$W/src/gen/"
-    echo "wasm: built before from these inputs (${built#"$R"/}), copied"
-  else
+  if ! take_wasm; then
     build_wasm
-    mkdir -p "$built"
-    cp "$W/loopopt.opt.wasm" "$BINDGEN/loopopt.js" "$BINDGEN/loopopt.d.ts" "$built/"
+    mkdir -p "$(wasm_cache)"
+    cp "$W/loopopt.opt.wasm" "$BINDGEN/loopopt.js" "$BINDGEN/loopopt.d.ts" "$(wasm_cache)/"
   fi
   (cd "$W" && node example.mjs)
+}
+wasm_cache() { echo "$R/cache/wasm/$(inputs_key solver "${WASM_OPT_FLAGS[@]}")"; }
+take_wasm() {   # the cached wasm and glue of these inputs into webapp/, if there are some
+  local built
+  built=$(wasm_cache)
+  [ -f "$built/loopopt.opt.wasm" ] || return 1
+  cp "$built/loopopt.opt.wasm" "$W/loopopt.opt.wasm"
+  cp "$built/loopopt.js" "$built/loopopt.d.ts" "$W/src/gen/"
+  echo "wasm: built before from these inputs (${built#"$R"/}), copied"
+}
+# setup: what a fresh worktree needs before any step, from what is already built: the shared cache/ (linked at every
+# start), the page's packages (npm ci only when the lockfile differs from the installed one), and the wasm and the
+# checks' binary where these inputs were built before. Nothing is compiled or downloaded beyond npm's own cache; the
+# steps call the same pieces themselves, so setup is only a head start, and running it again does nothing.
+step_setup() {
+  npm_deps
+  take_wasm || echo "wasm: not built yet from these inputs (./build.sh wasm builds it)"
+  take_checked || echo "checks' binary: not built yet from these inputs (any step that runs it builds it)"
 }
 build_wasm() {
   wasm_bindgen_cli
@@ -273,6 +302,7 @@ research_lints() {
 page_types() {
   lint tsc in_dir "$W" npx --no-install tsc -p .
   lint "tsc (worker)" in_dir "$W" npx --no-install tsc -p tsconfig.worker.json
+  lint "tsc (tests)" in_dir "$W" npx --no-install tsc -p tsconfig.test.json
 }
 page_lints() {
   lint biome in_dir "$W" npx --no-install biome check --error-on-warnings --diagnostic-level=warn
@@ -327,16 +357,26 @@ step_val() {
   if ! val_checks "$tag" "${quick[@]}"; then return 1; fi
   mark_passed val "$mode"
 }
-val_checks() {   # val_checks TAG [--quick]
-  local tag=$1 quick=("${@:2}") rc=0
+# val_checks TAG [--quick]: the deck and career jobs (runval), the simulator's (simval) and the planner's (planval, its
+# plan jobs and proxy runs in one queue) start at once, each longest first, so the slowest job (p16_t10) starts at
+# the beginning instead of after the others; their logs (pkg/loopopt/target/val-logs/) print in that order after
+VAL_LOGS="$C/target/val-logs"
+val_checks() {
+  local tag=$1 quick=("${@:2}") rc=0 decks sims plans
   build_checked
-  "${PY[@]}" "$R/val/runval.py" "$CHECK_BIN" "$tag" "${quick[@]}" || return 1
+  mkdir -p "$VAL_LOGS"
+  "${PY[@]}" "$R/val/runval.py" "$CHECK_BIN" "$tag" "${quick[@]}" >"$VAL_LOGS/decks" 2>&1 & decks=$!
+  "${PY[@]}" "$R/val/simval.py" "$CHECK_BIN" "$tag" >"$VAL_LOGS/sims" 2>&1 & sims=$!
+  "${PY[@]}" "$R/val/planval.py" "$CHECK_BIN" "$tag" "${quick[@]}" >"$VAL_LOGS/plans" 2>&1 & plans=$!
+  wait "$sims" || rc=1
+  wait "$plans" || rc=1
+  if ! wait "$decks"; then cat "$VAL_LOGS/decks"; return 1; fi
+  cat "$VAL_LOGS/decks"
   "${PY[@]}" "$R/val/cmp2.py" "$tag" ref || rc=1
   "${PY[@]}" "$R/val/cmp2.py" "${tag}pu" refpu || rc=1
   "${PY[@]}" "$R/val/same.py" "$tag" || rc=1
   [ ${#quick[@]} -gt 0 ] || "${PY[@]}" "$R/val/joint_check.py" "$tag" || rc=1
-  "${PY[@]}" "$R/val/simval.py" "$CHECK_BIN" "$tag" || rc=1
-  "${PY[@]}" "$R/val/planval.py" "$CHECK_BIN" "$tag" "${quick[@]}" || rc=1
+  cat "$VAL_LOGS/sims" "$VAL_LOGS/plans"
   "${PY[@]}" "$R/val/same.py" "$tag" --plan || rc=1
   return "$rc"
 }
@@ -351,7 +391,7 @@ step_mono() {
 step_research() {
   local py=(uv run --quiet --project "$R" --group research python)
   need_cargo; check research
-  build_solver   # section 13 runs the release binary (research/common.py SOLVER)
+  build_solver   # sections 6, 10 and 13 run the release binary (research/common.py SOLVER)
   "${py[@]}" "$R/research/run_all.py" "$@"
   "${py[@]}" "$R/research/render.py"
 }
@@ -363,15 +403,19 @@ npm_deps() {
   need_node; check npm
   npm_ci "$W"
 }
-# npm ci in DIR when it has no install or its lockfile is newer than what npm last installed there
-# (node_modules/.package-lock.json), so a pulled dependency change is never run against a stale node_modules
+# npm ci in DIR when its lockfile's contents differ from the ones last installed there (node_modules/.lock-sha256),
+# so a pulled dependency change is never run against a stale node_modules and an unchanged one never reinstalls;
+# npm's shared cache supplies the packages (--prefer-offline)
 npm_ci() {   # npm_ci DIR
-  [ -e "$1/node_modules/.package-lock.json" ] && [ ! "$1/package-lock.json" -nt "$1/node_modules/.package-lock.json" ] \
-    || (cd "$1" && npm ci --silent --prefer-offline)
+  local lock
+  lock=$(sha256sum "$1/package-lock.json" | cut -d' ' -f1)
+  [ "$(cat "$1/node_modules/.lock-sha256" 2>/dev/null)" = "$lock" ] && return 0
+  (cd "$1" && npm ci --silent --prefer-offline)
+  echo "$lock" >"$1/node_modules/.lock-sha256"
 }
 # Vite (webapp/vite.config.mjs)
 step_page() {
-  need_uv; need_node; need "$NEED_OPT_WASM"; check page
+  need_uv; need_node; check page   # (without a built solver, the page carries an empty one: vite.config.mjs)
   npm_deps
   (cd "$W" && npx --no-install vite build --logLevel warn)
 }
@@ -408,30 +452,21 @@ step_browsers() {
   npm_deps
   (cd "$W" && npx --no-install playwright install chromium firefox)
 }
-step_test() { browser_suite full; }
-step_testq() { LLP_QUICK=1 browser_suite quick --project chromium --grep @quick; }
-# The browser suite on the page this tree builds (1.4 s first), never a dist left from before. Its replaying groups
-# answer from the solver replies recorded for this solver and data (webapp/test/replaystore.mjs); when this tier has
-# none, the run is live (LLP_SOLVER=live), which records them, and a passing live run marks them recorded.
-browser_suite() {   # browser_suite quick|full PLAYWRIGHT_ARGS...
-  local tier=$1 store solver=${LLP_SOLVER:-replay}
-  shift
+step_test() { browser_suite; }
+step_testq() { browser_suite --project chromium; }
+# The browser flows (webapp/test/browser) on the page this tree builds, never a dist left from before. They replay the
+# solver replies recorded for this solver and data (webapp/test/browser/store.ts), so they need no built solver (the
+# page then carries an empty one); a job without a reply fails its flow. LLP_SOLVER=live records the replies, with the
+# built solver (./build.sh wasm first): a solver lane's step after a solver or data change.
+browser_suite() {   # browser_suite PLAYWRIGHT_ARGS...
   step_page
   step_browsers
-  store=$(cd "$W" && node test/replaystore.mjs)
-  if [ "$solver" = replay ] && ! replies_recorded "$store" "$tier"; then
-    echo "solver replies: none recorded for this solver and data (${store#"$R"/}): this run is live and records them"
-    solver=live
-  fi
-  (cd "$W" && LLP_SOLVER=$solver npx --no-install playwright test "$@")
-  if [ "$solver" = live ]; then mkdir -p "$store"; touch "$store/.recorded-$tier"; fi
+  (cd "$W" && npx --no-install playwright test "$@")
 }
-# replies_recorded STORE quick|full: a passing live run of this tier, or of the full suite, recorded into STORE
-replies_recorded() { [ -e "$1/.recorded-full" ] || { [ "$2" = quick ] && [ -e "$1/.recorded-quick" ]; }; }
 step_prune_replies() {
   need_uv; check prune-replies
   step_page   # the current solver and data are this tree's
-  "${PY[@]}" "$W/test/prune_replies.py" "$(cd "$W" && node test/replaystore.mjs)"
+  "${PY[@]}" "$W/test/prune_replies.py" "$(cd "$W" && node test/browser/store.ts)"
 }
 step_serve() {
   need_node; need "$NEED_DIST"; check serve
@@ -546,7 +581,6 @@ step_check() {
   fi
   return "$rc"
 }
-with_wasm() { step_wasm && "$@"; }   # with_wasm STEP: the wasm first (copied when its inputs were built before)
 check_edit() {
   local py
   if changed_in page; then
@@ -576,7 +610,7 @@ check_handback() {
   if changed_in native; then lint "rust tests (checks)" step_native; fi
   if changed_in val; then lint valq step_valq check; fi
   if changed_in research; then lint research step_research; fi
-  if changed_in page solver; then lint "browser, fast tier" with_wasm step_testq; fi
+  if changed_in page solver; then lint "browser, Chromium" step_testq; fi
 }
 check_merge() {
   shell_lints
@@ -586,7 +620,7 @@ check_merge() {
   page_lints
   lint "rust tests (checks)" step_native
   lint val step_val check
-  lint "browser suite" with_wasm step_test
+  lint "browser suite" step_test
   if changed_paths | grep -q '^pkg/loopopt/src/career/'; then lint mono step_mono; fi
 }
 check_full() {

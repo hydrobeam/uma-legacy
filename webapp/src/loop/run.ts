@@ -23,7 +23,7 @@ import type { DrawnReport, LoopReport, ShownResult, Status } from './types.ts';
 export type LoopStore = Pick<typeof LoopState, 'loopRun' | 'beginSearch' | 'interim' | 'settle' | 'tick'>;
 /** the pause after a change before the automatic search (ms) */
 export const PAUSE_MS = 550;
-export type Timer = ReturnType<typeof setTimeout>;
+export type Timer = number;
 export type DeckAnswer = SolverAnswer<LoopReport>;
 export interface LoopDeps {
   /** the engine (engine.ts `run`): the job's answer; `interim` gets its fast first pass. A job killed while it runs never

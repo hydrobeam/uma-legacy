@@ -1,0 +1,9 @@
+{
+  // The tests' TypeScript (test/unit: Vitest; test/browser: Playwright Test), strict as the page's, with node's
+  // globals: a wire-shape change in src/gen/solver.ts fails here, in the test that builds or reads it.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "test/**/*.tsx", "playwright.config.ts"]
+}
