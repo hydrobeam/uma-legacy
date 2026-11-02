@@ -128,6 +128,11 @@ fn spark_records(sparks: &BTreeMap<usize, u64>, groups: &[u64]) -> Vec<Value> {
         .collect()
 }
 
+/// Every drawn record's pink spark (a record holds one): 1-star Turf, as the page's sample veterans carry
+fn pink() -> Value {
+    json!({"aptitude": 11, "stars": 1})
+}
+
 /// A veteran as a job's legacy (a parent of her own character is unknown: no uma is her own parent)
 fn legacy(veteran: &Veteran, groups: &[u64]) -> Value {
     let parents: Vec<Value> = veteran
@@ -135,13 +140,13 @@ fn legacy(veteran: &Veteran, groups: &[u64]) -> Value {
         .iter()
         .map(|parent| {
             let chara = parent.chara.filter(|&chara| chara != veteran.chara).unwrap_or(0);
-            json!({"chara": chara, "sparks": spark_records(&parent.sparks, groups), "pinks": [], "wins": []})
+            json!({"chara": chara, "sparks": spark_records(&parent.sparks, groups), "pink": pink(), "wins": []})
         })
         .collect();
     json!({
         "chara": veteran.chara,
         "sparks": spark_records(&veteran.sparks, groups),
-        "pinks": [],
+        "pink": pink(),
         "wins": veteran.wins,
         "borrowed": false,
         "parents": parents,
