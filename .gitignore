@@ -37,6 +37,7 @@
 # the lint tools' configs: knip, dependency-cruiser, Biome's GritQL plugins
 !/webapp/knip.jsonc
 !/webapp/.dependency-cruiser.mjs
+!/webapp/.oxlintrc.json
 !/webapp/lint/
 !/webapp/src/
 !/webapp/test/

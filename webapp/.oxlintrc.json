@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  // One rule only (Biome lints everything else): a class Tailwind doesn't know is an error, a typo or a name no CSS
+  // styles. eslint-plugin-better-tailwindcss reads the theme and the @utility blocks from the stylesheet's entry; it
+  // checks class and the cx()/tv() arguments, not class lists held in plain constants.
+  "plugins": [],
+  "jsPlugins": ["eslint-plugin-better-tailwindcss"],
+  "categories": { "correctness": "off" },
+  "settings": {
+    "better-tailwindcss": {
+      "entryPoint": "src/styles/app.css",
+      "callees": ["cx", "tv"],
+      "attributes": ["class"]
+    }
+  },
+  "rules": {
+    "better-tailwindcss/no-unknown-classes": "error"
+  }
+}

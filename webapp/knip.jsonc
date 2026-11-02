@@ -16,8 +16,7 @@
     // dependency-cruiser's parser (.dependency-cruiser.mjs `parser: 'swc'`)
     "@swc/core",
     // imported by the stylesheet (src/styles/app.css), which knip does not read
-    "@fontsource/.+",
-    "tailwindcss"
+    "@fontsource/.+"
   ],
   // vite/mathfont.mjs runs fontTools in the repository's Python environment
   "ignoreBinaries": ["uv"]

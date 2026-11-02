@@ -104,12 +104,12 @@ const ENH = {
   career: {
     button: 'h-28 w-35',
     label:
-      'after:border-l-enh-ink text-body text-enh-ink absolute right-6 bottom-2.25 left-2 text-center leading-tight font-black whitespace-nowrap after:absolute after:top-0.875 after:-right-3.25 after:border-y-6 after:border-l-8 after:border-y-transparent',
+      'after:border-l-enh-ink text-body text-enh-ink absolute right-6 bottom-2.25 left-2 text-center leading-tight font-black whitespace-nowrap after:absolute after:top-1 after:-right-3.25 after:border-y-6 after:border-l-8 after:border-y-transparent',
   },
   loop: {
     button: 'h-28 w-35',
     label:
-      'after:border-l-enh-ink text-body text-enh-ink absolute right-5 bottom-2.25 left-1.5 text-center leading-tight font-black whitespace-nowrap after:absolute after:top-0.875 after:-right-3.25 after:border-y-6 after:border-l-8 after:border-y-transparent',
+      'after:border-l-enh-ink text-body text-enh-ink absolute right-5 bottom-2.25 left-1.5 text-center leading-tight font-black whitespace-nowrap after:absolute after:top-1 after:-right-3.25 after:border-y-6 after:border-l-8 after:border-y-transparent',
   },
   wide: {
     button: 'col-span-full h-18 w-71.5',

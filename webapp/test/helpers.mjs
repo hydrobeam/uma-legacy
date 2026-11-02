@@ -365,7 +365,7 @@ export const SIDEWAYS = () => {
   for (const g of document.querySelectorAll('dialog[open]')) {
     const r = g.getBoundingClientRect();
     if (r.left < -0.5 || r.right > d.clientWidth + 0.5) out.push(`#${g.id} leaves the screen`);
-    for (const s of g.querySelectorAll('.dlg, .gmdbody'))
+    for (const s of g.querySelectorAll(':scope > *'))
       if (s.scrollWidth > s.clientWidth + 1)
         out.push(`#${g.id} scrolls sideways (${s.scrollWidth} > ${s.clientWidth})`);
   }
