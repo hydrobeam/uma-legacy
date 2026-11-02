@@ -1,5 +1,5 @@
-// Precompute the example shown before the first search: deck + loop search, Unity Cup targets, everything owned,
-// R cards off (the page default; R pals stay).
+// Precompute the example shown before the first search: deck + loop search, Unity Cup targets, everything owned (every
+// uma and card listed), R cards off (the page default; R pals stay).
 import fs from 'node:fs';
 import { initSync, Solver } from './src/gen/loopopt.js';
 const DATA = '../pkg/loopopt/data/global/';
@@ -38,6 +38,7 @@ const r = call({
       { group: 20203 },
     ],
     rank_class: 'below_ss',
+    owned: readJson('data.json').umas.map((u) => u.id),
     exclude: later('umas'),
     exclude_outfits: later('outfits'),
     extra: [

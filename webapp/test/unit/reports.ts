@@ -241,7 +241,7 @@ export const checkReport = (over: Partial<PlanCheck> = {}): PlanCheck => ({
 /** a career job: no targets, no veterans, the solver's defaults written out, `career`'s fields over them */
 export const careerJob = (career: Partial<CareerJob['career']> = {}): CareerJob => ({
   cmd: 'career',
-  skills: { targets: [], rank_class: 'below_ss', exclude: [], exclude_outfits: [], extra: [] },
+  skills: { targets: [], rank_class: 'below_ss', owned: [], exclude: [], exclude_outfits: [], extra: [] },
   deck: { owned_cards: [], borrow: false, scenario: 'unity' },
   career: { legacies: [], trainees: [], fix: [], per_trainee: false, top: 0, ...career },
 });

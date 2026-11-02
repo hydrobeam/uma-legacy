@@ -238,7 +238,7 @@ The job file's `files.skills` holds the outfit skill lists, the skill catalog an
 |---|---|---|
 | `targets[]` | `group` = skill group id; `guaranteed` 0 none / 1 white / 2 gold; `deck_white`, `deck_gold` = deck hint chance 0–1. Where every target is `guaranteed` 2, no deck changes the odds: a deck job is refused, and a career job gives each career the job's locked cards and filler with no deck search | required |
 | `rank_class` | the rank band the legacies were bred at, which sets their sparks' star mix (`RankClass::star_mix`, assumed: docs/RESEARCH.md section 2): `"below_ss"` (rank score 6,500 to 17,499) [0.50, 0.45, 0.05], `"ss_and_up"` (17,500 and up) [0.20, 0.70, 0.10] | `"below_ss"` |
-| `owned` | uma ids you own (empty = whole roster) | `[]` |
+| `owned` | uma ids you own, each one listed (empty: none); a job without it is refused | required |
 | `exclude` | uma ids to leave out | `[]` |
 | `require` | uma ids every result must contain (at most the largest of `sizes`; added to the pool even if not in `owned`) | `[]` |
 | `exclude_outfits` | outfit (card) ids you don't own | `[]` |
@@ -555,7 +555,7 @@ the career named at a tie from depending on what the worker ran before on anothe
 | Field | Meaning | Default |
 |---|---|---|
 | `legacies` | veterans: `{chara, borrowed, sparks: [{group, stars}, ...], pink: {aptitude, stars}, wins: [race index], parents: [parent or null, parent or null]}`, a parent `{chara, sparks, pink, wins}`; race index = position in data.json `races`; every veteran and parent has her pink (a trained uma has one): its aptitude the game's factor group (11 turf, 12 dirt, 21-24 front runner to end closer, 31-34 sprint to long; another does not parse) and its stars 1 to 3; a parent place null is one the record doesn't have (it counts for nothing) | required |
-| `trainees` | chara ids to consider (empty: every owned uma) | `[]` |
+| `trainees` | chara ids to consider, each one listed (empty: none); one not owned is left out; a job without it is refused | required |
 | `fix` | legacy indices that must be among the two parents (0, 1 or 2) | `[]` |
 | `borrowed_parent` | `"allow"`: at most one borrowed parent per career, now and in the plan's look-ahead. `"later"`: the career picked has none (the search's `results`, the plan's rows and the check's pair search and recommendation, a check answered from the worker's kept state included: `tests/it/plan_borrowed.rs`), while the plan's V and V' allow later careers to borrow; a `next` job searches without and with borrowing, reusing kept searches when available. `"never"`: `Pool::max_borrowed` is 0 in every pool the job builds (`tests/it/plan_borrowed.rs`). This pair rule is excluded from the setup key, so kept proofs and decks are shared across settings; it is included in the kept main search's key and the kept plans' (`bests_key`). Simulator policies `greedy`, `loop` and `trace` take "later" as "allow"; `greedy_exact` and `index` pass it through to their career jobs | `"allow"` |
 | `per_trainee` | one result per trainee (each with her best parents and deck); false: the best careers whoever trains (with one trainee: her best parent pairs) | `true` |

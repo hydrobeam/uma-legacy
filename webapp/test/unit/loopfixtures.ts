@@ -1,8 +1,8 @@
 // Settings fixtures for the loop page's jobs, as stored (saved.ts's object, Global era), over the fake page's game
 // (fakepage.ts). GOLDEN (loopgolden.json) holds the job each made, or the status that blocked it, recorded from the
-// page's code before src/loop/job.ts (9307950), with `owned_cards` since listing every card owned: a job's JSON, its
-// field order included, is the key of the kept result and of the suite's recorded solver replies, so it changes only on
-// purpose.
+// page's code before src/loop/job.ts (9307950), with `owned` and `owned_cards` since listing every uma and card owned:
+// a job's JSON, its field order included, is the key of the kept result and of the suite's recorded solver replies, so
+// it changes only on purpose.
 const stored = (common: Record<string, unknown>, owned: Record<string, unknown> = {}) => ({
   v: 2,
   era: 'global',

@@ -32,15 +32,7 @@ pub(super) fn run_deck_relaxed(data: &Data, skills: &SkillsRaw, cards: &CardsRaw
             "Every target is guaranteed by the scenario: no deck changes the odds.",
         ));
     }
-    let pool_ids: Vec<u32> = data
-        .umas
-        .iter()
-        .map(|uma| uma.id)
-        .filter(|&id| {
-            (skill_job.owned.is_empty() || skill_job.owned.contains(&id) || skill_job.require.contains(&id))
-                && !skill_job.exclude.contains(&id)
-        })
-        .collect();
+    let pool_ids: Vec<u32> = data.umas.iter().map(|uma| uma.id).filter(|&id| skill_job.pools(id)).collect();
     let mut entries = match deck_entries(cards, deck_job, &target_groups, &pool_ids) {
         Ok(e) => e,
         Err(refusal) => return DeckReply::Refusal(refusal),

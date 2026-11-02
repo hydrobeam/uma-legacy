@@ -149,9 +149,10 @@ unanswered: number, work: number, };
  */
 export type CareerJob = { legacies: Array<Legacy>, 
 /**
- * trainees to consider (chara ids); empty = every owned uma
+ * the trainees to consider (chara ids), each listed (empty: none); one the roster leaves out (`SkillJob::owned`,
+ * `exclude`) is not considered
  */
-trainees?: Array<number>, top?: number, 
+trainees: Array<number>, top?: number, 
 /**
  * legacies (indices) that must be among the two parents
  */
@@ -1988,7 +1989,11 @@ export type SkillJob = { targets: Array<SkillTarget>,
  * the lineage's rank band, which sets the 1/2/3-star shares of its sparks (`RankClass::star_mix`); below SS
  * unless sent
  */
-rank_class?: RankClass, owned?: Array<number>, exclude?: Array<number>, require?: Array<number>, 
+rank_class?: RankClass, 
+/**
+ * the umas the player owns (chara ids), each listed (empty: none)
+ */
+owned: Array<number>, exclude?: Array<number>, require?: Array<number>, 
 /**
  * outfits (card ids) not owned; an uma whose every outfit is listed counts as not owned
  */

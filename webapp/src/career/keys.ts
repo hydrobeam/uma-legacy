@@ -2,7 +2,7 @@
 // identity, a comparison's baseline, the last plan's base). It reads no store and no game data.
 import { ERA } from '../saved.ts';
 import type { DeepReadonly } from '../store.ts';
-import type { CareerJob } from './job.ts';
+import type { CareerJob, Roster } from './job.ts';
 
 /** what the keys read of a job: they never write it */
 type Job = DeepReadonly<CareerJob>;
@@ -39,25 +39,30 @@ export const planKey = (job: Job): string => {
   const { compare: _c, ...career } = job.career;
   return JSON.stringify(canon({ ...job, career }));
 };
-// the job of today's best career over everything (no place set, one result): the comparison's baseline. `notOwned`:
-// the umas not owned (job.ts `umasNotOwned`; the job's own `exclude` leaves out the trainee)
-const baseOf = (job: Job, notOwned: readonly number[]): Job => {
+// the job of today's best career over everything (every owned uma, no place set, one result): the comparison's
+// baseline. `roster`: the umas owned and not (job.ts `umaRoster`; the job's own `owned` and `exclude` count a trainee
+// placed by hand as owned)
+const baseOf = (job: Job, roster: DeepReadonly<Roster>): Job => {
   const { given: _given, ...search } = job.career;
   return {
     ...job,
-    skills: { ...job.skills, exclude: notOwned },
-    career: { ...search, trainees: [], fix: [], per_trainee: false, top: 1 },
+    skills: { ...job.skills, owned: roster.owned, exclude: roster.notOwned },
+    career: { ...search, trainees: roster.owned, fix: [], per_trainee: false, top: 1 },
   };
 };
 /** the key of `job`'s baseline (`baseOf`) */
-export const baseKey = (job: Job, notOwned: readonly number[]): string => JSON.stringify(baseOf(job, notOwned));
+export const baseKey = (job: Job, roster: DeepReadonly<Roster>): string => JSON.stringify(baseOf(job, roster));
+/** `job` searches what its baseline does: no parent fixed, and every owned uma a trainee (none placed by hand, or the
+ *  one placed is the only uma owned, the same search) */
+export const searchesBase = (job: Job, roster: DeepReadonly<Roster>): boolean =>
+  !job.career.fix.length && JSON.stringify(job.career.trainees) === JSON.stringify(roster.owned);
 // the last plan made (career/state.ts `reference`): while the career on show is one you chose on the same setup and
 // veterans (its job without the places), its table stays, so you can weigh the plan's other careers or go back to its pick
-export const refBase = (job: Job, notOwned: readonly number[]): string => {
+export const refBase = (job: Job, roster: DeepReadonly<Roster>): string => {
   const { given: _given, ...search } = job.career;
   return planKey({
     ...job,
-    skills: { ...job.skills, exclude: notOwned },
-    career: { ...search, trainees: [], fix: [], top: 0 },
+    skills: { ...job.skills, owned: roster.owned, exclude: roster.notOwned },
+    career: { ...search, trainees: roster.owned, fix: [], top: 0 },
   });
 };

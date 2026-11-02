@@ -21,7 +21,7 @@ import { pickOutfit, outfitNote } from '../roster.ts';
 import { unprovenWhy } from '../proofs.ts';
 import { refBase } from './keys.ts';
 import { openPool } from './view/poolState.ts';
-import { Blocked, buildJob, isFull, placesKey, umasNotOwned } from './job.ts';
+import { Blocked, buildJob, isFull, placesKey, umaRoster } from './job.ts';
 import { searchIn } from './reply.ts';
 import type { CareerAnswer, CareerJob, CareerReport, CareerTrainee, OptionRow, PoolActs } from './job.ts';
 import type { PlanProgress, SolverAnswer } from '../solver.ts';
@@ -89,7 +89,7 @@ export const looped = (r: DeepReadonly<OptionRow>): boolean =>
 export const refFor = () => {
   const ref = reference.value,
     { last, planState } = answer.value;
-  return ref && last && planState.state !== 'done' && ref.base === refBase(last.job, umasNotOwned(settings.value))
+  return ref && last && planState.state !== 'done' && ref.base === refBase(last.job, umaRoster(settings.value))
     ? ref
     : null;
 };

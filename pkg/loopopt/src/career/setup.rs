@@ -55,16 +55,12 @@ pub(super) fn career_setup<'data>(
             .iter()
             .any(|id| card_of.get(id).is_some_and(|card| card.blocks(data.umas[uma].id, crate::checks::get())))
     };
-    let id_ok =
-        |id: u32| (skill_job.owned.is_empty() || skill_job.owned.contains(&id)) && !skill_job.exclude.contains(&id);
+    let id_ok = |id: u32| skill_job.owned.contains(&id) && !skill_job.exclude.contains(&id);
     // every uma that can train (the plan's next career takes any of them); the job's trainees are among these
     let owned: Vec<UmaIndex> =
         data.umas.indices().filter(|&i| id_ok(data.umas[i].id) && !model.no_outfit[i] && !lock_blocked(i)).collect();
-    let trainees: Vec<UmaIndex> = owned
-        .iter()
-        .copied()
-        .filter(|&i| career_job.trainees.is_empty() || career_job.trainees.contains(&data.umas[i].id))
-        .collect();
+    let trainees: Vec<UmaIndex> =
+        owned.iter().copied().filter(|&i| career_job.trainees.contains(&data.umas[i].id)).collect();
     if trainees.is_empty() {
         return Err(Refusal::new("No trainee to search: pick at least one owned uma."));
     }

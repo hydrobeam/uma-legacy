@@ -31,11 +31,14 @@ const noOutfit = (u: Uma, outfits: SettingsView['outfits']): boolean =>
 export const isOwned = (u: Uma, s: Pick<SettingsView, 'roster' | 'outfits'>): boolean =>
   s.roster[u.id] !== 'out' && !noOutfit(u, s.outfits);
 // The parts both pages' jobs share (each page adds its own fields): the targets and roster (the solver's `SkillJob`): the
-// targets, the lineage's rank band, the umas left out (`exclude`, which each page decides), the outfits not owned, the
-// skills a career always gives
+// targets, the lineage's rank band, the umas owned (every uma but those `exclude` leaves out) and those left out
+// (`exclude`, which each page decides), the outfits not owned, the skills a career always gives
 export const skillsPart = (s: SettingsView, exclude: number[]) => ({
   targets: jobTargets(s),
   rank_class: s.rank,
+  owned: gameData()
+    .umas.map((u) => u.id)
+    .filter((id) => !exclude.includes(id)),
   exclude,
   exclude_outfits: Object.entries(s.outfits)
     .filter(([, owned]) => owned === false)
