@@ -1,47 +1,52 @@
 //! Veteran pools and legal parent pairs.
+use crate::career::imagined::{Imagined, ImaginedVeteran};
 use crate::career::schedule::PinkChance;
-use crate::career::{Ancestor, CareerSetup, Legacy, Pink, Spark};
+use crate::career::{Ancestor, CareerSetup, Legacy, Lineage, Pink, Spark};
 use crate::uma::UmaIndex;
-/// What `CareerSetup::who` reads of a legacy or of one of her recorded parents.
+/// What `CareerSetup::who` reads of a veteran: a record's (a legacy or one of her recorded parents) or an imagined
+/// one's.
 struct VeteranTraits<'veteran> {
     character_id: u32,
     /// Her white sparks.
     sparks: &'veteran [Spark],
     /// Races (data.json `races`) of the single-race G1s she won; read when `win_chances` is empty.
     wins: &'veteran [usize],
-    /// A veteran before her result is known: her win chance per race index (empty: `wins` are certain).
+    /// An imagined veteran's win chance per race index (empty: `wins` are certain).
     win_chances: &'veteran [f64],
-    /// Her pink sparks.
+    /// A record's pink sparks.
     pinks: &'veteran [Pink],
-    /// A veteran before her result is known: the pinks she may carry, one at most (empty: `pinks` are hers).
+    /// An imagined veteran's possible pinks, one at most (empty: `pinks` are hers).
     pink_chances: &'veteran [PinkChance],
     /// The star mix her sparks are drawn from (None: fixed stars).
     star_mix: Option<[f64; 3]>,
 }
 
 impl<'veteran> VeteranTraits<'veteran> {
-    fn of_legacy(legacy: &'veteran Legacy) -> Self {
-        Self {
-            character_id: legacy.character_id,
-            sparks: &legacy.sparks,
-            wins: &legacy.wins,
-            win_chances: &legacy.win_chances,
-            pinks: &legacy.pinks,
-            pink_chances: &legacy.pink_chances,
-            star_mix: legacy.mix,
-        }
+    /// A record's: fixed stars, certain wins, her pinks.
+    const fn of_record(
+        character_id: u32,
+        sparks: &'veteran [Spark],
+        wins: &'veteran [usize],
+        pinks: &'veteran [Pink],
+    ) -> Self {
+        Self { character_id, sparks, wins, win_chances: &[], pinks, pink_chances: &[], star_mix: None }
     }
-    /// A legacy's parent: a recorded one's fixed stars and certain wins; a hypothetical one's star mix and win chances,
-    /// and (the parent of a veteran before her result is known) her possible pinks (`Ancestor::of_legacy`).
+    fn of_legacy(legacy: &'veteran Legacy) -> Self {
+        Self::of_record(legacy.character_id, &legacy.sparks, &legacy.wins, &legacy.pinks)
+    }
     fn of_ancestor(ancestor: &'veteran Ancestor) -> Self {
+        Self::of_record(ancestor.character_id, &ancestor.sparks, &ancestor.wins, &ancestor.pinks)
+    }
+    /// An imagined veteran's: her win chances, her star mix where her stars are drawn, her possible pinks.
+    fn of_imagined(her: &'veteran Imagined) -> Self {
         Self {
-            character_id: ancestor.character_id,
-            sparks: &ancestor.sparks,
-            wins: &ancestor.wins,
-            win_chances: &ancestor.win_chances,
-            pinks: &ancestor.pinks,
-            pink_chances: &ancestor.pink_chances,
-            star_mix: ancestor.mix,
+            character_id: her.character_id,
+            sparks: &her.sparks,
+            wins: &[],
+            win_chances: &her.win_chances,
+            pinks: &[],
+            pink_chances: &her.pink_chances,
+            star_mix: her.star_mix,
         }
     }
 }
@@ -238,7 +243,13 @@ impl Pool {
             .collect()
     }
 
-    /// Undo one `CareerSetup::pool_push`, keeping all four per-veteran arrays aligned.
+    /// The entries of `lineage`'s parents, copied for an imagined veteran who holds them (`CareerSetup::veteran`;
+    /// their lists shared).
+    pub(crate) fn lineage_parents(&self, lineage: Lineage) -> [Who; 2] {
+        [self.veterans[lineage.first_parent].clone(), self.veterans[lineage.second_parent].clone()]
+    }
+
+    /// Undo one `CareerSetup::pool_push` or `pool_push_imagined`, keeping all four per-veteran arrays aligned.
     pub(crate) fn pop_veteran(&mut self) {
         self.veterans.pop();
         self.parents.pop();
@@ -345,15 +356,28 @@ impl CareerSetup<'_> {
             star_mix: traits.star_mix,
         }
     }
+    /// What the pool reads of the imagined veteran `her` (her entry as `pool_push_imagined` makes it).
+    pub(crate) fn imagined_who(&self, her: &Imagined) -> Who {
+        self.who(&VeteranTraits::of_imagined(her))
+    }
     /// `pool` of the legacies so far plus `legacy` (pop with `Pool::pop_veteran`)
     pub(crate) fn pool_push(&self, pool: &mut Pool, legacy: &Legacy) {
         let veteran = self.who(&VeteranTraits::of_legacy(legacy));
         let parents: Vec<Who> =
             legacy.parents.iter().map(|parent| self.who(&VeteranTraits::of_ancestor(parent))).collect();
+        Self::push_entry(pool, veteran, parents, legacy.borrowed);
+    }
+    /// `pool` plus the imagined veteran `veteran`, her own (pop with `Pool::pop_veteran`)
+    pub(crate) fn pool_push_imagined(&self, pool: &mut Pool, veteran: &ImaginedVeteran) {
+        // (the pool owns its entries: her parents' are copies of theirs, their lists shared)
+        Self::push_entry(pool, self.imagined_who(&veteran.her), veteran.parents.to_vec(), false);
+    }
+    /// One pool entry: a veteran, her parents (her grandparent slots) and their shared G1 wins' affinity.
+    fn push_entry(pool: &mut Pool, veteran: Who, parents: Vec<Who>, borrowed: bool) {
         pool.grandparent_race_affinity.push(parents.iter().map(|parent| 3.0 * shared(&veteran, parent)).collect());
         pool.veterans.push(veteran);
         pool.parents.push(parents);
-        pool.borrowed.push(legacy.borrowed);
+        pool.borrowed.push(borrowed);
     }
     /// the solver's pool of `legacies`: each one's entry as `pool_push` builds it (the one construction, the
     /// simulator's too)

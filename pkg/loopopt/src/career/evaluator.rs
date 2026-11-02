@@ -7,6 +7,7 @@
 //! setup and `&mut SearchState`, one that only reads takes `&CareerSetup`. The evaluator never sees a path's state:
 //! callers pass the pool and the bar, and keep the best pick themselves (`Sim::consider`).
 use crate::career::cache::Cache;
+use crate::career::imagined::ImaginedVeteran;
 use crate::career::inherit::{ExactOptions, Inheritance, RelOf, SlotSink, aff_factor, inherit, insp_miss, spark_scale};
 use crate::career::outcomes::interp_in;
 use crate::career::pool::{Pool, Who};
@@ -88,6 +89,8 @@ pub(super) struct HerPool {
     /// The evaluator's working copy lent out with her entry pushed (`pop_her` pops it and keeps the copy), rather than
     /// a pool built for her.
     lent: bool,
+    /// Her veteran, the pool's last entry.
+    pub(super) veteran: ImaginedVeteran,
 }
 /// What a career's schedule leaves her veteran (`ExpectedRecord`), per what the schedule reads (`ScheduleKey`: the
 /// trainee, her outfits' grades, the race weights' bits, her legacies' pink inputs) (`Evaluator::wins`).
@@ -236,9 +239,9 @@ impl Evaluator {
         );
         self.working_pool = Some((PoolIdentity::of(pool), working_pool));
     }
-    /// Build the pool with career `her`'s veteran. A recorded pool is the pool of `legacies`, so lend its working copy
-    /// with one entry pushed (`CareerSetup::pool_push` builds an entry as `CareerSetup::pool` does); otherwise rebuild
-    /// from the recorded legacies and the new veteran.
+    /// Build the pool of `legacies` with career `her`'s veteran (`CareerSetup::veteran`, her parents the pool's) as its
+    /// last entry. A recorded pool is the pool of `legacies`, so lend its working copy with her pushed; otherwise
+    /// rebuild it from the recorded legacies, then push her.
     pub(super) fn push_her(
         &mut self,
         setup: &CareerSetup,
@@ -247,21 +250,19 @@ impl Evaluator {
         recorded_pool: bool,
         her: &Cur,
     ) -> HerPool {
-        let veteran = setup.veteran(legacies, her.lineage, &her.record);
-        if recorded_pool {
+        let (mut extended, lent) = if recorded_pool {
             debug_assert_eq!(pool.veterans.len(), legacies.len(), "one legacy per pool member");
-            let mut extended = self.take_pool(pool);
-            setup.pool_push(&mut extended, &veteran);
-            HerPool { pool: extended, lent: true }
+            (self.take_pool(pool), true)
         } else {
-            let mut extended = legacies.to_vec();
-            extended.push(veteran);
-            HerPool { pool: setup.pool(&extended), lent: false }
-        }
+            (setup.pool(legacies), false)
+        };
+        let veteran = setup.veteran(her.lineage.trainee, extended.lineage_parents(her.lineage), &her.record);
+        setup.pool_push_imagined(&mut extended, &veteran);
+        HerPool { pool: extended, lent, veteran }
     }
     /// Take back `push_her`'s pool: a lent working copy has the new veteran popped and is kept (`put_pool`).
     pub(super) fn pop_her(&mut self, pool: &Pool, her: HerPool) {
-        let HerPool { pool: mut extended, lent } = her;
+        let HerPool { pool: mut extended, lent, .. } = her;
         if lent {
             extended.pop_veteran();
             self.put_pool(pool, extended);

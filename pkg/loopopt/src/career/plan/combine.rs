@@ -1,4 +1,6 @@
 //! Continuation fits and candidate combinations.
+use crate::career::Lineage;
+use crate::career::imagined::ImaginedVeteran;
 use crate::career::plan::cont::{
     Cont, ContShape, FITTED_SHAPE, ScoreBase, ScoringKnobs, SideStep, Trio, TrioSideVeteran, TrioSlot, anchored_cost,
     trio_value,
@@ -7,7 +9,6 @@ use crate::career::plan::rows::{PlanRow, RowOrigin};
 use crate::career::plan::search::{FullLoop, alternative_careers, legal_pair, loop_ceiling, val};
 use crate::career::plan::{CandidateIndex, PlanCandidates, PlanContext, PlanSearches, found_lineage};
 use crate::career::sim::Sim;
-use crate::career::{Legacy, Lineage};
 /// Fresh lineages a trio side may take per candidate unless the job says (`PlanJob::fresh_lineages`): the veteran her best
 /// career now would leave and the ones her next best careers would (other pairs ranked by her cached decks,
 /// `alternative_careers`, each searched, `exact_pair_career`), each at its own step; the trios take the cheapest choice
@@ -271,16 +272,7 @@ pub(crate) fn plan_combinations(
             // pushed, A's first, popped below; each side's place in it)
             let mut working_pool = simulator.evaluator.take_pool(pool);
             let mut places = |candidate: usize| -> Vec<usize> {
-                sides[candidate]
-                    .iter()
-                    .map(|side| match side.step {
-                        SideStep::Existing(legacy) => legacy,
-                        SideStep::Current | SideStep::Alternative(_) => {
-                            simulator.env.setup.pool_push(&mut working_pool, &side.legacy);
-                            working_pool.veterans.len() - 1
-                        }
-                    })
-                    .collect()
+                sides[candidate].iter().map(|side| side.place_in(&simulator.env.setup, &mut working_pool)).collect()
             };
             let (first_places, second_places) = (places(first_candidate), places(second_candidate));
             for (first_side, &first_parent) in first_places.iter().enumerate() {
@@ -351,14 +343,7 @@ pub(crate) fn rechoose_finishers(
         .map(|trio| {
             let mut working_pool = simulator.evaluator.take_pool(pool);
             let mut place = |slot: TrioSlot| {
-                let side = &trio_sides[slot.candidate.0][slot.side];
-                match side.step {
-                    SideStep::Existing(legacy) => legacy,
-                    SideStep::Current | SideStep::Alternative(_) => {
-                        simulator.env.setup.pool_push(&mut working_pool, &side.legacy);
-                        working_pool.veterans.len() - 1
-                    }
-                }
+                trio_sides[slot.candidate.0][slot.side].place_in(&simulator.env.setup, &mut working_pool)
             };
             let [first, second] = trio.sides;
             let (first_parent, second_parent) = (place(first), place(second));
@@ -387,10 +372,11 @@ pub(crate) fn rechoose_finishers(
 
 /// The fresh full veteran a career of candidate `candidate` would leave (`CareerSetup::veteran`: her G1 wins and
 /// possible pinks from her schedule in the outfit her deck runs, `Evaluator::career_wins`)
-fn fresh_veteran(simulator: &mut Sim, context: &PlanContext, career: crate::career::Career) -> Legacy {
+fn fresh_veteran(simulator: &mut Sim, context: &PlanContext, career: crate::career::Career) -> ImaginedVeteran {
     let record =
         simulator.evaluator.career_wins(&simulator.env.setup, &mut simulator.env.state, context.input.pool, career);
-    simulator.env.setup.veteran(context.input.legacies, career.lineage, &record)
+    let parents = context.input.pool.lineage_parents(career.lineage);
+    simulator.env.setup.veteran(career.lineage.trainee, parents, &record)
 }
 
 /// The trios' sides per candidate: her real full veterans (free), the fresh full veteran her best career now would leave
@@ -406,15 +392,14 @@ pub(crate) fn plan_sides(
     searches: &mut PlanSearches,
     buf: &mut Vec<f64>,
 ) -> Vec<Vec<TrioSideVeteran>> {
-    let PlanContext { input, candidates } = *context;
-    let legacies = input.legacies;
+    let PlanContext { candidates, .. } = *context;
     (0..candidates.trainees.len())
         .map(|candidate| {
             let mut sides: Vec<TrioSideVeteran> = full_veterans[candidate]
                 .iter()
                 .map(|&i| TrioSideVeteran {
                     step: SideStep::Existing(i),
-                    legacy: legacies[i].clone(),
+                    fresh: None,
                     odds: 0.0,
                     parents: None,
                     deck: None,
@@ -429,7 +414,7 @@ pub(crate) fn plan_sides(
             let lineage = found_lineage(trainee, career);
             sides.push(TrioSideVeteran {
                 step: SideStep::Current,
-                legacy: fresh_veteran(simulator, context, crate::career::Career { lineage, deck: &career.deck }),
+                fresh: Some(fresh_veteran(simulator, context, crate::career::Career { lineage, deck: &career.deck })),
                 odds: candidates.current_odds[candidate],
                 parents: Some((career.first_parent, career.second_parent)),
                 deck: Some(career.deck.clone()),
@@ -457,11 +442,11 @@ pub(crate) fn plan_sides(
                 if plan.expected_careers.is_finite() {
                     sides.push(TrioSideVeteran {
                         step: SideStep::Alternative(plan.expected_careers),
-                        legacy: fresh_veteran(
+                        fresh: Some(fresh_veteran(
                             simulator,
                             context,
                             crate::career::Career { lineage, deck: &alternative.deck },
-                        ),
+                        )),
                         odds,
                         parents: Some((lineage.first_parent, lineage.second_parent)),
                         deck: Some(alternative.deck.clone()),

@@ -345,7 +345,7 @@ fn legacy_record(legacy: &Legacy) -> report::LegacyRecord {
 
 impl<'env, 'data> Sim<'env, 'data> {
     /// A career job of the simulator's own (`policies`), run in process as the page would send it: the job's targets,
-    /// deck and settings, `legacies` (as a job sends them, `Legacy::recorded`) as its veterans, no simulation, no places
+    /// deck and settings, `legacies` (records, as a job sends them) as its veterans, no simulation, no places
     /// (the job's `fix` indexes its own legacies), its best career alone (`top` 1, not per trainee); `adjust` sets what
     /// the policy's job sets besides.
     pub(super) fn own_job<'legacy>(
@@ -353,7 +353,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         legacies: impl Iterator<Item = &'legacy Legacy>,
         adjust: impl FnOnce(&mut CareerJob),
     ) -> CareerRequest {
-        let mut career = self.job.career.on_veterans(legacies.map(Legacy::recorded).collect());
+        let mut career = self.job.career.on_veterans(legacies.cloned().collect());
         career.fixed_parents = vec![];
         career.top = 1;
         career.per_trainee = false;

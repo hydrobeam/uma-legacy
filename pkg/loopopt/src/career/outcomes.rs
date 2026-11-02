@@ -1,14 +1,15 @@
 //! Career reports, outcome sets and corner tables.
 use crate::career::clock::{now_ms, prof};
+use crate::career::imagined::{Imagined, ImaginedVeteran};
 use crate::career::inherit::{ExactOptions, Inheritance, aff_factor, inherit, set_ews};
-use crate::career::pool::Pool;
+use crate::career::pool::{Pool, Who};
 use crate::career::reply::{
     AptitudeStart, Aptitudes, CareerReport, CareerSlot, CareerTarget, CareerTrainee, PinkFireReport, PinkInheritance,
     PinkOutcomeReport, PinkTypeChance, ScenarioBuy, SourcedBuy, TargetBuy, WeightedPinkOutcome,
 };
 use crate::career::schedule::{ExpectedRecord, PinkOutcome, ScheduleOutfits, pink_p};
 use crate::career::search::Found;
-use crate::career::{Ancestor, CareerSetup, DeckSearchMemo, Legacy, Lineage, SearchState, Spark};
+use crate::career::{CareerSetup, DeckSearchMemo, SearchState, Spark};
 use crate::codes::{Aptitude, Grades};
 use crate::deck::joint::exact::{JointScratch, joint_eval_in, joint_prep};
 use crate::deck::joint::{JointExt, JointOptions};
@@ -412,24 +413,25 @@ impl CareerSetup<'_> {
         set_chances
     }
 
-    /// The veteran the lineage's career leaves, before her result is known: the trainee, a spark of every target with
-    /// stars drawn from the rank mix (`star_dist`), her schedule's win chances, her possible pinks (her pink spark as
-    /// the mixture `pink_career` expands for her children: exact, one at most), and the lineage's parents; from her
-    /// schedule's `record`.
-    pub(crate) fn veteran(&self, legacies: &[Legacy], lineage: Lineage, record: &ExpectedRecord) -> Legacy {
-        let Lineage { trainee, first_parent, second_parent } = lineage;
-        Legacy {
+    /// The veteran the career of `trainee` leaves, before her result is known: a spark of every target with stars
+    /// drawn from the rank mix (`star_dist`), her schedule's win chances, her possible pinks (her pink spark as the
+    /// mixture `pink_career` expands for her children: exact, one at most), and her `parents` (the career's, as a pool
+    /// holds them: `Pool::lineage_parents`); from her schedule's `record`.
+    pub(crate) fn veteran(
+        &self,
+        trainee: crate::uma::UmaIndex,
+        parents: [Who; 2],
+        record: &ExpectedRecord,
+    ) -> ImaginedVeteran {
+        let her = Imagined {
             character_id: self.data.umas[trainee].id,
-            borrowed: false,
             sparks: self.skill_job.targets.iter().map(|target| Spark { group: target.group, stars: 2 }).collect(),
-            wins: vec![],
-            pinks: vec![],
-            parents: vec![Ancestor::of_legacy(&legacies[first_parent]), Ancestor::of_legacy(&legacies[second_parent])],
+            star_mix: Some(self.skill_job.star_mix()),
             // (the veteran owns her copies: the record stays in the memo)
             win_chances: record.win_chances.to_vec(),
-            mix: Some(self.skill_job.star_mix()),
             pink_chances: record.pink_chances.to_vec(),
-        }
+        };
+        ImaginedVeteran { her, parents }
     }
 
     /// Per uncertain target, her exact chance of buying it as gold with deck `deck` in outfit option `outfit` (her

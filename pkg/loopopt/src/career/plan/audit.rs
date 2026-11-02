@@ -1,5 +1,6 @@
 //! The lifted-odds audit (`PlanJob::audit_lifts`, a measurement): what the scorings read of a candidate's odds with a
 //! career's veteran as a parent, against what an exact search finds.
+use crate::career::imagined::{Imagined, ImaginedVeteran};
 use crate::career::plan::PlanContext;
 use crate::career::plan::combine::PlanScores;
 use crate::career::plan::cont::Want;
@@ -10,7 +11,7 @@ use crate::career::plan::score::{CareerScore, KeptScoring, score_career};
 use crate::career::plan::search::{capped, legal_pair};
 use crate::career::search::{Found, SearchRequest};
 use crate::career::sim::Sim;
-use crate::career::{Ancestor, Legacy, Lineage, Spark};
+use crate::career::{Lineage, Spark};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -90,12 +91,6 @@ pub(crate) fn audit_lifts(
         }
         outcomes.sort_by(|first, second| second.2.total_cmp(&first.2));
         outcomes.truncate(AUDIT_OUTCOMES);
-        let parents = || {
-            vec![
-                Ancestor::of_legacy(&input.legacies[lineage.first_parent]),
-                Ancestor::of_legacy(&input.legacies[lineage.second_parent]),
-            ]
-        };
         let mut outcome_report = vec![];
         for &(leaf, fixed, chance) in &outcomes {
             let landed = (0..fixed_targets.len())
@@ -112,20 +107,18 @@ pub(crate) fn audit_lifts(
                     stars[target] = 2;
                 }
             }
-            let veteran = Legacy {
+            // (her stars this outcome's, her wins at her schedule's chances; no pink modelled)
+            let her = Imagined {
                 character_id: data.umas[lineage.trainee].id,
-                borrowed: false,
                 sparks: (0..target_groups.len())
                     .filter(|&target| stars[target] > 0)
                     .map(|target| Spark { group: target_groups[target], stars: stars[target] })
                     .collect(),
-                wins: vec![],
-                pinks: vec![],
-                parents: parents(),
+                star_mix: None,
                 win_chances: current.record.win_chances.to_vec(),
-                mix: None,
                 pink_chances: vec![],
             };
+            let veteran = ImaginedVeteran { her, parents: input.pool.lineage_parents(lineage) };
             let mut lifts = vec![];
             for candidate in 0..candidates.trainees.len() {
                 let candidate_trainee = candidates.trainees[candidate];
@@ -167,7 +160,7 @@ fn audit_candidate(
     context: &PlanContext,
     candidate: usize,
     at: ScoredOutcome,
-    veteran: &Legacy,
+    veteran: &ImaginedVeteran,
     env_budget: usize,
 ) -> CandidateLift {
     let PlanContext { input, candidates } = *context;
@@ -183,7 +176,7 @@ fn audit_candidate(
     };
     let (table, table_rescored) = (at.original.map(read), read(at.rescored));
     let mut pool = simulator.evaluator.take_pool(input.pool);
-    simulator.env.setup.pool_push(&mut pool, veteran);
+    simulator.env.setup.pool_push_imagined(&mut pool, veteran);
     let her = pool.veterans.len() - 1;
     let (mut chances, mut scratch) = (vec![], vec![]);
     let mut all_partners = 0.0f64;

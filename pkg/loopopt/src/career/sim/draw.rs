@@ -116,7 +116,6 @@ impl Sim<'_, '_> {
             wins,
             pinks,
             parents: vec![Ancestor::of_legacy(&legacies[first_parent]), Ancestor::of_legacy(&legacies[second_parent])],
-            ..Default::default()
         }
     }
 }

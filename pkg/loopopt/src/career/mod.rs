@@ -39,6 +39,7 @@
 //! - `decks`: the exact career deck searches and their kept memos.
 //! - `inherit`: legacy slots, affinity and inheritance chances.
 //! - `pool`: veteran pools and legal parent pairs.
+//! - `imagined`: the veterans the planner imagines (a career's before her result is known, synthetic full ones).
 //! - `outcomes`: career reports, outcome sets and corner tables.
 //! - `schedule`: aptitude sparks and career race schedules.
 //! - `cache`: the deck cache the simulator and the plan value careers through.
@@ -74,6 +75,7 @@ use crate::uma::{UmaIndex, UmaTable};
 use serde::{Deserialize, Serialize};
 mod clock;
 mod decks;
+pub(crate) mod imagined;
 mod inherit;
 mod outcomes;
 mod pool;
@@ -191,31 +193,16 @@ pub(crate) struct Ancestor {
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     pub pinks: Vec<Pink>,
-    /// internal (the parent of a veteran before her result is known is such a veteran): the pinks it may carry
-    /// (`Legacy::pink_chances`)
-    #[serde(skip)]
-    pub(crate) pink_chances: Vec<crate::career::schedule::PinkChance>,
-    /// internal (a hypothetical ancestor: the planner's synthetic lineages, or a fresh veteran's parent that is itself
-    /// fresh): win chance per race index in place of `wins`, and the star mix her sparks are drawn from in place of
-    /// fixed stars, as `Legacy`'s. A recorded parent has neither.
-    #[serde(skip)]
-    win_chances: Vec<f64>,
-    #[serde(skip)]
-    mix: Option<[f64; 3]>,
 }
 
 impl Ancestor {
-    /// A legacy as her child's record of a parent: her character, white sparks, G1 wins and pink sparks (or the pinks
-    /// she may carry).
+    /// A legacy as her child's record of a parent: her character, white sparks, G1 wins and pink sparks.
     fn of_legacy(legacy: &Legacy) -> Self {
         Self {
             character_id: legacy.character_id,
             sparks: legacy.sparks.clone(),
             wins: legacy.wins.clone(),
             pinks: legacy.pinks.clone(),
-            pink_chances: legacy.pink_chances.clone(),
-            win_chances: legacy.win_chances.clone(),
-            mix: legacy.mix,
         }
     }
 }
@@ -267,7 +254,7 @@ fn pink_pairs<S: serde::Serializer>(pinks: &&[Pink], serializer: S) -> Result<S:
 impl Legacy {
     /// Her identity as a record, for orders that must not read the pool's order (`plan::pair_bound`): the canonical
     /// text of her recorded fields and her recorded parents' (character, borrowed, sparks, wins, pinks), and its hash.
-    /// Two identical records have one identity. The internal fields are not in it: a job's legacies, as read, have none
+    /// Two identical records have one identity.
     pub(crate) fn identity(&self) -> RecordIdentity {
         let record = IdentityRecord {
             borrowed: self.borrowed,
@@ -289,32 +276,6 @@ impl Legacy {
         let text = serde_json::to_string(&record).expect("a record's text");
         RecordIdentity { hash: crate::career::state::hash_text(&text), text }
     }
-    /// Her record as a job sends it (`legacies`): the internal fields left out (a veteran whose result was drawn
-    /// keeps only what was drawn).
-    pub(crate) fn recorded(&self) -> Self {
-        Self {
-            character_id: self.character_id,
-            borrowed: self.borrowed,
-            sparks: self.sparks.clone(),
-            wins: self.wins.clone(),
-            pinks: self.pinks.clone(),
-            parents: self.parents.iter().map(Ancestor::recorded).collect(),
-            ..Self::default()
-        }
-    }
-}
-
-impl Ancestor {
-    /// Her record as a job sends it (`Legacy::recorded`).
-    fn recorded(&self) -> Self {
-        Self {
-            character_id: self.character_id,
-            sparks: self.sparks.clone(),
-            wins: self.wins.clone(),
-            pinks: self.pinks.clone(),
-            ..Self::default()
-        }
-    }
 }
 
 /// A legacy's recorded parents (the trainee's grandparents under her): at most two. More would count a target's
@@ -330,7 +291,8 @@ fn recorded_parents<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result
     Ok(parents)
 }
 
-/// A veteran as a job sends her: her record (character, sparks, G1 wins, pinks) and her recorded parents.
+/// A veteran as a job sends her: her record (character, sparks, G1 wins, pinks) and her recorded parents. A veteran
+/// the planner imagines is not one (`imagined::ImaginedVeteran`).
 #[derive(Serialize, Deserialize, Clone, Default, ts_rs::TS)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Legacy {
@@ -352,15 +314,6 @@ pub(crate) struct Legacy {
     #[serde(default, deserialize_with = "recorded_parents")]
     #[ts(as = "Option<_>", optional)]
     pub parents: Vec<Ancestor>,
-    /// internal (a veteran before her result is known, `CareerSetup::veteran`): win chance per race index in place of
-    /// `wins`, the star mix her sparks are drawn from in place of fixed stars, and the pinks she may carry in place of
-    /// `pinks` (one at most: `CareerSetup::pink_chances`)
-    #[serde(skip)]
-    win_chances: Vec<f64>,
-    #[serde(skip)]
-    mix: Option<[f64; 3]>,
-    #[serde(skip)]
-    pink_chances: Vec<crate::career::schedule::PinkChance>,
 }
 
 const fn d_top() -> usize {

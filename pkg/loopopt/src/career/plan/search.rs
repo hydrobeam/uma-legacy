@@ -1,11 +1,12 @@
 //! Candidate searches, rotation setup and proxy limits.
 use crate::career::evaluator::DeckRequest;
+use crate::career::imagined::{Imagined, ImaginedVeteran};
 use crate::career::plan::report::UmaName;
 use crate::career::plan::{ParentPool, PlanJob};
 use crate::career::pool::Pool;
 use crate::career::search::{Bar, Found, RankedPair};
 use crate::career::sim::{Sim, SimJob, SimulationOptions, SimulationRoster};
-use crate::career::{Ancestor, CareerSetup, Env, JobInputs, Legacy, Lineage, Spark};
+use crate::career::{CareerSetup, Env, JobInputs, Lineage, Spark};
 use crate::data::Data;
 use crate::refusal::Refusal;
 use crate::skills::SkillJob;
@@ -393,7 +394,7 @@ pub(crate) struct FullLoop {
 }
 
 /// A hypothetical full veteran of a character: every job target at the rank's star mix, G1 wins at `win_chances` (as
-/// `CareerSetup::veteran` makes the fresh ones), no pinks; as a legacy with `parents`, or as an ancestor
+/// `CareerSetup::veteran` makes the fresh ones), no pinks; imagined, with hypothetical parents of her own
 struct HypotheticalVeteran<'veteran> {
     character_id: u32,
     full: &'veteran [Spark],
@@ -402,29 +403,19 @@ struct HypotheticalVeteran<'veteran> {
 }
 
 impl HypotheticalVeteran<'_> {
-    fn ancestor(&self) -> Ancestor {
-        Ancestor {
+    fn imagined(&self) -> Imagined {
+        Imagined {
             character_id: self.character_id,
             sparks: self.full.to_vec(),
-            wins: vec![],
-            pinks: vec![],
+            star_mix: Some(self.star_mix),
             win_chances: self.win_chances.clone(),
-            mix: Some(self.star_mix),
             pink_chances: vec![],
         }
     }
-    fn legacy(&self, parents: [Ancestor; 2]) -> Legacy {
-        Legacy {
-            character_id: self.character_id,
-            borrowed: false,
-            sparks: self.full.to_vec(),
-            wins: vec![],
-            pinks: vec![],
-            parents: parents.to_vec(),
-            win_chances: self.win_chances.clone(),
-            mix: Some(self.star_mix),
-            pink_chances: vec![],
-        }
+    /// Her as an imagined veteran whose parents are the hypothetical `parents`, as the pool holds them.
+    fn veteran(&self, setup: &CareerSetup, parents: [&Self; 2]) -> ImaginedVeteran {
+        let [first, second] = parents.map(|parent| setup.imagined_who(&parent.imagined()));
+        ImaginedVeteran { her: self.imagined(), parents: [first, second] }
     }
 }
 
@@ -449,14 +440,17 @@ pub(crate) fn loop_ceiling(
         star_mix,
         win_chances: wins(uma),
     };
+    let setup = &simulator.env.setup;
     let veteran =
         |uma: crate::uma::UmaIndex, first_parent: crate::uma::UmaIndex, second_parent: crate::uma::UmaIndex| {
-            hypothetical(uma).legacy([hypothetical(first_parent).ancestor(), hypothetical(second_parent).ancestor()])
+            hypothetical(uma).veteran(setup, [&hypothetical(first_parent), &hypothetical(second_parent)])
         };
+    let (first, second) =
+        (veteran(first_builder, second_builder, trainee), veteran(second_builder, first_builder, trainee));
     // (`CareerSetup::pool` of the legacies and the two: the working copy of `pool` with them pushed, then popped)
     let mut working_pool = simulator.evaluator.take_pool(pool);
-    simulator.env.setup.pool_push(&mut working_pool, &veteran(first_builder, second_builder, trainee));
-    simulator.env.setup.pool_push(&mut working_pool, &veteran(second_builder, first_builder, trainee));
+    simulator.env.setup.pool_push_imagined(&mut working_pool, &first);
+    simulator.env.setup.pool_push_imagined(&mut working_pool, &second);
     let n = working_pool.veterans.len();
     let lineage = Lineage { trainee, first_parent: n - 2, second_parent: n - 1 };
     let value =
@@ -512,8 +506,7 @@ pub(crate) fn hint_umas(
     let hypothetical =
         |character_id: u32| HypotheticalVeteran { character_id, full: &full, star_mix: star, win_chances: vec![] };
     let veteran = |character_id: u32, first_parent: u32, second_parent: u32| {
-        hypothetical(character_id)
-            .legacy([hypothetical(first_parent).ancestor(), hypothetical(second_parent).ancestor()])
+        hypothetical(character_id).veteran(setup, [&hypothetical(first_parent), &hypothetical(second_parent)])
     };
     let mut out: Vec<HintUma> = vec![];
     // (`CareerSetup::pool` of the legacies and the two: one copy of `pool`, `CareerSetup::pool(legacies)`, the two pushed
@@ -528,8 +521,8 @@ pub(crate) fn hint_umas(
         {
             continue;
         }
-        setup.pool_push(&mut working_pool, &veteran(first_side, second_side, id));
-        setup.pool_push(&mut working_pool, &veteran(second_side, first_side, id));
+        setup.pool_push_imagined(&mut working_pool, &veteran(first_side, second_side, id));
+        setup.pool_push_imagined(&mut working_pool, &veteran(second_side, first_side, id));
         let n = working_pool.veterans.len();
         let lineage = Lineage { trainee, first_parent: n - 2, second_parent: n - 1 };
         if legal_pair(data, &working_pool, lineage) {
