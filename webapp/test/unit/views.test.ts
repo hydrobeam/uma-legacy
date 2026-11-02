@@ -23,7 +23,7 @@ import {
   winsClosed,
 } from '../../src/veterans/pickers.ts';
 import { AddList, VetEditors } from '../../src/veterans/Editors.tsx';
-import { WinsEditor } from '../../src/ui/Agenda.tsx';
+import { WinsEditor } from '../../src/results/Agenda.tsx';
 import { openColour } from '../../src/veterans/sparks.ts';
 import { InspView } from '../../src/ui/InspView.tsx';
 import { Details, legaciesOf } from '../../src/career/analysis/Details.tsx';

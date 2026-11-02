@@ -11,8 +11,8 @@
 // The look: two bars to a row, each the game's spark sprite (9-sliced over its gradient: the theme's nine-spark-* and
 // art-spark-*), its dot at the left, its name cut short at the bar's end, its stars hanging off its foot; 28 px tall on
 // a narrow phone, 34 px elsewhere. Each spark's cell is data-spark (white, pink, blue, green; data-none where she has
-// none, data-off for a spark not a target), its bar data-bar, its name data-spark-name (details.ts fitSparks shrinks
-// it to fit).
+// none, data-off for a spark not a target), its bar data-bar, its name data-spark-name (results/details.ts fitSparks
+// shrinks it to fit).
 import { useRef } from 'preact/hooks';
 import { NEW_STARS } from '../veterans/store.ts';
 import { pinkName, skillName, starsOf, uniqueName } from '../veterans/names.ts';

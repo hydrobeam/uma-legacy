@@ -24,11 +24,11 @@ import { pickOutfit } from '../state/roster.ts';
 import { must } from '../must.ts';
 import type { DeepReadonly } from '../state/store.ts';
 import { AgendaGrid, AgendaSlot, RACE_BOX, RaceFace, WhenBar } from './Agenda.tsx';
-import { Dialog, DialogHead, DialogPanel } from './Dialog.tsx';
-import { SegmentedControl } from './SegmentedControl.tsx';
-import { RenderGuard } from './RenderGuard.tsx';
-import { GradeBadge, UmaAv } from './Images.tsx';
-import { Button } from './Button.tsx';
+import { Dialog, DialogHead, DialogPanel } from '../ui/Dialog.tsx';
+import { SegmentedControl } from '../ui/SegmentedControl.tsx';
+import { RenderGuard } from '../ui/RenderGuard.tsx';
+import { GradeBadge, UmaAv } from '../ui/Images.tsx';
+import { Button } from '../ui/Button.tsx';
 import { cx } from 'tailwind-variants/lite';
 
 /** a member as the popup shows her: her place `k` (the index of her cell in each schedule row), her uma and her

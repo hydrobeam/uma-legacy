@@ -2,10 +2,10 @@
 // What Try a run's card (career/analysis/Details.tsx), the node popups and the decks share: the spark names' fit
 // (`fitSparks`) and a deck's cards as they are drawn (`deckCards`). (Its Skill Details popup is
 // career/view/SkillDetails.tsx.)
-import { gameData } from './model/data.ts';
-import type { Card } from './model/data.ts';
-import type { ResultDeck } from './loop/types.ts';
-import type { DeepReadonly } from './state/store.ts';
+import { gameData } from '../model/data.ts';
+import type { Card } from '../model/data.ts';
+import type { ResultDeck } from '../loop/types.ts';
+import type { DeepReadonly } from '../state/store.ts';
 
 // a spark bar's name on one line, its type shrunk until it fits (the game's way), down to 9 px; panes on show only.
 // The names are ui/Sparks.tsx's, marked data-spark-name.

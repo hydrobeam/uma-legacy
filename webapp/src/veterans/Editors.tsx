@@ -13,7 +13,7 @@ import type { Uma } from '../model/data.ts';
 import { Dialog, DialogBody, DialogClose, DialogFoot, DialogHead, DialogPanel, DialogTitle } from '../ui/Dialog.tsx';
 import { RenderGuard } from '../ui/RenderGuard.tsx';
 import { UmaAv } from '../ui/Images.tsx';
-import { WinsEditor } from '../ui/Agenda.tsx';
+import { WinsEditor } from '../results/Agenda.tsx';
 import { useDropdown } from '../ui/dropdown.ts';
 import { AddPop } from '../setup/Shell.tsx';
 import { NEW_STARS } from './store.ts';
@@ -178,7 +178,7 @@ function AskSkills({ asked }: { asked: SkillsAsk | null }) {
   );
 }
 
-// ---------- the G1 wins window: her wins on the calendar (ui/Agenda.tsx WinsEditor), each edit landing on her record
+// ---------- the G1 wins window: her wins on the calendar (results/Agenda.tsx WinsEditor), each edit landing on her record
 // as it is then; drawn only while open. A node that is gone (a pool veteran removed, the draft replaced) closes it, as
 // it does the colour picker
 function WinsDialog({ edit }: { edit: WinsEdit | null }) {

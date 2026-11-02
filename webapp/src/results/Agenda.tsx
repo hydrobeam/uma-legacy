@@ -13,8 +13,8 @@ import { MONTHS, YEARS, bannerSrc, shownP, slotLabel, turnName, why } from '../m
 import type { WinInfo } from '../model/agenda.ts';
 import type { ScheduleCell } from '../solver/solver.ts';
 import { must } from '../must.ts';
-import { Button } from './Button.tsx';
-import { popover } from './Popover.tsx';
+import { Button } from '../ui/Button.tsx';
+import { popover } from '../ui/Popover.tsx';
 
 // April to June before the career, 4 cells a month (Early, Early, Late, Late)
 const PRE = Array.from({ length: 12 }, (_, i) => (i % 4 < 2 ? 'Early ' : 'Late ') + MONTHS[3 + (i >> 2)]);

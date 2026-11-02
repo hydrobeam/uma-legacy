@@ -4,11 +4,11 @@ import { assert } from '../../must.ts';
 import { settings } from '../../state/settings.ts';
 import { srcFor } from '../../model/images.ts';
 import { scenarioOf } from '../../state/scenario.ts';
-import { usePopOpener } from '../../ui/CardPop.tsx';
+import { usePopOpener } from '../../results/CardPop.tsx';
 import { pct, deckHint, fmtIn } from '../../model/odds.ts';
 import { starsOf } from '../../veterans/names.ts';
-import { borrowedLast, deckCards } from '../../details.ts';
-import type { DeckSlot } from '../../details.ts';
+import { borrowedLast, deckCards } from '../../results/details.ts';
+import type { DeckSlot } from '../../results/details.ts';
 import { cardTitle, chainEndNote } from '../../state/cards.ts';
 import { CardAv, ScenLogo, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle } from '../../ui/Dialog.tsx';
@@ -17,11 +17,11 @@ import { tName, tableRows } from './parts.ts';
 import { deckOpen, openDeck, deckClosed } from './dialogs.ts';
 import { Guard } from './Guard.tsx';
 import { openSkill } from './SkillDetails.tsx';
-import { openSched } from '../../ui/Schedule.tsx';
+import { openSched } from '../../results/Schedule.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { panel } from '../../ui/Panel.tsx';
 import { GameBar } from '../../ui/GameBar.tsx';
-import { chip } from '../../ui/deckChip.ts';
+import { chip } from '../../results/deckChip.ts';
 import { skillTile } from '../../ui/skillTile.ts';
 import { cx } from 'tailwind-variants/lite';
 
@@ -67,7 +67,7 @@ export function SchedButton({ r }: { r: CareerReport }) {
     </Button>
   );
 }
-/** one card of a deck (here the career's, in its popup; Try a run's best career with her: analysis/view.tsx) (a click opens its panel: popover.ts) */
+/** one card of a deck (here the career's, in its popup; Try a run's best career with her: analysis/view.tsx) (a click opens its panel: results/popover.ts) */
 function DeckCard({ slot }: { slot: DeckSlot }) {
   const { base, borrowed: bor, card: c, endAt } = slot,
     pick = slot.choice || (c?.pri ? c.pri.join(', ') : ''),

@@ -210,7 +210,7 @@ with a portrait in `webapp/img/`. It writes:
   template, so it can't fill two pages with heads of their own.) The footer's version reaches the entries as
   `__LLP_VERSION__` (Vite's `define`). The solver's preload script and asset table go into each planner page's head
   from `vite/pagedata.mjs`.
-  Both planner pages carry `class="game"` on `<html>` (read by `ui/Agenda.tsx`); where the two pages' looks differ, a
+  Both planner pages carry `class="game"` on `<html>` (read by `results/Agenda.tsx`); where the two pages' looks differ, a
   component takes the page as a prop or reads its root's `data-page` through the theme's `career:`/`loop:` variants.
 - **Styles** are Tailwind v4's (`@tailwindcss/vite`): each component carries its look as utilities, so CSS exists only
   for what something names. `src/styles/app.css` is the planner pages' entry (the fonts, Preflight, the theme, the
@@ -265,7 +265,7 @@ lists both kept mounted, a card drawn again only when her record changes), setup
 editors both pages share (`ui/`: the scenario picker, the lineage rank, the Umas and Support cards panels, the target
 skills and their presets, listed by `setup/Setup.tsx`'s `setupViews`), and the career page's results column, popups and
 veteran editors, each drawn in its place in its page's one root (the layout; the entry makes the views once and hands
-them in after the game data loads); the deck card panel too (`ui/CardPop.tsx`, opened by its openers' own clicks,
+them in after the game data loads); the deck card panel too (`results/CardPop.tsx`, opened by its openers' own clicks,
 `usePopOpener`: a slot in the results column and in every dialog, since a popover over a modal dialog is inert in both
 engines). Every modal dialog is `ui/Dialog.tsx`'s, which alone calls `showModal`/`close`. Measured placement and the
 spark names' fit (`details.ts`, from the layout effect of the component it measures), the game tooltip (`gmtip.ts`)

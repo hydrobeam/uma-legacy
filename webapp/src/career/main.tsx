@@ -46,8 +46,8 @@ import { restartEngine, engineBusy, enginePersist, engineSaveState, nextKill } f
 import { answerLoad, answerSave } from '../state/statestore.ts';
 import { goldGiven } from '../model/job.ts';
 import { initScenario } from '../state/scenario.ts';
-import { initPopover } from '../popover.ts';
-import { CardPop } from '../ui/CardPop.tsx';
+import { initPopover } from '../results/popover.ts';
+import { CardPop } from '../results/CardPop.tsx';
 import '../model/agenda.ts'; // (its document listener is added before gmtip's)
 import { openSetupDialog, pickEra, setupBadges, setupViews } from '../setup/Setup.tsx';
 import { useHydrated } from '../setup/Shell.tsx';
@@ -65,7 +65,7 @@ import {
   parentsPlaced,
 } from '../veterans/store.ts';
 import { AddList, VetEditors } from '../veterans/Editors.tsx';
-import { ScheduleDialog } from '../ui/Schedule.tsx';
+import { ScheduleDialog } from '../results/Schedule.tsx';
 import { setRunner } from '../model/images.ts';
 import { connectUmamoe, syncListings } from '../io/umamoesetup.ts';
 import { UmButton, UmamoeDialog } from './view/Umamoe.tsx';
@@ -96,7 +96,7 @@ import { VetsDialog } from './view/Pool.tsx';
 import { openPool } from './view/poolState.ts';
 import { ExportDialog, PasteDialog, openExport } from './view/Io.tsx';
 import { searchCaveat } from '../model/proofs.ts';
-import { fitSparks } from '../details.ts';
+import { fitSparks } from '../results/details.ts';
 import type { Status } from './state.ts';
 import type { CareerSearch } from './job.ts';
 
@@ -292,7 +292,7 @@ function initSettings() {
 // ---------- start ----------
 // (the loop members kept per setup until the plan stopped running the loop planner's search: the old store goes)
 update('llp:loops', () => null); // (storage blocked: nothing was kept to remove)
-// a resize: the spark names on show shrink to fit their new width (details.ts fitSparks)
+// a resize: the spark names on show shrink to fit their new width (results/details.ts fitSparks)
 addEventListener('resize', () => fitSparks(document));
 // a save of the veterans still due goes out when the page is hidden or left (a reload or close loses nothing)
 addEventListener('pagehide', flushPersist);

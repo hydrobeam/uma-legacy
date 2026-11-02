@@ -1,8 +1,8 @@
 // ---------- results: one card per loop (odds, members, decks), the odds, schedule and affinity buttons ----------
 // `Results` draws state.ts's `loopDrawn` into #results: each result keyed by its loop and decks (keys.ts), so a redraw with the same
 // loops (an interim answer, then the final) keeps every element, an open (i) panel and the focus. A card or a member no
-// longer owned is greyed (`off`) from the settings as they change. Their panels are popover.ts's: each button says what
-// its panel shows and draws its aria-expanded (ui/CardPop.tsx `usePopOpener`).
+// longer owned is greyed (`off`) from the settings as they change. Their panels are results/popover.ts's: each button
+// says what its panel shows and draws its aria-expanded (results/CardPop.tsx `usePopOpener`).
 // `ResultsCount` is the Results 1 or 3 switch above them.
 import { batch, untracked } from '@preact/signals';
 import type { ComponentChildren, RefObject } from 'preact';
@@ -10,13 +10,13 @@ import { useLayoutEffect, useState } from 'preact/hooks';
 import { gameData } from '../model/data.ts';
 import { setRunnerFrom } from '../model/images.ts';
 import { cardTitle, chainEndNote } from '../state/cards.ts';
-import { borrowedLast, deckCards } from '../details.ts';
-import type { DeckSlot } from '../details.ts';
-import { closePop, popHasFocus } from '../popover.ts';
-import type { PopSubject } from '../popover.ts';
-import { usePopOpener } from '../ui/CardPop.tsx';
+import { borrowedLast, deckCards } from '../results/details.ts';
+import type { DeckSlot } from '../results/details.ts';
+import { closePop, popHasFocus } from '../results/popover.ts';
+import type { PopSubject } from '../results/popover.ts';
+import { usePopOpener } from '../results/CardPop.tsx';
 import { outfitNote, pickOutfit, umaState } from '../state/roster.ts';
-import { openSched } from '../ui/Schedule.tsx';
+import { openSched } from '../results/Schedule.tsx';
 import { deckHint, fmtIn } from '../model/odds.ts';
 import { openOdds } from '../ui/OddsDialog.tsx';
 import { fields, setDecksTop } from '../state/settings.ts';
@@ -32,7 +32,7 @@ import type * as Report from './types.ts';
 import type { DeepReadonly } from '../state/store.ts';
 import { Button } from '../ui/Button.tsx';
 import { GameBar } from '../ui/GameBar.tsx';
-import { chip } from '../ui/deckChip.ts';
+import { chip } from '../results/deckChip.ts';
 import { cx, tv } from 'tailwind-variants/lite';
 
 // The card's parts carry data-* marks the checks find them by: data-rank, data-odds, data-same, data-members,

@@ -4,7 +4,7 @@
 // editors and their focus). The logic behind each piece is pinned in node (test/unit: careerio, careerroll,
 // proofs, careerrun, analysis); these flows hold the page's own drawing, layout, focus and worker.
 import fs from 'node:fs';
-import { chip, FRIENDS_TAG } from '../../src/ui/deckChip.ts';
+import { chip, FRIENDS_TAG } from '../../src/results/deckChip.ts';
 import {
   careerHooks,
   importExport,

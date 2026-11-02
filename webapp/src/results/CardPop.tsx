@@ -1,4 +1,4 @@
-// ---------- the deck card panel (popover.ts holds which one is open): a card's name, gifts, chain-end advice and
+// ---------- the deck card panel (results/popover.ts holds which one is open): a card's name, gifts, chain-end advice and
 // Owned switch, or a loop member's name, outfit and Owned switch; each with its GameTora link ----------
 // One slot in the results column (each entry renders it into #pop-root) and one in every ui/Dialog: the slot where the
 // panel's opener sits draws it. Placed against its opener and focused from a layout effect, once per opening.
@@ -11,10 +11,10 @@ import { umaState } from '../state/roster.ts';
 import { cardTitle, cardGives, chainEndAt } from '../state/cards.ts';
 import type { CardGift } from '../state/cards.ts';
 import { must } from '../must.ts';
-import { popBack, popOpen, popOpener, setPanel, togglePop } from '../popover.ts';
-import type { PopOpen, PopSubject } from '../popover.ts';
-import { Switch } from './Switch.tsx';
-import { popover } from './Popover.tsx';
+import { popBack, popOpen, popOpener, setPanel, togglePop } from './popover.ts';
+import type { PopOpen, PopSubject } from './popover.ts';
+import { Switch } from '../ui/Switch.tsx';
+import { popover } from '../ui/Popover.tsx';
 import { cx } from 'tailwind-variants/lite';
 
 const GAP = 8; // px between the panel and the element it belongs to (beside it); below it, 6

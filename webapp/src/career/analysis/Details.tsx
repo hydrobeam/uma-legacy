@@ -12,12 +12,12 @@ import { useLayoutEffect, useRef } from 'preact/hooks';
 import { gameData } from '../../model/data.ts';
 import { settings } from '../../state/settings.ts';
 import { umaName } from '../../veterans/names.ts';
-import { borrowedLast, deckCards, fitSparks } from '../../details.ts';
-import type { DeckSlot } from '../../details.ts';
+import { borrowedLast, deckCards, fitSparks } from '../../results/details.ts';
+import type { DeckSlot } from '../../results/details.ts';
 import { openSkill } from '../view/SkillDetails.tsx';
 import { InspView } from '../../ui/InspView.tsx';
-import { usePopOpener } from '../../ui/CardPop.tsx';
-import { chip, FRIENDS_TAG } from '../../ui/deckChip.ts';
+import { usePopOpener } from '../../results/CardPop.tsx';
+import { chip, FRIENDS_TAG } from '../../results/deckChip.ts';
 import { skillTile } from '../../ui/skillTile.ts';
 import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
 import { gradeOf } from '../../model/grades.ts';
@@ -185,7 +185,7 @@ const DEFS = [
   { key: 'info', label: 'Career Info' },
 ] as const;
 // the tabs and their panes (on the game's grey pane), all three built up front as in the game; once a switch is drawn,
-// the spark names now on show in her `card` shrink to fit (details.ts fitSparks)
+// the spark names now on show in her `card` shrink to fit (results/details.ts fitSparks)
 function DetailTabs({
   spec,
   winsButton,
@@ -301,8 +301,8 @@ function SkillsPane({ spec: { d, r } }: { spec: DetailsSpec }) {
 }
 
 /** one support card of her deck, the decks' chip (its art alone; a borrowed one's in the friend frame, or without art
- *  ringed in pink with a Friends tag): a click opens its panel (ui/CardPop.tsx `usePopOpener`; endAt, its chain-end
- *  advice). data-tag: borrowed; data-off: greyed, marked not owned */
+ *  ringed in pink with a Friends tag): a click opens its panel (results/CardPop.tsx `usePopOpener`; endAt, its
+ *  chain-end advice). data-tag: borrowed; data-off: greyed, marked not owned */
 function DeckCell({ slot }: { slot: DeckSlot }) {
   const { base, borrowed: bor, card: c, endAt } = slot,
     off = !!c && !bor && settings.value.cardsOff[c.id] === false,
@@ -447,7 +447,7 @@ function InfoPane({
             <span class="text-note text-gm-ink2">{x.turn == null ? 'Entered here' : when(x.turn)}</span>
             <span class="bg-gm-g1 text-caption rounded-sm px-1.5 py-px font-black text-white">G1</span>
             <span class="wrap-anywhere">{x.name}</span>
-            {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (details.ts infoPane): the label reads the result; a role for it is recorded, not changed here */}
+            {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (results/details.ts infoPane): the label reads the result; a role for it is recorded, not changed here */}
             <span class={x.won ? RESULT.won : RESULT.lost} aria-label={x.won ? 'won' : 'not won'}>
               {x.won ? '1st' : '–'}
             </span>

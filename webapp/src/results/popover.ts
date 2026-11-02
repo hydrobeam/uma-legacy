@@ -1,6 +1,6 @@
 // ---------- deck card panel: name, role, ownership (the same setting as the card picker): which one is open ----------
-// A click on a deck card, a member's name or a portrait in a result opens its panel (ui/CardPop.tsx draws it); a click
-// on the one already open, or outside every panel, closes it. The panel shows where its opener is: in the results
+// A click on a deck card, a member's name or a portrait in a result opens its panel (results/CardPop.tsx draws it); a
+// click on the one already open, or outside every panel, closes it. The panel shows where its opener is: in the results
 // column, or in the popup (a ui/Dialog) the opener sits in, whose slot draws it there (the page behind a modal popup is
 // out of reach: a popover over a modal dialog is inert there, in Chromium and Firefox). What the panel shows, each
 // opener says (its own props: `usePopOpener`).
@@ -43,8 +43,8 @@ export function popBack() {
   closePop();
   if (opener?.isConnected) opener.focus();
 }
-/** an opener's click (ui/CardPop.tsx `usePopOpener`): on what is already open it closes the panel; on another card or
- *  name, its panel opens instead, with what its opener says it is about */
+/** an opener's click (results/CardPop.tsx `usePopOpener`): on what is already open it closes the panel; on another
+ *  card or name, its panel opens instead, with what its opener says it is about */
 export function togglePop(opener: HTMLElement, beside: boolean, subject: PopSubject) {
   if (open.peek()?.opener === opener) closePop();
   else open.value = { opener, home: opener.closest('dialog')?.id ?? null, beside, subject };

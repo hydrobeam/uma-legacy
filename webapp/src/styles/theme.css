@@ -115,7 +115,7 @@
   /* the race schedule's key: a shared G1's dot (the game's pink badge), an optional one's (its grey) */
   --color-sched-shared: #f43d88;
   --color-sched-opt: #9a93a6;
-  /* an empty calendar slot's "+" under the pointer or with its menu open (ui/Agenda.tsx) */
+  /* an empty calendar slot's "+" under the pointer or with its menu open (results/Agenda.tsx) */
   --color-plus-hover: rgba(124, 196, 13, 0.12);
   /* the career tree's legacy boxes (career/view/Tree.tsx): Legacy 1 blue, Legacy 2 pink, each box a pale tint of its
      colour on the game's panel */
@@ -256,7 +256,7 @@
   --drop-shadow-ribbon: 0 1px 0 var(--color-ribbon-edge);
   --drop-shadow-enh: 0 2px 3px var(--color-gm-shadow);
   --drop-shadow-enh-glow: 0 0 4px var(--color-gm-bright2);
-  /* the affinity heart's (ui/AffTable.tsx AffHeart) */
+  /* the affinity heart's (results/AffTable.tsx AffHeart) */
   --drop-shadow-heart: 0 1px 1px rgba(150, 30, 80, 0.35);
   /* the game's stars: under a spark bar (ui/Sparks.tsx), the colour picker's (veterans/Editors.tsx) */
   --drop-shadow-star: 0 1px 1px rgba(80, 50, 10, 0.35);
@@ -268,7 +268,7 @@
   --shade-brand-a: drop-shadow(0 0 0.035em var(--color-brand-a-glow)) drop-shadow(0 0 0.035em var(--color-brand-a-glow));
   --shade-outline: drop-shadow(0 1px 0 var(--color-outline)) drop-shadow(0 -1px 0 var(--color-outline))
     drop-shadow(1px 0 0 var(--color-outline)) drop-shadow(-1px 0 0 var(--color-outline));
-  /* the white odds on an optional race's grey badge (ui/Agenda.tsx) */
+  /* the white odds on an optional race's grey badge (results/Agenda.tsx) */
   --text-shadow-badge: 0 1px 1px rgba(40, 30, 40, 0.55);
   /* the white words on a pink, blue or green spark bar (ui/Sparks.tsx), over a shade of its colour */
   --text-shadow-spark-pink: 0 1px 1px rgba(150, 30, 80, 0.6);
@@ -316,8 +316,8 @@
      foot round a rounded hole), drawn 3 px outside the art and a 12 px band under it: widths = slice x pink wanted /
      pink in the slice (37 / 10 x 3, 37 / 8 x 3, 75 / 45 x 12) */
   --nine-friend: var(--friend-frame, none) 37 37 75 37 / 11px 14px 20px / 0 stretch;
-  /* the calendar (ui/Agenda.tsx): the grey cells before the career (their face's opacity --alpha-slot-empty), and a
-     race's odds badge, the game's pink pill */
+  /* the calendar (results/Agenda.tsx): the grey cells before the career (their face's opacity --alpha-slot-empty), and
+     a race's odds badge, the game's pink pill */
   --nine-slot-empty: var(--face-slot-empty) 17 19 fill / 8px 9px / 0 stretch;
   --nine-sched-badge: var(--sched-badge, linear-gradient(#ff5d9e, #f43d88)) 0 40 fill / 0 9px / 0 stretch;
   /* the game's bond gauge's track (a career target's acquired chance: career/view/Sections.tsx) */
@@ -373,7 +373,7 @@
   /* the career's count chart's columns: the game's team-building green, and gold for all n */
   --art-count-bar: linear-gradient(#84f589, #5ddc6d);
   --art-count-all: linear-gradient(#ffe37b, #ffc44f);
-  /* the game's affinity heart: pink, a white rim (ui/AffTable.tsx AffHeart) */
+  /* the game's affinity heart: pink, a white rim (results/AffTable.tsx AffHeart) */
   --art-heart: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 22'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ff9cc8'/%3E%3Cstop offset='1' stop-color='%23f0407f'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M12 20.5C5.5 15.6 1.5 12 1.5 7.4 1.5 4.2 4 1.7 7.1 1.7c2 0 3.8 1 4.9 2.6 1.1-1.6 2.9-2.6 4.9-2.6 3.1 0 5.6 2.5 5.6 5.7 0 4.6-4 8.2-10.5 13.1z' fill='url(%23g)' stroke='%23fff' stroke-width='1.8' stroke-linejoin='round'/%3E%3Cpath d='M6.5 5.2c-1.3.3-2.2 1.4-2.2 2.7' fill='none' stroke='%23fff' stroke-width='1.4' stroke-linecap='round' opacity='.8'/%3E%3C/svg%3E")
     center / contain no-repeat;
   /* a veteran's spark bars (ui/Sparks.tsx), under their sprites (the whole bar where the sprite isn't shipped): white
@@ -567,7 +567,7 @@
 @custom-variant loop (&:where([data-page="loop"] *));
 /* inside a box whose answer is not the setup's (data-stale: career/Layout.tsx's tree, dimmed while a run works) */
 @custom-variant stale (&:where([data-stale] *));
-/* inside a calendar slot (ui/Agenda.tsx, data-slot: its kinds, space-separated): a grey cell before the career, an
+/* inside a calendar slot (results/Agenda.tsx, data-slot: its kinds, space-separated): a grey cell before the career, an
    optional race's, one holding two wins */
 @custom-variant slot-pre (&:where([data-slot~="pre"] *));
 @custom-variant slot-opt (&:where([data-slot~="opt"] *));

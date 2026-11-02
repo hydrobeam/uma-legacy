@@ -7,7 +7,7 @@ import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { settings } from '../../state/settings.ts';
 import { isOwned } from '../../model/job.ts';
-import { fitSparks } from '../../details.ts';
+import { fitSparks } from '../../results/details.ts';
 import {
   vets,
   places,
@@ -25,7 +25,7 @@ import { openWins, winsText, changeUma, openUmaPicker } from '../../veterans/pic
 import type { NodeRecord, NodeRef, ParentPlace, VetRecord } from '../../veterans/store.ts';
 import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle, anyDialogOpen } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
-import { AffTable } from '../../ui/AffTable.tsx';
+import { AffTable } from '../../results/AffTable.tsx';
 import { InspView } from '../../ui/InspView.tsx';
 import { listed } from '../job.ts';
 import { idxOf, shown, parentAt } from '../current.ts';
@@ -454,8 +454,8 @@ export function NodeDialog() {
     body = useRef<HTMLDivElement>(null);
   // (closed, it draws nothing: an edit elsewhere redraws no closed popup)
   const on = spec && nodeShown(spec, shown());
-  // a node that is gone closes the popup; on show, her spark names shrink to fit (details.ts fitSparks: this runs after
-  // its Dialog's layout effect has opened it)
+  // a node that is gone closes the popup; on show, her spark names shrink to fit (results/details.ts fitSparks: this
+  // runs after its Dialog's layout effect has opened it)
   useLayoutEffect(() => {
     if (spec && !on) closeNode();
     if (on && body.current) fitSparks(body.current);

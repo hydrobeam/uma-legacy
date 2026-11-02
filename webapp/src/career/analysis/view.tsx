@@ -14,7 +14,7 @@ import { draft, draftRef } from '../../veterans/store.ts';
 import type { Draft, LineageNode, NodeRecord } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
 import { openWins } from '../../veterans/pickers.ts';
-import { fitSparks } from '../../details.ts';
+import { fitSparks } from '../../results/details.ts';
 import { must } from '../../must.ts';
 import { Runner, UmaAv } from '../../ui/Images.tsx';
 import type { DeepReadonly } from '../../state/store.ts';
@@ -411,8 +411,8 @@ function Analysis({ comparison }: { comparison: Comparison }) {
     searching = runSearching.value, // (not runView: a plan's progress would draw her card again each time)
     section = useRef<HTMLElement>(null),
     wins = useRef<HTMLButtonElement>(null);
-  // her spark names shrink to fit (details.ts fitSparks: it measures the names on show and skips a closed popup's;
-  // TryRunDialog fits them again on opening)
+  // her spark names shrink to fit (results/details.ts fitSparks: it measures the names on show and skips a closed
+  // popup's; TryRunDialog fits them again on opening)
   useLayoutEffect(() => {
     if (section.current) fitSparks(section.current);
   });
