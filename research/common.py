@@ -1847,7 +1847,7 @@ def run_rows(
             q, nc, p, scen_g, plegs = 0.0, 0, 0.0, False, []
         else:
             buy = t["buy"]
-            q, nc, p, scen_g = t["q"], t["carriers"], t["p"], bool(buy.get("scenario"))
+            q, nc, p, scen_g = t["q"], t["carriers"], t["p"], buy["kind"] == "scenario"
             k = order.index(g)
             # per legacy carrying the spark: 3% per star, raised by its affinity, per roll
             plegs = [min(1.0, 0.03 * s["stars"][k] * (1 + s["aff"] / 100)) for s in slots if s["stars"][k] > 0]
