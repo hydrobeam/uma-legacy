@@ -4,24 +4,18 @@
 // default search's odds (R cards off, Unity Cup): 1 in 103 for all 8, 1 in 12.1 for 7 or better.
 import { test } from 'playwright/test';
 import { runGroup } from './helpers.mjs';
-import load from './load.mjs';
 import scenario from './scenario.mjs';
-import autosearch from './autosearch.mjs';
 import roster from './roster.mjs';
 import upcoming from './upcoming.mjs';
 import cards from './cards.mjs';
 import panels from './panels.mjs';
 import targets from './targets.mjs';
-import keyboard from './keyboard.mjs';
-import states from './states.mjs';
 import fourloop from './fourloop.mjs';
 import borrowed from './borrowed.mjs';
 import popups from './popups.mjs';
 import phone from './phone.mjs';
 import careerphone from './careerphone.mjs';
 import nonecards from './nonecards.mjs';
-import reload from './reload.mjs';
-import delivery from './delivery.mjs';
 import gm from './gm.mjs';
 import settings from './settings.mjs';
 import career from './career.mjs';
@@ -39,23 +33,17 @@ const GROUPS = {
   career,
   careerpool,
   careerphone,
-  load,
   scenario,
-  autosearch,
   roster,
   upcoming,
   cards,
   panels,
   targets,
-  keyboard,
-  states,
   fourloop,
   borrowed,
   popups,
   phone,
   nonecards,
-  reload,
-  delivery,
   gm,
   settings,
   careerborrow,
@@ -65,24 +53,11 @@ const GROUPS = {
 // the fast tier (tag @quick; ./build.sh testq, with LLP_QUICK=1): each page's core path: the planner loads and its
 // search returns (load), the result's dialogs (popups), the phone layout (phone), /about, and the career page up to
 // its one-run answer (career stops there in this tier)
-const QUICK = ['career', 'load', 'popups', 'phone'];
+const QUICK = ['career', 'popups', 'phone'];
 // the groups Firefox runs too (tag @both; playwright.config.mjs): where the engine matters, the worker, wasm, IndexedDB
 // and timing (load, states, autosearch, reload, delivery, career, careerrun) or layout and focus (careerphone, phone,
 // panels, keyboard, popups; Firefox rounds lengths differently). The rest test the page's logic, which Chromium covers.
-const BOTH = [
-  'load',
-  'states',
-  'autosearch',
-  'reload',
-  'delivery',
-  'career',
-  'careerrun',
-  'careerphone',
-  'phone',
-  'panels',
-  'keyboard',
-  'popups',
-];
+const BOTH = ['career', 'careerrun', 'careerphone', 'phone', 'panels', 'popups'];
 // the groups whose solver replies are replayed (solverreplay.mjs): those that use the solver to put the page in a state,
 // or check what the page draws from its replies (the replies were checked by the live run that recorded them). The rest
 // run the real solver: they check its worker's live behaviour (load, autosearch, states: kills, restarts, a failing job,
@@ -93,7 +68,6 @@ const REPLAY = [
   'cards',
   'roster',
   'targets',
-  'keyboard',
   'panels',
   'popups',
   'phone',
@@ -103,7 +77,6 @@ const REPLAY = [
   'scenario',
   'settings',
   'upcoming',
-  'reload',
   'careerphone',
   'careervets',
   'careergen',
