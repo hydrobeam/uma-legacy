@@ -1045,14 +1045,18 @@ mod tests {
         let outfits = |m: &Model, i: UmaIndex| -> Vec<u32> {
             m.outfit_options[i].iter().flat_map(|o| o.outfits.iter().map(|c| c.0)).collect()
         };
-        let job: SkillJob =
-            serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [100_102]})).unwrap();
+        let owned: Vec<u32> = data.umas.indices().map(|i| data.umas[i].id).collect();
+        let job: SkillJob = serde_json::from_value(
+            json!({"targets": [{"group":20159}], "owned": &owned, "exclude_outfits": [100_102]}),
+        )
+        .unwrap();
         let m = Model::new(data, &skills, &job);
         let sw = outfits(&m, ix(1001));
         assert!(!sw.contains(&100_102) && !sw.is_empty() && !m.no_outfit[ix(1001)], "{sw:?}");
-        let job2: SkillJob =
-            serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [101_901, 101_902]}))
-                .unwrap();
+        let job2: SkillJob = serde_json::from_value(
+            json!({"targets": [{"group":20159}], "owned": &owned, "exclude_outfits": [101_901, 101_902]}),
+        )
+        .unwrap();
         let model2 = Model::new(data, &skills, &job2);
         assert!(model2.no_outfit[ix(1019)]);
         assert!(!model2.no_outfit[ix(1001)]);

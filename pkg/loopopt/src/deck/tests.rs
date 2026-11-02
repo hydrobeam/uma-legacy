@@ -1187,6 +1187,34 @@ fn deck_limits_refuse_with_an_error() {
     assert!(passed > 0 && refused > 0, "{passed} passed, {refused} refused");
 }
 
+/// `owned_cards` lists every card owned: a job owning none (`[]`) has no card of its own in its deck space. With `borrow`
+/// each card it holds is one it does not own (the one borrowed card a deck may hold), plain pals included; without, it
+/// holds none.
+#[test]
+fn owning_no_card_leaves_only_borrowed_cards() {
+    let cards = fixture_cards();
+    let banned = cards.restrict.get("unity").cloned().unwrap_or_default();
+    let chain: Vec<&Card> = cards
+        .cards
+        .iter()
+        .filter(|c| !c.pal && c.links >= 2 && c.rarity >= 2 && !banned.contains(&c.id))
+        .take(6)
+        .collect();
+    let target = 20159u32;
+    let events: Vec<Value> = chain.iter().map(|c| json!([c.id, target, 1, 1])).collect();
+    for borrow in [true, false] {
+        let deck_job = job_with(json!({"owned_cards": [], "borrow": borrow, "events": events}));
+        let entries = deck_entries(&cards, &deck_job, &[target], &[]).unwrap();
+        let held: Vec<u32> = entries.card_indices.iter().map(|&card| entries.cards[card].id).collect();
+        assert!(held.iter().chain(&entries.plain_ids).all(|&id| !deck_job.owns(id)), "borrow {borrow}: {held:?}");
+        if borrow {
+            assert!(chain.iter().all(|c| held.contains(&c.id)), "borrow: the event cards are borrowable: {held:?}");
+        } else {
+            assert!(held.is_empty() && entries.plain_ids.is_empty(), "no borrow: {held:?} {:?}", entries.plain_ids);
+        }
+    }
+}
+
 /// Decks with a nested chain (`deck::nested`): one card's chain feeding two targets, the second at a later link, with
 /// nothing else giving the later one (the shape of a Seiun Sky [Paint the Sky Red] deck without pals, 4.00 in the
 /// career search), the same with a training source, and one card's chain feeding three targets at links 1, 2 and 3
