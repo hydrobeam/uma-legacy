@@ -148,7 +148,7 @@ step_pb() {
 step_native() {
   need_cargo; check native
   if passed native; then return 0; fi
-  (cd "$C" && clippy_all)
+  (cd "$C" && cargo clippy --quiet --all-targets -- -D warnings)
   cargo_test
   mark_passed native
 }
@@ -176,10 +176,8 @@ take_checked() {   # the cached binary of these inputs into CHECK_BIN, if there 
   fi
 }
 # clippy as lint runs it (lints chosen in pkg/loopopt/Cargo.toml): quiet unless it finds something
-clippy_all() {
-  cargo clippy --quiet --all-targets -- -D warnings \
-    && cargo clippy --quiet --target wasm32-unknown-unknown --lib -- -D warnings
-}
+# the wasm target's own code (web.rs, career/clock.rs) is a second compile: lint and merge run it, hand-back does not
+clippy_wasm() { cargo clippy --quiet --target wasm32-unknown-unknown --lib -- -D warnings; }
 # cargo test in the checks profile: every test binary's result line and any failure, with the tests' exit status; and
 # the number of tests (passed, failed and ignored) against the pinned count, pkg/loopopt/tests/count.txt, so a test
 # that stops running (a file no crate compiles, a module left out) fails here. A change that adds or removes tests
@@ -276,7 +274,10 @@ step_lint() {
   npm_deps
   LINT_FAILED=()
   CHANGED=$(changed_paths)
-  if changed_in rust; then rust_lints; else echo "  rust: inputs as on main, not linted"; fi
+  if changed_in rust; then
+    rust_lints
+    lint "clippy (wasm target)" in_dir "$C" clippy_wasm
+  else echo "  rust: inputs as on main, not linted"; fi
   shell_lints
   python_lints
   if changed_in rust research; then research_lints; fi
@@ -285,7 +286,7 @@ step_lint() {
 }
 rust_lints() {
   lint rustfmt in_dir "$C" cargo fmt --check
-  lint clippy in_dir "$C" clippy_all
+  lint clippy in_dir "$C" cargo clippy --quiet --all-targets -- -D warnings
   # (the page's generated TypeScript, webapp/src/gen: the test fails when it is stale; docs/BUILD.md, *Generated types*)
   lint "generated types" in_dir "$C" cargo test --quiet --profile checks --lib ts_gen
 }
@@ -576,11 +577,13 @@ changed_in() {
 # reported, never enforced (docs/BUILD.md, Tests):
 #   edit      every edit, 10 s: the page's types and the node tests of the changed files; clippy and the unit tests;
 #             ruff on the changed Python
-#   handback  hand-back of a piece of work, 5 min: edit's, then every linter of each changed area, the Rust tests
-#             (checks profile), valq, research (its sections recompute only on their own inputs), the browser
-#             suite's fast tier
+#   handback  hand-back of a piece of work, 5 min: edit's, then every linter of each changed area (clippy for the
+#             native targets only), the Rust tests (checks profile), valq, the browser suite's fast tier after a
+#             page change
 #   merge     before a merge to main, 10 min: every area, changed or not (each skipped where it already passed):
-#             lint, native, val, the full browser suite, and mono after a change to the career planner
+#             lint (clippy for the wasm target too), native, val, research after a change to its inputs (its
+#             sections recompute only on their own), the full browser suite, and mono after a change to the career
+#             planner
 #   full      by hand: merge's, then mono and research on every section (--force), whatever changed
 TIERS=(edit handback merge full)
 declare -A BUDGET=([edit]=10 [handback]=300 [merge]=600 [full]=0)
@@ -630,14 +633,17 @@ check_handback() {
   if changed_in page; then page_lints; fi
   if changed_in native; then lint "rust tests (checks)" step_native; fi
   if changed_in val; then lint valq step_valq check; fi
-  if changed_in research; then lint research step_research; fi
-  if changed_in page solver; then lint "browser, Chromium" step_testq; fi
+  # (research and the browser suite are merge's: a research run is minutes to tens of minutes, and the browser flows
+  # answer from committed solver replies, so a solver change needs no browser run before the merge)
+  if changed_in page; then lint "browser, Chromium" step_testq; fi
 }
 check_merge() {
   shell_lints
   python_lints
   research_lints
   rust_lints
+  lint "clippy (wasm target)" in_dir "$C" clippy_wasm
+  if changed_in research native; then lint research step_research; fi
   page_lints
   lint "rust tests (checks)" step_native
   lint val step_val check

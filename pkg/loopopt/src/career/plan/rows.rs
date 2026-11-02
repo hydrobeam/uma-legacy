@@ -452,7 +452,7 @@ fn fit_trios(
     let candidates = context.candidates;
     // a fresh full veteran of hers from her best career now (her step, at most her kept cap's); a real full veteran of
     // hers costs nothing
-    let step_costs: Vec<f64> = (0..candidates.trainees.len())
+    let step_costs: Vec<crate::career::plan::cont::StepCareers> = (0..candidates.trainees.len())
         .map(|candidate| {
             let plan = continuations[candidate].plan(candidates.current_odds[candidate]);
             crate::career::plan::caps::capped(plan, candidates.step_caps[candidate].now).expected_careers

@@ -359,7 +359,7 @@ mod tests {
             JointLift { second_only: 0.5, ..JointLift::default() },
         ];
         let lattice = JointLattice { sides: [&first_path, &second_path], builders: &builders, own_chance: [0.3, 0.5] };
-        let expected = first.cost(3e-4) + second.cost(0.001);
+        let expected = first.cost(3e-4).as_f64() + second.cost(0.001).as_f64();
         let value = lattice.value();
         assert!((value - expected).abs() <= 1e-9 * expected, "{value} vs {expected}");
         // a builder lifting both at once instead can only cost less
@@ -393,9 +393,9 @@ mod tests {
                 grind.min(1.0 / rate + clipped[n + 1])
             };
         }
-        let expected = clipped[0] + second.cost(0.001);
+        let expected = clipped[0] + second.cost(0.001).as_f64();
         let value = lattice.value();
         assert!((value - expected).abs() <= 1e-9 * expected, "{value} vs {expected}");
-        assert!(value > first.cost(3e-4) + second.cost(0.001), "clipped {value} not above Cont's");
+        assert!(value > first.cost(3e-4).as_f64() + second.cost(0.001).as_f64(), "clipped {value} not above Cont's");
     }
 }

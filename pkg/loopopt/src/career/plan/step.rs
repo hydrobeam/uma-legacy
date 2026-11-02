@@ -329,7 +329,7 @@ impl ScoreBase<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::career::plan::cont::Cont;
+    use crate::career::plan::cont::{Cont, StepCareers};
 
     /// One candidate on a synthetic Cont, her step in one route whose other side costs `side` and whose C costs `finisher`
     /// (the same with her lifted side): a builder whose veteran lifts her, with the fitted chance, to the odds the fitted
@@ -343,7 +343,7 @@ mod tests {
         let base = ScoreBase {
             candidates: &[crate::uma::UmaIndex(0)],
             step_costs: &[step],
-            current_value: (step + side) + finisher,
+            current_value: (step.as_f64() + side) + finisher,
             current_odds: &[p0],
             continuations: std::slice::from_ref(&cont),
             step_caps: &[],
@@ -384,7 +384,7 @@ mod tests {
         let cont = Cont::new(0.3, 0.1, 0.002, 3e-4);
         let base = ScoreBase {
             candidates: &[crate::uma::UmaIndex(0)],
-            step_costs: &[10.0],
+            step_costs: &[StepCareers::finite(10.0)],
             current_value: 100.0,
             current_odds: &[3e-4],
             continuations: std::slice::from_ref(&cont),

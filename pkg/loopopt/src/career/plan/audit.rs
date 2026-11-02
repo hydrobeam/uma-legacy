@@ -123,7 +123,7 @@ pub(crate) fn audit_lifts(
             for candidate in 0..candidates.trainees.len() {
                 let candidate_trainee = candidates.trainees[candidate];
                 if data.umas[candidate_trainee].id == data.umas[lineage.trainee].id
-                    || !scores.fit.step_costs[candidate].is_finite()
+                    || scores.fit.step_costs[candidate] == crate::career::plan::cont::StepCareers::Never
                 {
                     continue;
                 }

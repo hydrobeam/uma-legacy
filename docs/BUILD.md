@@ -37,7 +37,6 @@ Everything a build reads lives inside the repository folder, apart from the tool
 | Where | What | Used by |
 |---|---|---|
 | `pkg/loopopt/Cargo.toml` | `serde`, `serde_json` | the solver |
-| `pkg/loopopt/Cargo.toml` | `postcard` (MIT or Apache-2.0), `base64` (MIT or Apache-2.0): the worker's kept state as the page stores it, the kept types in postcard's binary serde (every f64 its 8 bytes, infinities included) as base64 text (`career/state.rs`) | the solver |
 | `pkg/loopopt/Cargo.toml` | `ts-rs` (pinned exactly; MIT): derives the TypeScript type of every report and job struct, so the page's types are generated from the solver's (*Generated types*); its derives are dead code in the wasm (none of the declarations' text is in it) | `types`, `lint` |
 | `pkg/loopopt/Cargo.toml` | `clap` (pinned exactly, its derive API; MIT or Apache-2.0): the native `loopopt` command line's arguments, subcommands and errors; a native-only dependency, not in the wasm | `native`, `val`, `pb` |
 | `pkg/loopopt/Cargo.toml` | `wasm-bindgen` (pinned exactly; MIT or Apache-2.0): the wasm's exports (`src/web.rs`, the `Solver` class the worker makes) and the host's imports (`career/clock.rs`: `performance.now()`, the worker's progress hook), through its generated glue; `console_error_panic_hook` (pinned exactly; MIT or Apache-2.0): a panic's message in the console before the trap. Both wasm-only | `wasm` |
@@ -329,8 +328,8 @@ budget: an overrun is reported, never a failure.
 |---|---|---|---|
 | `edit` | every edit | 10 s | the page's two `tsc` passes and the node tests of the changed files (`vitest related`); clippy and `cargo test --lib` (checks profile); ruff on the changed Python |
 | hook | every commit | 30 s | formatting and types of the staged languages (*Pre-commit hook*) |
-| `handback` (default) | a piece of work handed back | 5 min | `edit`'s, then every linter of each changed area; the Rust tests and `valq` (checks profile) when the solver, its tests, data or `val/` changed; `research` when its inputs changed (each section recomputes on its own inputs); the browser suite's fast tier when the page or the solver changed |
-| `merge` | before a merge to main | 10 min | every area, changed or not: `lint`'s linters, `native`, full `val`, the full browser suite, and `mono` after a change under `src/career/` |
+| `handback` (default) | a piece of work handed back | 5 min | `edit`'s, then every linter of each changed area (clippy for the native targets only); the Rust tests and `valq` (checks profile) when the solver, its tests, data or `val/` changed; the browser suite's fast tier when the page changed. No research run and no wasm compile: both are `merge`'s |
+| `merge` | before a merge to main | 10 min | every area, changed or not: `lint`'s linters with clippy for the wasm target, `native`, full `val`, `research` when its inputs changed (each section recomputes on its own inputs), the full browser suite, and `mono` after a change under `src/career/` |
 | `full` | by hand | none | `merge`'s, then `mono` and `research --force` whatever changed |
 
 A test that stops running fails loudly: the integration tests' crate (`tests/it/main.rs`) fails on a file there that

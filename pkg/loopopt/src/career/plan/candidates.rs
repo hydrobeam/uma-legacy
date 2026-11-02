@@ -2,7 +2,7 @@
 use crate::career::Env;
 use crate::career::clock::{now_ms, prof, progress};
 use crate::career::plan::caps::{CapPool, StepCaps, held_caps};
-use crate::career::plan::cont::Want;
+use crate::career::plan::cont::{StepCareers, Want};
 use crate::career::plan::kept::{
     CachedSearch, KeptPlans, best_of, bests_key, plan_scope, same_career, stamp_ok, stamped, take_kept_plan,
 };
@@ -217,9 +217,9 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
         current_odds,
         certified,
         has_full_veteran,
-        // (a side-only uma's infinite: no lift of hers is gathered)
+        // (a side-only uma's never ends: no lift of hers is gathered)
         placeholder_step_costs: (0..candidate_count)
-            .map(|candidate| if candidate < stage_count { 1.0 } else { f64::INFINITY })
+            .map(|candidate| if candidate < stage_count { StepCareers::finite(1.0) } else { StepCareers::Never })
             .collect(),
         proxies_enabled,
         knobs: settings.knobs(),

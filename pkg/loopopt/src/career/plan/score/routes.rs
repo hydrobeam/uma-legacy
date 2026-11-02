@@ -967,7 +967,7 @@ mod floor_tests {
         assert_eq!(routes[1].while_building, WhileBuilding::Slot(0));
         let base = ScoreBase {
             candidates: &[crate::uma::UmaIndex(0)],
-            step_costs: &[50.0],
+            step_costs: &[crate::career::plan::cont::StepCareers::finite(50.0)],
             current_value,
             current_odds: &[1e-3],
             continuations: &[Cont::default()],
@@ -1170,7 +1170,7 @@ mod lifted_tests {
 mod alternative_tests {
     use super::*;
     use crate::career::plan::CandidateIndex;
-    use crate::career::plan::cont::{Cont, OddsScales, ScoringKnobs, Trio, TrioSideVeteran, trio_v};
+    use crate::career::plan::cont::{Cont, OddsScales, ScoringKnobs, StepCareers, Trio, TrioSideVeteran, trio_v};
     use crate::career::plan::step::{AfterHer, CandidateLift, EstimateBuffers, StepEstimate};
     use crate::uma::UmaIndex;
 
@@ -1195,7 +1195,7 @@ mod alternative_tests {
             finisher_cost: finisher,
         }];
         let continuations = [continuation.clone(), Cont::default()];
-        let step_costs = [continuation.cost(odds_now), 0.0];
+        let step_costs = [continuation.cost(odds_now), StepCareers::finite(0.0)];
         let mut base = ScoreBase {
             candidates: &[UmaIndex(0), UmaIndex(1)],
             step_costs: &step_costs,
@@ -1284,10 +1284,12 @@ mod alternative_tests {
         assert!(continuation.plan(lifted_odds).building_careers > 0.0, "and still builds when lifted");
         let finisher = 500.0;
         let lift = Lift { finisher, own_finisher_odds: 2.0 / finisher, lifted_odds };
-        let alternative =
-            vec![fresh_side(SideStep::Current, p0), fresh_side(SideStep::Alternative(continuation.cost(q)), q)];
+        let alternative = vec![
+            fresh_side(SideStep::Current, p0),
+            fresh_side(SideStep::Alternative(continuation.cost(q).as_f64()), q),
+        ];
         let (v, routes, saving) = lifted(alternative, 1, &continuation, p0, lift);
-        assert_eq!(v, continuation.cost(q) + finisher);
+        assert_eq!(v, continuation.cost(q).as_f64() + finisher);
         assert_eq!(routes, 1, "one route: the Alternative side lifted, the real full veteran as it is");
         assert!((lam * saving - 1.0).abs() < 1e-9, "the builder's score {}", lam * saving - 1.0);
         let current = vec![fresh_side(SideStep::Current, q)];

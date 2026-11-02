@@ -236,8 +236,7 @@ fn prepare_setups(
     for candidate in 0..candidate_count {
         let candidate_trainee = score_base.candidates[candidate];
         if data.umas[candidate_trainee].id == data.umas[trainee].id
-            || score_base.step_costs[candidate] == 0.0
-            || !score_base.step_costs[candidate].is_finite()
+            || score_base.step_costs[candidate].careers().is_none_or(|careers| careers == 0.0)
         {
             continue;
         }
@@ -1205,7 +1204,7 @@ mod tests {
         );
         let base = ScoreBase {
             candidates: &[crate::uma::UmaIndex(0)],
-            step_costs: &[1000.0],
+            step_costs: &[crate::career::plan::cont::StepCareers::finite(1000.0)],
             current_value: 2000.0,
             current_odds: &[table_missed],
             continuations: &[],

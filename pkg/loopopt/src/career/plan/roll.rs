@@ -1,7 +1,7 @@
 //! The roll of the plan's pick and its kept state.
 use crate::career::clock::{PROF, now_ms};
 use crate::career::plan::caps::StepCaps;
-use crate::career::plan::cont::{Cont, ScoreBase, ScoringKnobs};
+use crate::career::plan::cont::{Cont, ScoreBase, ScoringKnobs, StepCareers};
 use crate::career::plan::report::{RollAnswer, RollOutcome, RollReply};
 use crate::career::plan::score::kernel::Scored;
 use crate::career::plan::search::sim_for;
@@ -22,8 +22,9 @@ pub(crate) struct KeptBase {
     /// The stage candidates (`ScoreBase::candidates`).
     candidates: Vec<crate::uma::UmaIndex>,
     /// Each candidate's step (`ScoreBase::step_costs`).
-    step_costs: Vec<f64>,
-    /// V (`ScoreBase::current_value`).
+    step_costs: Vec<StepCareers>,
+    /// V (`ScoreBase::current_value`): finite, as a plan keeps a roll state only against a finite V
+    /// (`assemble_plan_output`'s `can_roll`).
     current_value: f64,
     /// Each candidate's odds now (`ScoreBase::current_odds`).
     current_odds: Vec<f64>,
@@ -43,7 +44,7 @@ impl KeptBase {
             step_caps: score_base.step_caps.to_vec(),
         }
     }
-    pub(super) fn base(&self) -> ScoreBase<'_> {
+    pub(crate) fn base(&self) -> ScoreBase<'_> {
         ScoreBase {
             candidates: &self.candidates,
             step_costs: &self.step_costs,
