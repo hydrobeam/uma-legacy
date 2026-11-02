@@ -108,7 +108,7 @@ const phone = test.extend({
   isMobile: async ({ browserName }, use) => use(browserName === 'chromium'),
   hasTouch: async ({ browserName }, use) => use(browserName === 'chromium'),
 });
-phone.describe('phone', () => {
+phone.describe('phone @both', () => {
   phone.use({ viewport: { width: 375, height: 812 } });
   phone(
     '375 px: touch sizes, results first, the status button, the setup boxes, popups that fit, pills flush',
@@ -298,7 +298,7 @@ phone.describe('phone', () => {
   );
 });
 
-test.describe('desktop results', () => {
+test.describe('desktop results @both', () => {
   // three results (a rotation, then four-uma loops), two pals not owned so a deck borrows one
   test.use({
     seed: {

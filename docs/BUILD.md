@@ -135,11 +135,11 @@ it stops; the `art` step instead says what it skipped.
 | `hooks` | `git config core.hooksPath .githooks`: the tracked pre-commit hook (see *Rust style*); once per clone |
 | `pb` | the release solver (cargo's build, a no-op on an unchanged tree), then each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files, then the page's lists (`data.json` is one of their inputs); it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
 | `wasm` | the wasm32 build (stable; rebuilding std with `-Z build-std` was measured on 2026-10-31 to change neither the output nor the speed, and under 2 KB of size), `wasm-bindgen --target web --omit-default-module-path` (into `pkg/loopopt/target/bindgen/`: the wasm with the glue's exports, and the glue, `loopopt.js` and `loopopt.d.ts`, copied to `webapp/src/gen/`: an ES module the worker imports, instantiated from the page's compiled module by `initSync`, with no fallback fetch of the wasm by URL), `wasm-opt -O3 -ocimfs=0` (no inlining of single-caller functions, so long loops stay in functions V8 optimises: `docs/PERF.md`, *In the page*), then `webapp/example.json` (the result shown before the first search). `wasm-opt` (about a minute) is skipped when the bound wasm, its flags (`WASM_OPT_FLAGS`, the one list the command also reads) and wasm-opt's version match its last run (`webapp/.loopopt.wasm.key`); the example always runs |
-| `page` | `webapp/dist/` (see *The page*) |
+| `page` | `webapp/dist/` (see *The page*); skipped when what the build reads matches the last build's (`webapp/.dist.key`: the page's sources, Vite's config and plugins, the lockfile, the data and research values it reads, the wasm or stub, `webapp/img/`, the game files `page.json` was made from, the footer's version and `SITE_URL`), so a test run on an unchanged tree builds nothing |
 | `images` | game art into `webapp/img/` (see *Art*); only new ids unless `IMAGES_FORCE=1` |
 | `runners` | each uma's running mini model as a sprite strip in `webapp/img/run/` (see *Art*) |
 | `browsers` | Playwright's browsers at the revisions the pinned `playwright` package wants into `cache/ms-playwright` (`playwright install`: a download after a Playwright bump, a 0.6 s no-op when they are there) |
-| `test` / `testq` | the page (`page`), then the browser flows on it, in both browsers or Chromium alone; they replay recorded solver replies and need no built solver (see *Tests*) |
+| `test` / `testq` | the page (`page`), then the browser flows on it, in Chromium (and Firefox for the flows titled `@both`) or Chromium alone; they replay recorded solver replies and need no built solver (see *Tests*) |
 | `prune-replies` | the page, then deletes the recorded solver replies of every solver and data but its own (see *Tests*, *Recorded solver replies*) |
 | `serve` | `webapp/dist` on https://localhost:8000 (`PORT=…`) over HTTP/2 with TLS, as the host serves it (`vite preview`): the certificate is self-signed (`cache/tls/`), so a browser warns once. Unlike the host, it revalidates `assets/` on each load (ETags) rather than caching them a year |
 | `val TAG` / `valq TAG` | the release solver, then validation: in full before landing a change that can move results, quick while iterating (see *Tests*) |
@@ -389,10 +389,12 @@ merge, not a `valq` per commit. A change to arithmetic, control flow or data fol
   browser only when it needs one.
 - **Browser flows:** `./build.sh test` builds the page and runs Playwright Test (`webapp/playwright.config.ts`, from
   the pinned `playwright` package) against `webapp/dist`, served by `vite preview` over HTTP/2 with TLS as the host
-  serves it (a self-signed certificate made once into `cache/tls/`), or against `LLP_URL`, in Chromium and Firefox:
+  serves it (a self-signed certificate made once into `cache/tls/`), or against `LLP_URL`:
   `webapp/test/browser/*.spec.ts`, small independent tests run in parallel (`fullyParallel`, Playwright's default
   workers), each for what needs a real browser: layout at real widths, the worker as the page drives it, keyboard and
-  focus, storage across a reload, both engines. Each starts from the state it seeds (`test.use({ seed })`,
+  focus, storage across a reload. Every flow runs in Chromium; Firefox runs only those with `@both` in their
+  title (or their `describe`'s), where the engine matters: layout at real widths, keyboard and focus, the worker. Each
+  starts from the state it seeds (`test.use({ seed })`,
   `fixtures.ts`: localStorage written before the page's first script, once per tab) rather than clicking its way
   there, moves the page's own timers with `page.clock`, and fails on any page error. An action or an assertion waits
   at most 5 s; a wait on the solver says so (`pages.ts` `SOLVER_WAIT`). All test code is TypeScript, checked by

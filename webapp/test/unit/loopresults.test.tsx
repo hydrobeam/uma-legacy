@@ -34,7 +34,7 @@ import { on } from '../../src/store.ts';
 import { OddsDialog } from '../../src/ui/OddsDialog.tsx';
 import { RenderGuard, sayRenderErrors } from '../../src/ui/RenderGuard.tsx';
 import { memory } from './fakes.ts';
-import { skills, umas } from './globalpage.ts';
+import { SKILL_ART, skills, umas } from './globalpage.ts';
 
 vi.mock('#page-data', () => import('./globalpage.ts'));
 
@@ -138,7 +138,8 @@ test('deck odds: closed at first, the (i) opens them (names, percentages, a skil
   expect(panel.hidden).toBe(false);
   const hints = all(panel, '[data-hint]');
   expect(hints.length).toBeGreaterThan(0);
-  expect(all(panel, '[data-hint] img[data-icon="skill"]')).toHaveLength(hints.length);
+  // (the icons only where this tree has the game's art)
+  if (SKILL_ART) expect(all(panel, '[data-hint] img[data-icon="skill"]')).toHaveLength(hints.length);
   expect(text(panel)).toMatch(/\d+%/);
   fireEvent.click(info);
   await settled();

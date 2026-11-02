@@ -22,6 +22,8 @@ export const assets: Assets = {
 // the shipped images: the skill icons alone, from the art when this tree has it (vite/images.mjs `imageCatalog`)
 const IMG = path.resolve(import.meta.dirname, '../../img');
 const skillArt = fs.existsSync(path.join(IMG, 'skill')) ? fs.readdirSync(path.join(IMG, 'skill')).sort() : [];
+/** whether this tree has the skill icons (webapp/img, the game's art, is not in the repository) */
+export const SKILL_ART = skillArt.length > 0;
 export const img: { keys: string[]; base: string; ext: Record<string, string> } = {
   keys: skillArt.map((name) => `skill:${path.parse(name).name}`),
   base: 'img/',
