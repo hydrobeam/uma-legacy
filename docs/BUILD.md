@@ -341,7 +341,7 @@ their inputs (`cache/passed/NAME-KEY`: the SHA-256 of the files they read, track
 shared by every worktree, and on the same key say so and return; a page-only change never runs them. `lint` runs
 Rust's linters only when a Rust input differs from main's. The wasm and the checks' binary are kept the same way
 (`cache/wasm/KEY`, `cache/bin/KEY`): a worktree whose solver inputs were built before copies them instead of
-compiling, so one that changed no Rust runs no cargo for val, valq or mono. `./build.sh setup` brings a new worktree
+compiling, so one that changed no Rust runs no cargo for val, valq, mono or research. `./build.sh setup` brings a new worktree
 to ready from these caches (the shared `cache/`, `npm ci` only when `webapp/package-lock.json` differs from the
 installed one, the wasm and the binary when built before) and compiles nothing; the steps call the same pieces
 themselves, so it is a head start, and running it again does nothing.
@@ -352,7 +352,7 @@ count less two, so the slowest job (`p16_t10`) starts at the beginning; the comp
 
 **Profiles.** Every test, `val`, `valq`, `mono` and lint's generated-types and section-8 tests build in
 `[profile.checks]`, with `debug-assertions` and `overflow-checks` on (release hides both from the tests); the wasm and
-`pb`'s and research's binary in `[profile.release]`; clippy checks without code generation. valq is byte-identical
+`pb`'s binary in `[profile.release]` (research runs the checks' binary); clippy checks without code generation. valq is byte-identical
 with the assertions on (2026-11-01), which cost the solver 8-12% more instructions. The unit tests stay in the checks
 profile: the dev profile (`opt-level` 1, dependencies 3) rebuilt them no faster after a one-line edit (31 s against
 34) and ran them slower (31 s against 25), and a second profile compiles the crate twice. Neither meets the edit
@@ -366,7 +366,7 @@ merge, not a `valq` per commit. A change to arithmetic, control flow or data fol
   clippy. The checks' profile (`[profile.checks]` in `pkg/loopopt/Cargo.toml`) is release's opt-level 3 without fat
   LTO and one codegen unit, which had made every test binary a minute or two of single-threaded linking; val, valq,
   mono and lint run its binary, `target/checks/loopopt`, too. Its outputs are byte-identical to the release binary's on
-  every val job (full val and valq, 2026-11-01); the wasm, `pb` and `research` keep `[profile.release]`.
+  every val job (full val and valq, 2026-11-01); the wasm and `pb` keep `[profile.release]`.
   The integration tests are one crate, `pkg/loopopt/tests/it/` (a module per file, `main.rs` lists them: the
   crate links once and libtest runs all of them in parallel; its own test fails on a file there that is not one of
   its modules), and run the solver binary through one harness, `tests/it/common.rs`,

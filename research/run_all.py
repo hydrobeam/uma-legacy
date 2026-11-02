@@ -3,8 +3,11 @@
   uv run --group research research/run_all.py [--quick] [--force] [--jobs=N]     (or ./build.sh research)
 
 Each script's results are kept in research/data/out/claims/ with a fingerprint of its code (its source, the research
-scripts it imports, common.py, val/joint_check.py) and of the data inputs' sizes and times (DATA_INPUTS, val's reference
-outputs); a script whose fingerprint is unchanged is not run again. --force recomputes everything.
+scripts it imports, common.py, val/joint_check.py) and of the data inputs' contents (DATA_INPUTS, val's reference
+outputs: a checkout, a rebuild or a touched file that leaves them alone reruns nothing); a script whose fingerprint is
+unchanged is not run again. The scripts that read the solver only through `loopopt constants` (CONSTANTS_ONLY) take
+the solver by that output instead of its source and binary, so a solver change that keeps the constants reruns none of
+them (s08 alone is most of a run). --force recomputes everything.
 
 --quick skips the section 13 variant over every other skill. The computed values go to research/results.json, from which
 research/render.py renders docs/RESEARCH.md. Without the run records (research/data/runs.jsonl, not included)
@@ -29,7 +32,7 @@ DATA_INPUTS: list[str] = [
     "pkg/loopopt/data",
     "pkg/loopopt/src",
     "pkg/loopopt/export",
-    "pkg/loopopt/target/release/loopopt",
+    "pkg/loopopt/target/checks/loopopt",
     "cache/gametora",
     "val/jobs.json",
     "val/jobs",
@@ -39,10 +42,25 @@ CACHE: str = os.path.join(common.OUT, "claims")
 JOBS: int = 4  # worker processes (--jobs=N; 1 runs scripts one after another)
 
 
-def data_stamp() -> list[tuple[str, int, int]]:
-    """(path, size, modification time in ns) for DATA_INPUTS and val's reference outputs, which section 6 reads.
+# the solver's inputs in DATA_INPUTS, which CONSTANTS_ONLY's fingerprints replace by the constants' hash
+SOLVER_INPUTS: tuple[str, ...] = ("pkg/loopopt/src", "pkg/loopopt/target/checks/loopopt")
+# the scripts that read the solver only through `loopopt constants` (common.solver_constants)
+CONSTANTS_ONLY: frozenset[str] = frozenset({"s02_stars", "s08_chains"})
+
+
+def content_hash(path: str) -> str:
+    """the SHA-256 of a file's bytes"""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def data_stamp() -> list[tuple[str, str]]:
+    """(path, SHA-256 of its contents) for DATA_INPUTS and val's reference outputs, which section 6 reads.
     Plain tuples: their repr is part of every fingerprint"""
-    items: list[tuple[str, int, int]] = []
+    items: list[tuple[str, str]] = []
     paths = [os.path.join(common.ROOT, x) for x in DATA_INPUTS] + sorted(
         glob.glob(os.path.join(common.ROOT, "val", "ref*__*.out"))
     )
@@ -51,12 +69,21 @@ def data_stamp() -> list[tuple[str, int, int]]:
             for d, _, fs in os.walk(p):
                 for f in sorted(fs):
                     path = os.path.join(d, f)
-                    st = os.stat(path)
-                    items.append((os.path.relpath(path, common.ROOT), st.st_size, st.st_mtime_ns))
+                    items.append((os.path.relpath(path, common.ROOT), content_hash(path)))
         elif os.path.exists(p):
-            st = os.stat(p)
-            items.append((os.path.relpath(p, common.ROOT), st.st_size, st.st_mtime_ns))
+            items.append((os.path.relpath(p, common.ROOT), content_hash(p)))
     return items
+
+
+def constants_stamp(stamp: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """`stamp` with the solver's source and binary replaced by the hash of `loopopt constants`' output (or "missing"
+    without a binary: the scripts then fail as they did)"""
+    try:
+        constants = hashlib.sha256(json.dumps(common.solver_constants(), sort_keys=True).encode()).hexdigest()
+    except FileNotFoundError:
+        constants = "missing"
+    kept = [item for item in stamp if not item[0].startswith(SOLVER_INPUTS)]
+    return [*kept, ("loopopt constants", constants)]
 
 
 def code_of(name: str, seen: set[str] | None = None) -> str:
@@ -71,7 +98,7 @@ def code_of(name: str, seen: set[str] | None = None) -> str:
     return src + "".join(code_of(d, seen) for d in deps)
 
 
-def fingerprint(name: str, kw: dict[str, Any], stamp: list[tuple[str, int, int]]) -> str:
+def fingerprint(name: str, kw: dict[str, Any], stamp: list[tuple[str, str]]) -> str:
     """a cache key from the tracked inputs: its code, common.py, val/joint_check.py, its arguments and the
     data stamp"""
     h = hashlib.sha256()
@@ -113,7 +140,7 @@ def compute(name: str, kw: dict[str, Any]) -> tuple[Claims, float] | tuple[None,
 
 
 def reuse_unchanged(
-    names: list[str], quick: bool, force: bool, stamp: list[tuple[str, int, int]]
+    names: list[str], quick: bool, force: bool, stamp: list[tuple[str, str]]
 ) -> tuple[dict[str, Claims], dict[str, Pending]]:
     """each script's cached claims where its fingerprint is unchanged (none with --force); the rest are pending"""
     got: dict[str, Claims] = {}
@@ -121,7 +148,7 @@ def reuse_unchanged(
     for name in names:
         m = importlib.import_module(name)
         kw = {"wide": not quick} if "wide" in inspect.signature(m.claims).parameters else {}
-        fp = fingerprint(name, kw, stamp)
+        fp = fingerprint(name, kw, constants_stamp(stamp) if name in CONSTANTS_ONLY else stamp)
         cache_file = os.path.join(CACHE, name + ".pkl")
         hit = None
         if not force and os.path.exists(cache_file):
