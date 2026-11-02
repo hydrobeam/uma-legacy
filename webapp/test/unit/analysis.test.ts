@@ -139,6 +139,8 @@ function page({ fix = [], planFor = 'shown' }: { fix?: number[]; planFor?: strin
       searching: () => state.searching,
       targets: () => job.skills.targets,
       baseKey: (j) => JSON.stringify({ ...j, career: { ...j.career, fix: [] } }),
+      // (a fake job's open trainee place lists no trainee)
+      searchesBase: (j) => !j.career.trainees.length && !j.career.fix.length,
       isFull: (nd) => (nd.sparks[1] || 0) > 0,
       planTop: 6,
       // her first result lands target 1 at 1 star, every later one (a roll) at 3

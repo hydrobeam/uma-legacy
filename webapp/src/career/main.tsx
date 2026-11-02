@@ -72,9 +72,9 @@ import { UmButton, UmamoeDialog } from './view/Umamoe.tsx';
 import { sayRenderErrors } from '../ui/RenderGuard.tsx';
 import { CareerLayout } from './Layout.tsx';
 import type { CareerState, CareerViews } from './Layout.tsx';
-import { placesKey, isFull, ROLL_K, umasNotOwned } from './job.ts';
+import { placesKey, isFull, ROLL_K, umaRoster } from './job.ts';
 import { currentJob, dropStaleChosen, followPool, shown, runJob } from './current.ts';
-import { baseKey, refBase } from './keys.ts';
+import { baseKey, refBase, searchesBase } from './keys.ts';
 import { TryRunDialog, draftOf } from './analysis/view.tsx';
 import * as analysisStore from './analysis/state.ts';
 import { createComparison } from './analysis/compare.ts';
@@ -114,7 +114,8 @@ const comparison = createComparison({
     shown,
     searching: () => runView.peek().searching,
     targets: () => settings.peek().targets,
-    baseKey: (job) => baseKey(job, umasNotOwned(settings.peek())),
+    baseKey: (job) => baseKey(job, umaRoster(settings.peek())),
+    searchesBase: (job) => searchesBase(job, umaRoster(settings.peek())),
     isFull: (nd) => isFull(nd, settings.peek().targets),
     planTop: ROLL_K,
     draftOf,
@@ -145,8 +146,9 @@ const run = createRun({
     pool: () => readyVets.peek().map((v) => v.id),
     places: () => placesKey(places.peek()),
     trainee: () => places.peek().trainee,
-    refBase: (job) => refBase(job, umasNotOwned(settings.peek())),
-    baseKey: (job) => baseKey(job, umasNotOwned(settings.peek())),
+    refBase: (job) => refBase(job, umaRoster(settings.peek())),
+    baseKey: (job) => baseKey(job, umaRoster(settings.peek())),
+    searchesBase: (job) => searchesBase(job, umaRoster(settings.peek())),
     searched: searchStatus,
     loadAnswer: () => answerLoad(ERA),
     saveAnswer: (key, value) => answerSave(ERA, key, value),

@@ -82,11 +82,14 @@ fn job_keys_read_their_parts() {
     let base = keys(&v);
     let two_veterans = json!(v["career"]["legacies"].as_array().unwrap()[..2]);
     // (part, value, read by: setup, search, borrowing search, plan)
-    let cases: [(&[&str], Value, [bool; 4]); 12] = [
+    let cases: [(&[&str], Value, [bool; 4]); 15] = [
         (&["skills", "targets"], json!([{"group": 20159}]), [true; 4]),
         (&["skills", "rank_class"], json!("ss_and_up"), [true; 4]),
         (&["deck", "scenario"], json!("ura"), [true; 4]),
+        (&["skills", "owned"], json!([]), [true; 4]),
+        (&["deck", "owned_cards"], json!([]), [true; 4]),
         (&["career", "legacies"], two_veterans, [false, true, true, true]),
+        (&["career", "trainees"], json!([1001]), [false, true, true, true]),
         (&["career", "top"], json!(2), [false, true, true, true]),
         (&["career", "compare"], json!(true), [false, true, true, false]),
         (&["career", "no_reports"], json!(true), [false; 4]),

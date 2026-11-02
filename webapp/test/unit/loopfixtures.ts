@@ -1,7 +1,8 @@
 // Settings fixtures for the loop page's jobs, as stored (saved.ts's object, Global era), over the fake page's game
 // (fakepage.ts). GOLDEN (loopgolden.json) holds the job each made, or the status that blocked it, recorded from the
-// page's code before src/loop/job.ts (9307950): a job's JSON, its field order included, is the key of the kept result
-// and of the suite's recorded solver replies, so it must not change.
+// page's code before src/loop/job.ts (9307950), with `owned` and `owned_cards` since listing every uma and card owned:
+// a job's JSON, its field order included, is the key of the kept result and of the suite's recorded solver replies, so
+// it changes only on purpose.
 const stored = (common: Record<string, unknown>, owned: Record<string, unknown> = {}) => ({
   v: 2,
   era: 'global',
@@ -23,7 +24,7 @@ export const FIXTURES = {
     },
     { roster: { 1002: 'out' }, outfits: { 100101: false, 100501: false, 100502: false }, cardsOff: { 30002: false } },
   ),
-  // no card owned (the solver reads an empty list as all, so it gets [0]); Unity Cup's two golds among the targets
+  // no card owned (an empty owned_cards); Unity Cup's two golds among the targets
   noCards: stored(
     { targets: [{ group: 20049 }, { group: 20046 }] },
     { cardsOff: { 30001: false, 30002: false, 30003: false, 30004: false, 30005: false } },

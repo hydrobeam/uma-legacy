@@ -19,15 +19,11 @@ export const goldGiven = (scen: string, group: number): boolean => (SCEN_GOLDS[s
 // only the scenario guarantees anything
 export const jobTargets = (s: SettingsView) =>
   s.targets.map((t) => ({ group: t.group, guaranteed: goldGiven(s.scen, t.group) ? 2 : 0 }));
-// the solver reads an empty list as "no restriction", so with every card not owned it gets [0], an id no card has
-function ownedCards(s: SettingsView) {
-  const notOwned = gameData().cards.filter((c) => s.cardsOff[c.id] === false).length;
-  if (!notOwned) return [];
-  if (notOwned === gameData().cards.length) return [0];
-  return gameData()
+// the cards owned, each listed (empty: none): every card but those marked not owned (`cardsOff`)
+const ownedCards = (s: SettingsView): number[] =>
+  gameData()
     .cards.filter((c) => s.cardsOff[c.id] !== false)
     .map((c) => c.id);
-}
 // every outfit of hers is marked not owned in `outfits` (the settings' marks)
 const noOutfit = (u: Uma, outfits: SettingsView['outfits']): boolean =>
   (u.outfits || []).length > 0 && u.outfits.every((o) => outfits[o.id] === false);
@@ -35,11 +31,14 @@ const noOutfit = (u: Uma, outfits: SettingsView['outfits']): boolean =>
 export const isOwned = (u: Uma, s: Pick<SettingsView, 'roster' | 'outfits'>): boolean =>
   s.roster[u.id] !== 'out' && !noOutfit(u, s.outfits);
 // The parts both pages' jobs share (each page adds its own fields): the targets and roster (the solver's `SkillJob`): the
-// targets, the lineage's rank band, the umas left out (`exclude`, which each page decides), the outfits not owned, the
-// skills a career always gives
+// targets, the lineage's rank band, the umas owned (every uma but those `exclude` leaves out) and those left out
+// (`exclude`, which each page decides), the outfits not owned, the skills a career always gives
 export const skillsPart = (s: SettingsView, exclude: number[]) => ({
   targets: jobTargets(s),
   rank_class: s.rank,
+  owned: gameData()
+    .umas.map((u) => u.id)
+    .filter((id) => !exclude.includes(id)),
   exclude,
   exclude_outfits: Object.entries(s.outfits)
     .filter(([, owned]) => owned === false)

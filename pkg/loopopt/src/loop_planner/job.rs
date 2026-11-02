@@ -32,15 +32,7 @@ pub(super) fn run_deck_relaxed(data: &Data, skills: &SkillsRaw, cards: &CardsRaw
             "Every target is guaranteed by the scenario: no deck changes the odds.",
         ));
     }
-    let pool_ids: Vec<u32> = data
-        .umas
-        .iter()
-        .map(|uma| uma.id)
-        .filter(|&id| {
-            (skill_job.owned.is_empty() || skill_job.owned.contains(&id) || skill_job.require.contains(&id))
-                && !skill_job.exclude.contains(&id)
-        })
-        .collect();
+    let pool_ids: Vec<u32> = data.umas.iter().map(|uma| uma.id).filter(|&id| skill_job.pools(id)).collect();
     let mut entries = match deck_entries(cards, deck_job, &target_groups, &pool_ids) {
         Ok(e) => e,
         Err(refusal) => return DeckReply::Refusal(refusal),
@@ -86,13 +78,6 @@ pub(super) fn run_deck_relaxed(data: &Data, skills: &SkillsRaw, cards: &CardsRaw
         deck_space: space.as_ref().unwrap(),
     };
     run_multi(inputs, stats)
-}
-
-impl DeckJob {
-    /// Whether the player owns a card (a locked card counts as owned).
-    fn is_owned(&self, id: u32) -> bool {
-        self.owned_cards.is_empty() || self.owned_cards.contains(&id) || self.lock_cards.contains(&id)
-    }
 }
 
 /// Calls `out` on every multiset of at most `left` values from `values[start..]` (as index-ordered lists)
@@ -184,7 +169,7 @@ impl Entries<'_> {
                     {
                         continue;
                     }
-                    if deck_job.is_owned(candidate_card.id) && !deck_job.is_owned(dominator_card.id) {
+                    if deck_job.owns(candidate_card.id) && !deck_job.owns(dominator_card.id) {
                         continue;
                     }
                     if !(0..target_count).all(|k| {
@@ -484,7 +469,7 @@ impl<'env> DeckEnumerator<'env> {
         }
         let character_bits: Vec<u128> =
             relevant.iter().map(|&card| 1u128 << character_index[&cards[card].character_id]).collect();
-        let borrowed_entries: Vec<bool> = relevant.iter().map(|&card| !deck_job.is_owned(cards[card].id)).collect();
+        let borrowed_entries: Vec<bool> = relevant.iter().map(|&card| !deck_job.owns(cards[card].id)).collect();
         let mut chain_kinds: Vec<ChainKind> =
             (0..entry_count).filter(|&j| kind[j] != ChainKind::NONE).map(|j| kind[j]).collect();
         chain_kinds.push(ChainKind::FILLER);

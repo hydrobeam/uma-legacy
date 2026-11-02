@@ -263,7 +263,7 @@ test('cards: None owned says "0 of N owned"; the job allows no owned card, only 
   await settle();
   expect(text($('#c-count'))).toMatch(/^0 of \d+ owned$/);
   const deck = job().deck;
-  expect(deck.owned_cards).toEqual([0]);
+  expect(deck.owned_cards).toEqual([]);
   expect(deck.borrow).toBe(true);
 });
 

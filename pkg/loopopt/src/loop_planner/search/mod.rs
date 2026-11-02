@@ -251,10 +251,7 @@ impl LoopJobInputs<'_> {
     /// required ones
     fn trainable(&self, card_of: &crate::FxMap<u32, &Card>) -> TrainingPool {
         let skill_job = self.skill_job;
-        let id_allowed = |id: u32| {
-            (skill_job.owned.is_empty() || skill_job.owned.contains(&id) || skill_job.require.contains(&id))
-                && !skill_job.exclude.contains(&id)
-        };
+        let id_allowed = |id: u32| skill_job.pools(id);
         // a locked card goes in every deck, so a uma it blocks cannot train at all
         let lock_blocked = |uma: UmaIndex| {
             self.deck_job

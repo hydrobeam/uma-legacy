@@ -141,6 +141,8 @@ const idle: ComparisonDeps = {
     shown: () => null,
     searching: () => false,
     baseKey: () => '',
+    // (a fake job's open trainee place lists no trainee)
+    searchesBase: (j) => !j.career.trainees.length && !j.career.fix.length,
     targets: () => [],
     isFull: () => false,
     planTop: 0,
@@ -195,6 +197,8 @@ function page({ trainee = null }: { trainee?: number | null } = {}) {
       trainee: () => trainee,
       refBase: () => 'base',
       baseKey: () => 'basekey',
+      // (a fake job's open trainee place lists no trainee)
+      searchesBase: (j) => !j.career.trainees.length && !j.career.fix.length,
       searched: (m, found) => (m.r.results.length ? { kind: 'done', text: found } : { kind: 'error', text: 'none' }),
       loadAnswer: async () => null,
       saveAnswer: (key, value) => {
