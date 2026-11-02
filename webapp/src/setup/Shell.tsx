@@ -11,6 +11,8 @@ import { ERA_NAMES } from '../model/eras.ts';
 import type { Era } from '../model/eras.ts';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { popover } from '../ui/Popover.tsx';
+import { EnhButton } from '../ui/Button.tsx';
+import type { Badge } from '../ui/Button.tsx';
 
 /** false for the first draw (the hydration, which must draw what the build drew), true from the next */
 export function useHydrated() {
@@ -89,76 +91,6 @@ export const Ribbon = ({ fold = false, children }: { fold?: boolean; children: C
   </h2>
 );
 
-/** a count on an Enhance button, as its tooltip (none until the entry has counted) */
-export interface Badge {
-  title: string;
-}
-// ---------- the game's Enhance menu buttons: the game's art (its frame and white lower band, the art spilling over its
-// top edge; the drop shadow follows that shape), the label on the band with a ▶ beside its first line, the count owned
-// in its tooltip (the band holds one line: a count under the label pushed the label onto the art). Umas and Support
-// cards are square, one size on both pages (the label's margins a little wider on the career page); Veteran Umamusume
-// is wide, its two-line label right of the art, as wide as the row of Enhance buttons
-const ENH_ART = { umas: 'art-enh-umas', cards: 'art-enh-cards', vets: 'art-enh-vets' } as const;
-const ENH = {
-  career: {
-    button: 'h-28 w-35',
-    label:
-      'after:border-l-enh-ink text-body text-enh-ink absolute right-6 bottom-2.25 left-2 text-center leading-tight font-black whitespace-nowrap after:absolute after:top-1 after:-right-3.25 after:border-y-6 after:border-l-8 after:border-y-transparent',
-  },
-  loop: {
-    button: 'h-28 w-35',
-    label:
-      'after:border-l-enh-ink text-body text-enh-ink absolute right-5 bottom-2.25 left-1.5 text-center leading-tight font-black whitespace-nowrap after:absolute after:top-1 after:-right-3.25 after:border-y-6 after:border-l-8 after:border-y-transparent',
-  },
-  wide: {
-    button: 'col-span-full h-18 w-71.5',
-    label:
-      'after:border-l-enh-ink text-body text-enh-ink absolute top-1/2 right-8.5 left-[44%] -translate-y-1/2 text-center leading-tight font-black *:block after:absolute after:top-1/2 after:-right-5.5 after:-mt-1.5 after:border-y-6 after:border-l-8 after:border-y-transparent',
-  },
-} as const;
-/** an Enhance button (it opens a dialog): `art` its picture, `size` the page's square one or the wide one */
-export function EnhButton({
-  id,
-  art,
-  size,
-  label,
-  name,
-  badge,
-  onClick,
-}: {
-  id: string;
-  art: keyof typeof ENH_ART;
-  size: keyof typeof ENH;
-  label: ComponentChildren;
-  /** its name for assistive tech, when the label's words are not */
-  name?: string | undefined;
-  badge?: Badge | undefined;
-  onClick: (() => void) | undefined;
-}) {
-  return (
-    <button
-      class={cx(
-        'group focus-visible:outline-gm-bright2 relative inline-grid rounded-xl focus-visible:outline-3 focus-visible:outline-offset-2 active:translate-y-0.5',
-        ENH[size].button,
-      )}
-      type="button"
-      id={id}
-      aria-haspopup="dialog"
-      aria-label={name}
-      title={badge?.title}
-      onClick={onClick}
-    >
-      <span
-        class={cx(
-          'drop-shadow-enh group-hover:drop-shadow-enh-glow absolute inset-0 group-hover:brightness-106',
-          ENH_ART[art],
-        )}
-        aria-hidden="true"
-      />
-      <span class={ENH[size].label}>{label}</span>
-    </button>
-  );
-}
 /** the Umas and Support cards buttons (setup/Setup.tsx: their dialogs and counts), at the page's size */
 export function EnhButtons({
   page,

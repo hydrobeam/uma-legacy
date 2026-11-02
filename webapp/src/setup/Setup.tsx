@@ -16,7 +16,8 @@ import { RosterPanel } from './Roster.tsx';
 import { CardsPanel } from './Cards.tsx';
 import { TargetSkills } from './Targets.tsx';
 import { RankControl, ScenarioPicker } from './Scenario.tsx';
-import type { Badge, Page } from './Shell.tsx';
+import type { Page } from './Shell.tsx';
+import type { Badge } from '../ui/Button.tsx';
 import type { Era } from '../model/eras.ts';
 
 type Which = 'umas' | 'cards';

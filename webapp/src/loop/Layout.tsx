@@ -11,7 +11,7 @@ import { useLayoutEffect, useRef } from 'preact/hooks';
 import { cx } from 'tailwind-variants/lite';
 import { EnhButtons, EraRow, Footer, Ribbon, setRow } from '../setup/Shell.tsx';
 import { panel } from '../ui/Panel.tsx';
-import type { Badge } from '../setup/Shell.tsx';
+import type { Badge } from '../ui/Button.tsx';
 import type { Era } from '../model/eras.ts';
 import { Button } from '../ui/Button.tsx';
 import { Switch } from '../ui/Switch.tsx';
