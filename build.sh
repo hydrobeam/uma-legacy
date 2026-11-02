@@ -413,11 +413,31 @@ npm_ci() {   # npm_ci DIR
   (cd "$1" && npm ci --silent --prefer-offline)
   echo "$lock" >"$1/node_modules/.lock-sha256"
 }
-# Vite (webapp/vite.config.mjs)
+# Vite (webapp/vite.config.mjs), skipped when what the build reads is what the last build read (webapp/.dist.key,
+# untracked: a test run after one changes nothing builds nothing, and a run already serving dist/ keeps its assets)
 step_page() {
   need_uv; need_node; check page   # (without a built solver, the page carries an empty one: vite.config.mjs)
   npm_deps
+  local key
+  key=$(page_key)
+  if [ -f "$W/dist/index.html" ] && [ "$(cat "$W/.dist.key" 2>/dev/null)" = "$key" ]; then
+    echo "page: built before from these inputs (webapp/.dist.key), not built again"
+    return
+  fi
+  rm -f "$W/.dist.key"   # (a build that fails leaves no key: its half-written dist/ is never taken as built)
   (cd "$W" && npx --no-install vite build --logLevel warn)
+  echo "$key" >"$W/.dist.key"
+}
+# everything the page's build reads or writes into it: its tracked inputs (INPUTS[dist]); the ignored files it reads
+# (the solver, the game's images, the game files page.json was made from, which the build checks); the version in the
+# footer, as vite.config.mjs `version()` makes it; and the site's address
+page_key() {
+  local ignored version dirty
+  ignored=$(cd "$R" && { find webapp/img -type f; ls webapp/loopopt.opt.wasm game/*/master.mdb; } 2>/dev/null \
+    | LC_ALL=C sort | xargs -r -d '\n' sha256sum | sha256sum | cut -c1-16)
+  version=$(git -C "$R" describe --tags --always)
+  dirty=$(git -C "$R" status --porcelain --untracked-files=no -- webapp pkg)
+  inputs_key dist "$ignored" "$version${dirty:+-dirty}" "${SITE_URL:-}"
 }
 step_images() {
   need_uv; need "${IMAGE_FILES[@]}"; check images
@@ -505,6 +525,7 @@ declare -A INPUTS=(
   [python]=":(glob)**/*.py pyproject.toml uv.lock"
   [shell]="build.sh .githooks"
   [page]="webapp"
+  [dist]="webapp/src webapp/vite webapp/vite.config.mjs webapp/partials webapp/public webapp/index.html webapp/loop.html webapp/about.html webapp/package-lock.json webapp/tsconfig.json pkg/loopopt/data research/results.json pyproject.toml uv.lock"
 )
 # inputs_key AREA [EXTRA...]: 16 hex digits of the SHA-256 of the area's files (tracked and untracked, ignored ones
 # left out: names and contents as they are on disk), build.sh, and EXTRA words
