@@ -29,9 +29,9 @@
 //!
 //! The next career the page picks (`next`) is `plan::index_rule`; the simulator (`simulate`) is `sim`.
 //!
-//! A career job enters at `run_career` (`run_career_in` with the worker's kept state, both here with the job's records
-//! and `Env`): `setup::career_setup` builds the job's `Env`, `search::solve_kept` runs the main search, and `run` turns
-//! it into the answer.
+//! A career job enters at `run_career_in` (with its caller's kept state; here with the job's records and `Env`):
+//! `setup::career_setup` builds the job's `Env`, `search::solve_kept` runs the main search, and `run` turns it into the
+//! answer.
 //! - `setup`: the job's `Env`: deck space, deck-odds ceilings, deck classes.
 //! - `keys`: what the worker keeps a job's work under (the parts of the job each piece of work reads).
 //! - `run`: the main search's answer (`search_output`), the plan (`plan_next`), rolls and the job's certificates.
@@ -62,7 +62,7 @@ use crate::career::run::{
 };
 use crate::career::search::{Ref, solve_kept};
 use crate::career::setup::{CareerBuild, career_setup};
-use crate::career::state::{KEPT, KeptState, ProductProof};
+use crate::career::state::{KeptState, ProductProof};
 use crate::data::Data;
 use crate::deck::space::{DeckSpace, SelectedDeck};
 use crate::deck::{CardsRaw, d_true};
@@ -602,31 +602,8 @@ struct DeckSearchMemo {
     state_bounds: crate::deck::state_bound::StateBoundMemo,
 }
 
-/// a new data set (the worker's `init`): nothing kept from the old one
-#[cfg(target_arch = "wasm32")]
-pub(crate) fn forget_kept_decks() {
-    KEPT.with(|cell| cell.borrow_mut().decks.clear());
-}
-
-/// A career job on the worker's kept work (the native command line's).
-#[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn run_career(data: &Data, skills: &SkillsRaw, cards: &CardsRaw, job: &CareerRequest) -> CareerReply {
-    KEPT.with(|kept| run_career_in(data, skills, cards, job, &mut kept.borrow_mut()))
-}
-
-/// The worker's kept work out (`state_out`), on the worker's kept work (the native command line's).
-#[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn kept_state_out() -> CareerReply {
-    KEPT.with(|kept| CareerReply::StateOut(state::state_out(&kept.borrow())))
-}
-
-/// The worker's kept work back in (`state_in`), on the worker's kept work (the native command line's).
-#[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn kept_state_in(state: &state::StoredState) -> CareerReply {
-    KEPT.with(|kept| state::state_in(&mut kept.borrow_mut(), state))
-}
-
-/// Run one job against the caller's retained work; simulator jobs reuse this borrow without entering worker TLS.
+/// Run one job on its caller's kept work (the worker's `Solver`, the command line's run; simulator jobs reuse the
+/// borrow they were given).
 pub(crate) fn run_career_in(
     data: &Data,
     skills: &SkillsRaw,

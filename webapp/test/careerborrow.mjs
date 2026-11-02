@@ -11,7 +11,7 @@ export default async function careerborrow(b) {
   await planned();
   const lastPlan = () =>
     pg.evaluate(() => ({
-      job: window.__careerJobs.filter((j) => j.cmd === 'career' && j.career.next && !j.career.compare).at(-1),
+      job: window.__careerJobs.filter((j) => j.cmd === 'career' && j.career?.next && !j.career?.compare).at(-1),
       r: window.__careerResults.filter((r) => r.next).at(-1),
       s: window.__careerResults.filter((r) => !r.next && r.results?.length).at(-1),
     }));

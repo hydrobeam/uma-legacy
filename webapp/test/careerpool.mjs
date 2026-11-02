@@ -30,7 +30,7 @@ export default async function careerpool(b) {
     timeout: 300000,
   });
   const goalJob = await pg.evaluate(() =>
-    window.__careerJobs.filter((j) => j.cmd === 'career' && !j.career.next && !j.career.compare).at(-1),
+    window.__careerJobs.filter((j) => j.cmd === 'career' && !j.career?.next && !j.career?.compare).at(-1),
   );
   const goalRes = await pg.evaluate(() => window.__careerResults.filter((r) => r.next).at(-1));
   const goalCheck =
@@ -40,12 +40,12 @@ export default async function careerpool(b) {
   check(
     goalCheck,
     goalJob &&
-      goalJob.fix.length === 0 &&
+      goalJob.career.fix.length === 0 &&
       goalRes &&
       goalRes.next.mode === 'trio' &&
       goalRes.next.members.length === 2 &&
       goalRes.next.members.every((m) => typeof m.real === 'boolean'),
-    `${JSON.stringify(goalJob?.fix)} | ${goalRes && JSON.stringify(goalRes.next.v0_plan)} | pick ${goalRes && JSON.stringify(goalRes.next.choice && [goalRes.next.choice.trainee.name, goalRes.next.choice.parents])}`,
+    `${JSON.stringify(goalJob?.career.fix)} | ${goalRes && JSON.stringify(goalRes.next.v0_plan)} | pick ${goalRes && JSON.stringify(goalRes.next.choice && [goalRes.next.choice.trainee.name, goalRes.next.choice.parents])}`,
   );
   // each uma also gets her career on two of those full veterans (only there is her own full veteran a fully looped parent), the trio's last
   // run is one, and the table tags them

@@ -783,11 +783,6 @@ careers?: Array<string>, check_s?: Array<number>, career_job_s?: Array<number>,
 executed?: Array<ExecutedCareer>, };
 
 /**
- * `init`'s answer, by its `kind`: the data loaded, or why not.
- */
-export type InitReply = { "kind": "loaded" } & Loaded | { "kind": "refusal" } & Refusal;
-
-/**
  * What every search of the job certified (`note_job_certificates`); each field only where it applies.
  */
 export type JobCertificates = { 
@@ -965,11 +960,6 @@ skills: Array<TargetChance>,
  * how many targets the job counts as gold already (`guaranteed` 2; left out of `skills`)
  */
 fixed_gold: number, };
-
-/**
- * The era's data loaded: its uma count.
- */
-export type Loaded = { umas: number, };
 
 /**
  * A loop's audit row, every `audit_every` careers.

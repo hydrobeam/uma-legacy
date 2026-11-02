@@ -69,7 +69,7 @@ export default async function careergen(b) {
     { timeout: 180000 },
   );
   const planJobs = () =>
-    pg.evaluate(() => window.__careerJobs.filter((j) => j.career.next && !j.career.compare).length);
+    pg.evaluate(() => window.__careerJobs.filter((j) => j.career?.next && !j.career?.compare).length);
   const pj0 = await planJobs(),
     cmpPick = await pg.evaluate(
       () => window.__careerResults.filter((r) => r.next?.options).at(-1)?.next.choice?.trainee.id,

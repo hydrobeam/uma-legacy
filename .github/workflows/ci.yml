@@ -61,6 +61,11 @@ jobs:
         with:
           path: cache/ms-playwright
           key: playwright-${{ hashFiles('webapp/package-lock.json') }}
+      - name: wasm-bindgen-cli (cached by the solver's lockfile, which pins its version)
+        uses: actions/cache@v6
+        with:
+          path: cache/wasm-bindgen
+          key: wasm-bindgen-${{ hashFiles('pkg/loopopt/Cargo.lock') }}
       - name: Build the solver's wasm and the page
         run: ./build.sh wasm page
       - name: Browsers and their system libraries

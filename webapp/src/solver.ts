@@ -2,7 +2,7 @@
 // ways (src/worker.ts, the worker; engine.ts, the page's side). Each command's own fields and report are typed where
 // the page builds and reads them (loop/job.ts `DeckJob` and loop/types.ts `LoopReport` for `deck`; career/job.ts `CareerJob` and
 // `CareerSearch` for `career`); here, what the worker and the engine read. The solver's side is
-// pkg/loopopt/src/web.rs (`handle`: the commands).
+// pkg/loopopt/src/web.rs (`Solver::answer`: the commands).
 import type { Request, ScheduleCell as SolverCell, ScheduleRow as SolverRow, StateOut } from './gen/solver.ts';
 import type { DeepReadonly } from './store.ts';
 
@@ -18,7 +18,7 @@ export interface SolverReply {
 /** A command's report: its own shape (the caller of `run` names it, R), its `kind` never "refusal". */
 export type SolverReport = { kind: string };
 
-/** A refusal: why the job was not done (web.rs `handle` and each command's checks), or, from the engine, that the
+/** A refusal: why the job was not done (web.rs `Solver::answer` and each command's checks), or, from the engine, that the
  * worker stopped with an error. */
 export type SolverRefusal = { kind: 'refusal'; error: string };
 

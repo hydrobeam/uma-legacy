@@ -28,12 +28,12 @@ export default async function careerrun(b) {
       const shift = -0.4 - pick.score;
       for (const o of next.options) if (o.score != null) o.score += shift;
       other.score = pick.score - 0.1;
-      other.parents = pick.parents.slice();
+      other.report.parents = pick.report.parents.slice();
       window.__edited = { pick: pick.score, other: other.score, options: next.options.map((o) => o.score) };
     };
   });
   await importDump();
-  await pg.waitForFunction(() => window.__careerJobs.some((j) => j.career.next)); // the plan job is in the worker
+  await pg.waitForFunction(() => window.__careerJobs.some((j) => j.career?.next)); // the plan job is in the worker
   // a preset saved (a settings save that leaves the job as it is), all at once while the plan runs
   const edit = await pg.evaluate(async () => {
     const plan = () => /Planning your next career/.test(document.getElementById('run-note').textContent),
@@ -316,8 +316,8 @@ export default async function careerrun(b) {
       timeout: 180000,
     });
     return pg.evaluate(() => {
-      const j = window.__careerJobs.filter((j) => j.career.next?.roll).at(-1),
-        p = window.__careerJobs.filter((j) => j.career.next && !j.career.next.roll && !j.career.compare).at(-1);
+      const j = window.__careerJobs.filter((j) => j.career?.next?.roll).at(-1),
+        p = window.__careerJobs.filter((j) => j.career?.next && !j.career?.next.roll && !j.career?.compare).at(-1);
       const plan = JSON.parse(JSON.stringify(j));
       delete plan.career.next.roll;
       return {
