@@ -3,7 +3,6 @@ import { ERA } from './saved.ts';
 import { ASSETS, loadFail, gameData } from './data.ts';
 import { stateLoad, stateSave, stateDrop } from './statestore.ts';
 import { must } from './must.ts';
-import type { StoredState } from './gen/solver.ts';
 import type {
   FromWorker,
   PlanProgress,
@@ -170,7 +169,8 @@ function startEngine(): Promise<void> {
 // The career planner's kept work (each uma's best career per pool, the proofs) survives a page reload: a new worker gets
 // what the last one held before its first job (`state_in`), and the page stores it after each plan (`state_out`, in the
 // worker once it is idle). Only the page that asks for it (`enginePersist`) does this; its key is the solver's and the
-// era data's fingerprints, so a release starts afresh. A stored state the solver refuses is dropped.
+// era data's fingerprints, so a release starts afresh. The state is the solver's own string, stored and sent back as it
+// came, never read here; a stored state the solver refuses, or one that is not a string, is dropped.
 let persistOn = false,
   saveTimer = 0;
 // (also the key a saved Use this choice carries, career/job.ts `chosenSetup`: a career id another solver or data release
@@ -206,8 +206,12 @@ async function restore() {
       Object.values(ASSETS.engine).map((engine) => `${ASSETS.wasm}|${engine}`),
     );
   if (!stored || !worker) return;
-  // (the solver checks what comes back: a state of another shape or version is refused, and dropped here)
-  const answer = await post({ cmd: 'state_in', state: stored as StoredState });
+  if (typeof stored !== 'string') {
+    stateDrop(key);
+    return;
+  }
+  // (the solver checks what comes back: a state of another version, or that does not decode, is refused, and dropped here)
+  const answer = await post({ cmd: 'state_in', state: stored });
   if (!answer.r || answer.r.kind === 'refusal') stateDrop(key);
 }
 // after a plan: store what the worker holds as soon as it is idle (a job in flight comes first, a background one

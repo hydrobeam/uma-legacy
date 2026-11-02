@@ -83,8 +83,10 @@ difference, exits nonzero. It does not ignore a field named `ms`, such as `next.
   treatment of NaNs and signed zero where they are possible.
 - Pruning bounds need a rounding slack (1e-9 relative). The deck-odds monotonicity used by pruning assumes white <=
   gold and probabilities in [0, 1] (`skills.rs`, `land_dw`).
-- serde_json does not round-trip floats exactly without its `float_roundtrip` feature: store bit patterns (hex) for
-  anything that must be exact (the `pb` table does).
+- serde_json does not round-trip floats exactly without its `float_roundtrip` feature (the crate enables it), and JSON
+  has no infinity or NaN (serde_json writes null) and the page's JavaScript writes -0.0 as 0: the `pb` table holds
+  neither (`loopopt pbtable` refuses one), and the worker's kept state, which does hold infinite step costs, is postcard
+  binary in an opaque string (`career/state.rs`).
 - `data.json` is tracked and written by Python (`json.dump` defaults). The `pb` table carries a fingerprint over the
   race data; a stale table is ignored (slower, still correct). Rerun `./build.sh pb` after `data` or a solver change.
 - The hand-written FxHash-style hasher (`lib.rs`, `Fx`) is part of the `pb` fingerprint's format. Changing its

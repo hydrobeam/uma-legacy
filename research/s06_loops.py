@@ -30,7 +30,7 @@ miss); and the race model in odds: every listed loop's odds under CHART_VARIANTS
 uniformly or at the lowest basis only; every win chance 1% lower), the winners' gain at the priced scale, whether any
 listed runner-up then passes its winner, and the 1% change against the smallest runner-up gap."""
 
-import collections, itertools, json, math, os, statistics, struct, sys
+import collections, itertools, json, math, os, statistics, sys
 from dataclasses import dataclass, field
 from collections.abc import Callable, Hashable, Iterable
 from typing import Any, NamedTuple
@@ -217,8 +217,7 @@ def o_pb(lp: dict[str, Any], data: dict[str, Any]) -> Overlap:
 
     def pb(a: int, b: int) -> float:
         a, b = sorted((a, b))
-        k = b - a - 1
-        return struct.unpack("<d", int(rows[a][16 * k : 16 * k + 16], 16).to_bytes(8, "little"))[0]
+        return rows[a][b - a - 1]
 
     ids = [idx[m["id"]] for m in lp["members"]]
     return {(a, b): pb(ids[a], ids[b]) for a, b in itertools.combinations(range(len(ids)), 2)}

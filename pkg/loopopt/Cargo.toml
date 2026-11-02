@@ -21,6 +21,10 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 # (no-serde-warnings: ts-rs notes every serde attribute it does not read; here only `deserialize_with` checks, which
 # keep the shape)
 ts-rs = { version = "=12.0.1", features = ["no-serde-warnings"] }
+# the worker's kept state as the page stores it (src/career/state.rs): postcard's binary serde, every f64 its 8 bytes
+# (infinite step costs included), in base64 text, a string the page keeps without reading
+postcard = { version = "1", default-features = false, features = ["alloc"] }
+base64 = "0.22"
 
 # the native command line's arguments (src/cli.rs); not in the wasm
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

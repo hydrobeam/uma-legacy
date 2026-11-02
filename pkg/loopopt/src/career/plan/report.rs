@@ -139,6 +139,11 @@ pub(crate) struct RollCareer {
     pub(crate) fixed: Vec<usize>,
 }
 
+/// Expected careers as a report carries them: None where they are infinite (no route lands, a step that cannot land).
+pub(crate) fn finite_careers(careers: f64) -> Option<f64> {
+    careers.is_finite().then_some(careers)
+}
+
 /// A route to a fully looped parent: A, B (the cheaper step first) and C by name, their steps' expected careers, and
 /// A's and B's sides ("real:i" her veteran i, "current:i,j" her best career now on veterans i and j, "alt:i,j"
 /// another career of hers).
@@ -147,9 +152,8 @@ pub(crate) struct Route {
     pub(crate) a: Option<String>,
     pub(crate) b: Option<String>,
     pub(crate) c: Option<String>,
-    /// each step's expected careers (null: infinite, a step that cannot land)
-    #[ts(type = "[number | null, number | null, number | null]")]
-    pub(crate) careers: [f64; 3],
+    /// each step's expected careers (null: infinite, a step that cannot land; `finite_careers`)
+    pub(crate) careers: [Option<f64>; 3],
     pub(crate) sides: [String; 2],
 }
 
@@ -196,9 +200,8 @@ pub(crate) struct RouteMember {
     /// the career id of the row her lifts are fitted from (null where she grinds, her continuation was given, or her
     /// step is her cap's)
     pub(crate) builder: Option<String>,
-    /// her step's expected careers (0 when `real`; null: infinite)
-    #[ts(type = "number | null")]
-    pub(crate) careers: f64,
+    /// her step's expected careers (0 when `real`; null: infinite, `finite_careers`)
+    pub(crate) careers: Option<f64>,
 }
 
 /// A candidate whose step is her kept cap's: its careers and her odds then.
@@ -401,8 +404,8 @@ pub(crate) struct VariantReport {
     pub(crate) odds_scale: f64,
     /// the scaled umas (uma indices) and their scales; none for a uniform scale
     pub(crate) scaled: Vec<(usize, f64)>,
-    #[ts(type = "number | null")]
-    pub(crate) v0: f64,
+    /// V under the variant (null: infinite, no route lands; `finite_careers`)
+    pub(crate) v0: Option<f64>,
     pub(crate) pick: String,
     pub(crate) score: f64,
     pub(crate) margin: f64,

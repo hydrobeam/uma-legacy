@@ -444,7 +444,7 @@ fn variant_entry(
             .filter(|&&(uma, _)| uma != crate::uma::NONE)
             .map(|&(uma, scale)| (uma.0, scale))
             .collect(),
-        v0: current_value,
+        v0: crate::career::plan::report::finite_careers(current_value),
         pick: row_ids[pick.pick].clone(),
         score: pick.score,
         margin: pick.margin,

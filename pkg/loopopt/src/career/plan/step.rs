@@ -22,7 +22,7 @@ pub(crate) const MAX_ROUTES: usize = 1024;
 /// grinds at once at its lift's odds; where one still builds there (`BuildPlan::building_careers` > 0), its later
 /// builders replace the parents that put her in C's lineage, so C is priced as V0 prices it (`while_building`). The
 /// trios as they were stay in V0 beside every route.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Route {
     /// The partner slots whose lifts it takes (each lifted candidate's step at that slot's odds); NO_SLOT for none.
     pub(crate) lifts: [usize; 2],
@@ -67,7 +67,7 @@ impl ShadowRoute {
 
 /// A route's C where a lifted side still builds (`Route::while_building`): V0's convention, C on that side's lineage as
 /// it is today.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum WhileBuilding {
     /// The trio's own C's step (`Trio::finisher_cost`): a trio's route.
     Fixed(f64),

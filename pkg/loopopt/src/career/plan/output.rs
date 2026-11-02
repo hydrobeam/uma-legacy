@@ -6,7 +6,7 @@ use crate::career::plan::cont::{SideStep, TrioSideVeteran, TrioSlot};
 use crate::career::plan::kept::{Bests, CachedSearch, bests_key};
 use crate::career::plan::report::{
     LiftsSide, OptionRole, Plan, PlanMode, PlanOption, PlanRule, RankedRoute, RollCareer, RollReply, Route,
-    RouteMember, StepCap, UmaName,
+    RouteMember, StepCap, UmaName, finite_careers,
 };
 use crate::career::plan::roll::{KeptBase, RollKeep, keep_roll, roll_kept};
 use crate::career::plan::rows::{PlanPick, PlanRow, RowOrigin, has_looped_parents, pick_of};
@@ -64,19 +64,21 @@ pub(crate) fn assemble_plan_output<'data>(
     // included (`ClassFlags`); the named assumptions it rests on: her class's, and a fallback row's main search's.
     let pick_solved = input.pick_solved();
     let pick_search = RowSearch {
-        complete: pick_solved.complete && pick_solved.certified_cap >= env.setup.space.rho_top(),
-        assumes: pick_solved.assumes,
+        complete: pick_solved.complete && !pick_solved.certified_cap.below(env.setup.space.rho_top()),
+        assumes: pick_solved.assumes.clone(),
     };
     let row_exact = |row: &PlanRow| row.exact || row.origin == RowOrigin::Fallback;
     let row_proofs: Vec<(bool, Assumes)> = runs
         .iter()
         .map(|row| {
+            let own_search;
             let search = if row.origin == RowOrigin::Fallback {
-                pick_search
+                &pick_search
             } else {
-                RowSearch { complete: !incomplete.of(row), assumes: Assumes::default() }
+                own_search = RowSearch { complete: !incomplete.of(row), assumes: Assumes::new() };
+                &own_search
             };
-            row_proof(row_exact(row), search, env.state.class_flags[env.setup.deck_class[row.trainee]])
+            row_proof(row_exact(row), search, &env.state.class_flags[env.setup.deck_class[row.trainee]])
         })
         .collect();
     let mut options: Vec<PlanOption> = vec![];
@@ -91,7 +93,7 @@ pub(crate) fn assemble_plan_output<'data>(
         // her career search was not complete (its work cap `search_work`, a band overflow, or a deck past its class's
         // cap that the cap-free rerun did not settle) or her class is breached (`row_proof`): the best it found, not
         // proven her best; else proven under the named assumptions it rests on (`assumes`)
-        let (proven, assumes) = row_proofs[i];
+        let (proven, assumes) = &row_proofs[i];
         let unproven = row_exact(row) && !proven;
         options.push(PlanOption {
             report,
@@ -110,7 +112,7 @@ pub(crate) fn assemble_plan_output<'data>(
             proven: unproven.then_some(false),
             // (an alternative row never searched on its pair: her cached deck there, no search behind it to run out)
             searched: (unproven && row.origin == RowOrigin::Alternative && row.pair_search.is_none()).then_some(false),
-            assumes: (!unproven && row_exact(row) && assumes != Assumes::default()).then_some(assumes),
+            assumes: (!unproven && row_exact(row) && !assumes.is_empty()).then(|| assumes.clone()),
             stage_cost: candidates
                 .trainees
                 .iter()
@@ -342,9 +344,8 @@ impl PlanContext<'_, '_> {
             if let Some(mut previous) = searches.kept_previous_pool {
                 let mut merged: std::collections::BTreeMap<u64, crate::career::ClassFlags> =
                     std::collections::BTreeMap::new();
-                for &(key, kept_flags) in previous.flags.iter().chain(&flags) {
-                    let slot = merged.entry(key).or_default();
-                    *slot = slot.union(kept_flags);
+                for (key, kept_flags) in previous.flags.iter().chain(&flags) {
+                    merged.entry(*key).or_default().union_with(kept_flags);
                 }
                 previous.flags = merged.into_iter().collect();
                 cache.push(previous);
@@ -414,7 +415,7 @@ impl PlanContext<'_, '_> {
                         a: name(self.candidates[first.candidate]),
                         b: name(self.candidates[second.candidate]),
                         c: name(combination.finisher_trainee),
-                        careers: [step(first), step(second), combination.trio.finisher_cost],
+                        careers: [step(first), step(second), combination.trio.finisher_cost].map(finite_careers),
                         sides: [side_key(first), side_key(second)],
                     },
                     value,
@@ -483,7 +484,7 @@ impl PlanContext<'_, '_> {
                 building_careers: build_plan.building_careers,
                 p_switch: build_plan.grind_odds,
                 builder,
-                careers: step(slot),
+                careers: finite_careers(step(slot)),
             }
         };
         // A: the cheaper of the two steps first
@@ -494,7 +495,7 @@ impl PlanContext<'_, '_> {
                 a: uma_name(candidates[first.candidate]),
                 b: uma_name(candidates[second.candidate]),
                 c: uma_name(combination.finisher_trainee),
-                careers: [step(first), step(second), combination.trio.finisher_cost],
+                careers: [step(first), step(second), combination.trio.finisher_cost].map(finite_careers),
                 sides: [
                     side_key(&fit.sides[first.candidate.0][first.side]),
                     side_key(&fit.sides[second.candidate.0][second.side]),
@@ -538,7 +539,6 @@ fn lifts_side(
 }
 
 /// The career search behind a plan row: whether it was complete, and the named assumptions it rests on.
-#[derive(Clone, Copy)]
 struct RowSearch {
     complete: bool,
     assumes: Assumes,
@@ -547,28 +547,30 @@ struct RowSearch {
 /// A row's proof as the output reports it: proven when exact (a career search behind it: hers, or a fallback row's,
 /// the pick's main search), that search complete and her deck class not breached (`ClassFlags`, as the flags stand at
 /// the end of the plan); the named assumptions it rests on, her class's and the search's.
-const fn row_proof(exact: bool, search: RowSearch, flags: ClassFlags) -> (bool, Assumes) {
-    (exact && search.complete && flags.proves(), flags.assumes.union(search.assumes))
+fn row_proof(exact: bool, search: &RowSearch, flags: &ClassFlags) -> (bool, Assumes) {
+    (exact && search.complete && flags.proves(), flags.assumes.union(&search.assumes).copied().collect())
 }
 
 #[cfg(test)]
 mod tests {
     use super::{Assumes, ClassFlags, RowSearch, row_proof};
+    use crate::career::search::Assumption;
     /// A fallback row (the pick's main search's career, exported exact) is unproven when that search was not
     /// complete or her class is breached, and carries that search's assumptions and her class's.
     #[test]
     fn fallback_rows_take_the_pick_search_and_class_flags() {
-        let multi = Assumes { two_feeder: false, multi_feeder: true };
-        let two = Assumes { two_feeder: true, multi_feeder: false };
+        let multi = Assumes::from([Assumption::MultiFeederCap]);
+        let two = Assumes::from([Assumption::TwoFeederCap]);
         let plain = ClassFlags::default();
-        let breached = ClassFlags { breached: true, assumes: Assumes::default() };
+        let breached = ClassFlags { breached: true, assumes: Assumes::new() };
         let assuming = ClassFlags { breached: false, assumes: two };
-        let complete = RowSearch { complete: true, assumes: multi };
-        let incomplete = RowSearch { complete: false, assumes: Assumes::default() };
-        assert_eq!(row_proof(true, complete, plain), (true, multi));
-        assert_eq!(row_proof(true, complete, assuming), (true, multi.union(two)));
-        assert!(!row_proof(true, complete, breached).0, "a breached class's fallback row proven");
-        assert!(!row_proof(true, incomplete, plain).0, "an incomplete pick search's fallback row proven");
-        assert!(!row_proof(false, complete, plain).0, "a proxy row proven");
+        let complete = RowSearch { complete: true, assumes: multi.clone() };
+        let incomplete = RowSearch { complete: false, assumes: Assumes::new() };
+        assert_eq!(row_proof(true, &complete, &plain), (true, multi));
+        let both = Assumes::from([Assumption::TwoFeederCap, Assumption::MultiFeederCap]);
+        assert_eq!(row_proof(true, &complete, &assuming), (true, both));
+        assert!(!row_proof(true, &complete, &breached).0, "a breached class's fallback row proven");
+        assert!(!row_proof(true, &incomplete, &plain).0, "an incomplete pick search's fallback row proven");
+        assert!(!row_proof(false, &complete, &plain).0, "a proxy row proven");
     }
 }
