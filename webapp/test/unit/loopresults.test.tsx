@@ -154,12 +154,16 @@ test("the deck's hint chance (gold, else white) is one figure: the (i) panel's w
   expect(odds.some((o) => o.gold > 0.005 && o.white > 0.005)).toBe(true);
   const tiles = all(one(container, '#results [data-hint-odds]'), '[data-hint="white"] b').map(text);
   expect(tiles).toEqual(
-    odds.filter((o) => deckHint(o.gold, o.white) - o.gold > 0.005).map((o) => `${Math.round(deckHint(o.gold, o.white) * 100)}%`),
+    odds
+      .filter((o) => deckHint(o.gold, o.white) - o.gold > 0.005)
+      .map((o) => `${Math.round(deckHint(o.gold, o.white) * 100)}%`),
   );
   const exported = JSON.parse(exportText(settings.peek(), { kind: 'deck', r: REPORT, meta: {} }, false));
   const deckOdds: { white: number; gold: number }[] = exported.results.decks[0].deck_odds;
   expect(deckOdds).toEqual(
-    odds.map((o) => expect.objectContaining({ white: +deckHint(o.gold, o.white).toFixed(3), gold: +o.gold.toFixed(3) })),
+    odds.map((o) =>
+      expect.objectContaining({ white: +deckHint(o.gold, o.white).toFixed(3), gold: +o.gold.toFixed(3) }),
+    ),
   );
 });
 
@@ -209,7 +213,9 @@ test("swap rows leave out the targets their umas have on their own skill list; a
   expect(rows.some((r) => r.mine.length)).toBe(true);
   for (const r of rows) for (const c of r.changes) expect(r.mine.some((n) => c.startsWith(`${n} `))).toBe(false);
   // (a row with more than two changes folds the rest behind its button)
-  const more = container.querySelector<HTMLElement>('#results [data-deck="swap"] button[aria-expanded]:has([data-delta])');
+  const more = container.querySelector<HTMLElement>(
+    '#results [data-deck="swap"] button[aria-expanded]:has([data-delta])',
+  );
   if (!more) return;
   fireEvent.click(more);
   await settled();
@@ -264,7 +270,10 @@ test('a result drawn while the focus is in it: the focus goes to the results col
   await settled();
   one(container, '#results button[data-cid]').focus();
   const [top] = REPORT.top;
-  drawResult({ ...REPORT, top: [{ ...top, loop: { ...top.loop, members: [...top.loop.members].reverse() } }] }, targets());
+  drawResult(
+    { ...REPORT, top: [{ ...top, loop: { ...top.loop, members: [...top.loop.members].reverse() } }] },
+    targets(),
+  );
   await settled();
   expect(document.activeElement).toBe(one(container, '#rcol'));
 });
@@ -376,7 +385,7 @@ test('blocked settings: no targets says to add one, its button loads the 8/8 exa
   expect(Object.values(settings.peek().roster)).not.toContain('out');
 });
 
-test('scenario golds: Unity Cup guarantees No Stopping Me! and It\'s On!, URA none; the 8/8 example under URA has none', () => {
+test("scenario golds: Unity Cup guarantees No Stopping Me! and It's On!, URA none; the 8/8 example under URA has none", () => {
   fresh();
   expect(SCEN_GOLDS.unity).toEqual(expect.arrayContaining([20049, 20046]));
   expect(goldGiven('unity', 20049) && goldGiven('unity', 20046)).toBe(true);

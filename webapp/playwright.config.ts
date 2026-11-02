@@ -38,11 +38,11 @@ export default defineConfig({
     ? {}
     : {
         webServer: {
-        command: `npx --no-install vite preview --port ${process.env.LLP_PORT} --host 127.0.0.1 --strictPort`,
-        url: PAGE,
-        ignoreHTTPSErrors: true, // its certificate is self-signed (vite.config.mjs, basicSsl)
-        reuseExistingServer: false,
-      },
+          command: `npx --no-install vite preview --port ${process.env.LLP_PORT} --host 127.0.0.1 --strictPort`,
+          url: PAGE,
+          ignoreHTTPSErrors: true, // its certificate is self-signed (vite.config.mjs, basicSsl)
+          reuseExistingServer: false,
+        },
       }),
   use: {
     baseURL: PAGE,
