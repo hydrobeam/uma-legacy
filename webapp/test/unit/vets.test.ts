@@ -10,12 +10,14 @@ import { ERA } from '../../src/saved.ts';
 import { on } from '../../src/store.ts';
 import * as vs from '../../src/veterans/store.ts';
 import { memory } from './fakes.ts';
+import { must } from '../../src/must.ts';
+import { lineageNode } from './reports.ts';
 
 const KEY = 'llp:career',
   OTHER = ERA === 'gm' ? 'global' : 'gm';
 // (each with the one pink a complete veteran has: Turf, 1 star)
-const node = (chara, sparks = {}) => ({ chara, sparks, pinks: { 11: 1 }, blues: {}, greens: {}, wins: [] });
-const vet = (id, extra = {}) => ({
+const node = (chara: number, sparks: vs.Sparks = {}) => lineageNode(chara, sparks, { 11: 1 });
+const vet = (id: string, extra: Partial<vs.Veteran> = {}): vs.Veteran => ({
   id,
   src: 'import',
   borrowed: false,
@@ -25,13 +27,15 @@ const vet = (id, extra = {}) => ({
 });
 // the store loaded from a storage holding `mine` (this era's part) and another era's part; saves wait for `frame()`
 // unless the page is `hidden`
-function fresh(mine = { vets: [vet('a'), vet('b'), vet('c')], plan: { trainee: 9, parents: ['a', null] } }) {
+function fresh(mine: unknown = { vets: [vet('a'), vet('b'), vet('c')], plan: { trainee: 9, parents: ['a', null] } }) {
   const storage = memory(),
-    frames = [],
+    frames: (() => void)[] = [],
     host = {
       storage: () => storage,
-      hidden: () => host.isHidden,
-      afterFrame: (f) => frames.push(f),
+      hidden: (): boolean => host.isHidden,
+      afterFrame: (f: () => void) => {
+        frames.push(f);
+      },
       isHidden: false,
     };
   storage.setItem(KEY, JSON.stringify({ v: 2, [ERA]: mine, [OTHER]: { vets: [vet('z')] } }));
@@ -39,7 +43,7 @@ function fresh(mine = { vets: [vet('a'), vet('b'), vet('c')], plan: { trainee: 9
   const frame = () => {
     for (const f of frames.splice(0)) f();
   };
-  const saved = () => JSON.parse(storage.getItem(KEY));
+  const saved = () => JSON.parse(storage.getItem(KEY) ?? 'null');
   return { storage, host, frame, saved };
 }
 // what the store holds now, and a deep copy to check the old records against
@@ -48,9 +52,11 @@ const snapshot = () => {
   return { now, copy: structuredClone(now) };
 };
 const ids = () => vs.vets.peek().map((v) => v.id);
+// a veteran of the store by her id (throws: none)
+const stored = (id: string) => must(vs.vetById(id), `veteran ${id}`);
 
 test('every mutator copies on write: old records unchanged, untouched veterans the same objects, new records frozen', () => {
-  const cases = [
+  const cases: [string, () => unknown, string[]][] = [
     ['addVets', () => vs.addVets([vet('d')]), []],
     ['newVet', () => vs.newVet({ ...node(5, { 7: 2 }), parents: [node(1), null] }, 'hand'), []],
     ['editVet', () => vs.editVet('b', (v) => ({ sparks: { ...v.sparks, 8: 3 } })), ['b']],
@@ -100,7 +106,7 @@ test('every mutator copies on write: old records unchanged, untouched veterans t
 test('the mutators: what each writes', () => {
   fresh();
   vs.vetRef('a').edit(() => ({ chara: 3, outfit: undefined }));
-  assert.ok(!('outfit' in vs.vetById('a')), 'an undefined field goes');
+  assert.ok(!('outfit' in stored('a')), 'an undefined field goes');
   vs.removeVet('a');
   assert.deepEqual(vs.places.peek().parents, [null, null], "a removed veteran's place goes back to the planner");
   fresh();
@@ -108,12 +114,16 @@ test('the mutators: what each writes', () => {
   vs.setParent(1, 'u1', true);
   vs.setListings([vet('u1', { src: 'umamoe', rank: 7 }), vet('u3', { src: 'umamoe' })]);
   assert.deepEqual(ids(), ['a', 'b', 'c', 'u1', 'u3'], 'a chosen listing stays, the others are replaced');
-  assert.equal(vs.vetById('u1').rank, 7, 'a chosen listing listed again takes her new record');
+  assert.equal(stored('u1').rank, 7, 'a chosen listing listed again takes her new record');
   const r = vs.importVets([{ ...vet('b'), borrowed: true, rank: 2 }, vet('e')]);
   assert.deepEqual(ids(), ['a', 'b', 'c', 'e', 'u1', 'u3'], 'an import goes after your imports, before the listings');
-  assert.equal(vs.vetById('b').borrowed, false, 'an updated veteran keeps her tab');
+  assert.equal(stored('b').borrowed, false, 'an updated veteran keeps her tab');
   assert.deepEqual(r, { added: 1, updated: 0, borrowed: 1, dropped: 0 }, 'a borrowed one in the file is borrowed');
-  const her = { ...node(5, { 7: 2 }), outfit: 501, parents: [node(1), node(2)] },
+  const her: vs.LineageNode & { parents: vs.Parents } = {
+      ...node(5, { 7: 2 }),
+      outfit: 501,
+      parents: [node(1), node(2)],
+    },
     v = vs.newVet(her, 'entered');
   assert.equal(ids().indexOf(v.id), 4, 'a new veteran goes before the listings');
   assert.deepEqual(
@@ -142,12 +152,12 @@ test('saved before assigned: a throwing effect keeps the write, deferred, hidden
       assert.deepEqual(vs.places.peek().parents, [null, null], path);
       assert.deepEqual(mine.plan.parents, [null, null], `${path}: saved`);
     } else {
-      assert.deepEqual(vs.vetById('b').sparks, { 7: 3 }, path);
+      assert.deepEqual(stored('b').sparks, { 7: 3 }, path);
       assert.deepEqual(mine.vets[1].sparks, { 7: 3 }, `${path}: saved`);
     }
     assert.equal(woken, 1, path);
     assert.deepEqual(
-      page.saved()[OTHER].vets.map((v) => v.id),
+      page.saved()[OTHER].vets.map((v: vs.Veteran) => v.id),
       ['z'],
       `${path}: the other era kept`,
     );
@@ -175,7 +185,7 @@ test('the deferred save: one write per frame for the edits in between, of the re
   vs.setListings([vet('u1', { src: 'umamoe' })]);
   page.frame();
   assert.deepEqual(
-    page.saved()[ERA].vets.map((v) => v.id),
+    page.saved()[ERA].vets.map((v: vs.Veteran) => v.id),
     ['a', 'b', 'c'],
     'listings are not saved unless chosen',
   );
@@ -187,18 +197,18 @@ test("an editor by path: an open dialog's second edit lands on the record its fi
   const wins = vs.parentRef('b', 0);
   wins.edit((p) => ({ wins: [...p.wins, 3], winAt: { ...p.winAt, 3: 20 } }));
   wins.edit((p) => ({ wins: [...p.wins, 5], winAt: { ...p.winAt, 5: 40 } }));
-  assert.deepEqual(vs.vetById('b').parents[0].wins, [3, 5]);
-  assert.deepEqual(vs.vetById('b').parents[0].winAt, { 3: 20, 5: 40 });
+  assert.deepEqual(stored('b').parents[0]?.wins, [3, 5]);
+  assert.deepEqual(stored('b').parents[0]?.winAt, { 3: 20, 5: 40 });
   const colour = vs.vetRef('c');
   colour.edit(() => ({ blues: { 2: 2 } }));
-  colour.edit((v) => ({ blues: { [Object.keys(v.blues)[0]]: 3 } }));
-  assert.deepEqual(vs.vetById('c').blues, { 2: 3 });
+  colour.edit((v) => ({ blues: { [must(Object.keys(v.blues ?? {})[0], 'her blue')]: 3 } }));
+  assert.deepEqual(stored('c').blues, { 2: 3 });
   const grand = vs.parentRef('a', 1);
   grand.edit(() => ({ chara: 77, outfit: undefined }));
   vs.editVet('a', () => ({ borrowed: true })); // an edit of the same veteran from elsewhere, meanwhile
   grand.edit(() => ({ sparks: { 9: 1 } }));
-  const a = vs.vetById('a');
-  assert.deepEqual([a.borrowed, a.parents[1].chara, a.parents[1].sparks], [true, 77, { 9: 1 }]);
+  const a = stored('a');
+  assert.deepEqual([a.borrowed, a.parents[1]?.chara, a.parents[1]?.sparks], [true, 77, { 9: 1 }]);
   assert.equal(grand.node(), a.parents[1], 'the ref reads her record as it is now');
   vs.removeVet('a');
   grand.edit(() => ({ sparks: {} }));
@@ -207,11 +217,13 @@ test("an editor by path: an open dialog's second edit lands on the record its fi
 
 test("effects wake for their part only; a places write keeps the veterans' identity and the job's legacies", () => {
   fresh();
-  const woke = { vets: 0, places: 0, chosen: 0 };
+  type Part = 'vets' | 'places' | 'chosen';
+  const woke: Record<Part, number> = { vets: 0, places: 0, chosen: 0 };
   const parts = { vets: vs.vets, places: vs.places, chosen: vs.chosen },
-    stops = Object.keys(woke).map((k) => on([parts[k]], () => woke[k]++));
-  const expect = (name, run, want) => {
-    for (const k of Object.keys(woke)) woke[k] = 0;
+    names: Part[] = ['vets', 'places', 'chosen'],
+    stops = names.map((k) => on([parts[k]], () => woke[k]++));
+  const expect = (name: string, run: () => unknown, want: Record<Part, number>) => {
+    for (const k of names) woke[k] = 0;
     run();
     assert.deepEqual(woke, want, name);
   };
@@ -221,7 +233,8 @@ test("effects wake for their part only; a places write keeps the veterans' ident
   assert.equal(vs.vets.peek(), vetsBefore);
   assert.equal(vs.legaciesJob(), legacies, 'the job legacies are the same array');
   expect('setChosen', () => vs.setChosen({ places: 'p', id: 'x', setup: 's' }), { vets: 0, places: 0, chosen: 1 });
-  expect('editVet', () => vs.editVet('b', () => ({ rank: 3 })), { vets: 1, places: 0, chosen: 0 });
+  // (her rank, which the editors' patch type leaves out: JSON.parse hands it over unchecked)
+  expect('editVet', () => vs.editVet('b', () => JSON.parse('{"rank":3}')), { vets: 1, places: 0, chosen: 0 });
   const after = vs.legaciesJob();
   assert.notEqual(after, legacies);
   assert.equal(after[0], legacies[0], "an edit keeps the other veterans' job records");
@@ -254,7 +267,7 @@ test('loading: a v1 save, a damaged veteran and a damaged choice left out, block
     JSON.stringify({ v: 2, [ERA]: { vets: [{ id: 'n', parents: [{}, null] }], chosen: { id: 1 } } }),
   );
   vs.initVets(host);
-  assert.deepEqual(vs.vetById('n').parents, [null, null], "an imported veteran's parent with no uma is absent");
+  assert.deepEqual(stored('n').parents, [null, null], "an imported veteran's parent with no uma is absent");
   assert.equal(vs.chosen.peek(), null);
   vs.initVets({
     storage: () => {
@@ -272,17 +285,20 @@ test("the analysis' draft: her own signal, edits by path copy on write, the vete
   fresh();
   const woke = { vets: 0, draft: 0 },
     stops = [on([vs.vets], () => woke.vets++), on([vs.draft], () => woke.draft++)];
-  const d = { ...node(5, { 7: 1 }), borrowed: false, parents: [node(1), node(2, { 8: 2 })] };
+  const d: vs.Draft = { ...node(5, { 7: 1 }), borrowed: false, parents: [node(1), node(2, { 8: 2 })] };
   vs.setDraft(d);
-  const first = vs.draft.peek();
-  assert.ok(Object.isFrozen(first) && Object.isFrozen(first.parents[1].sparks), 'a draft set is frozen');
+  const first = must(vs.draft.peek(), 'the draft');
+  assert.ok(
+    Object.isFrozen(first) && Object.isFrozen(must(first.parents[1], 'her parent').sparks),
+    'a draft set is frozen',
+  );
   vs.draftRef().edit((n) => ({ sparks: { ...n.sparks, 9: 3 } }));
   vs.draftRef().edit((n) => ({ wins: [...n.wins, 4] }));
   vs.draftParentRef(1).edit((p) => ({ sparks: { ...p.sparks, 8: 3 } }));
   vs.draftParentRef(1).edit(() => ({ chara: 33, outfit: undefined }));
-  const now = vs.draft.peek();
+  const now = must(vs.draft.peek(), 'the draft');
   assert.deepEqual(
-    [now.sparks, now.wins, now.parents[1].sparks, now.parents[1].chara],
+    [now.sparks, now.wins, now.parents[1]?.sparks, now.parents[1]?.chara],
     [{ 7: 1, 9: 3 }, [4], { 8: 3 }, 33],
   );
   assert.deepEqual(first.sparks, { 7: 1 }, 'the first record is unchanged');
@@ -295,15 +311,15 @@ test("the analysis' draft: her own signal, edits by path copy on write, the vete
 });
 
 test("a draft set, or her parents set, is the store's own copy: the caller's object stays its own (review-10 F6)", () => {
-  const mine = { ...node(5, { 7: 1 }), borrowed: false, parents: [node(1), node(2)] };
+  const mine: vs.Draft = { ...node(5, { 7: 1 }), borrowed: false, parents: [node(1), node(2)] };
   vs.setDraft(mine);
   mine.sparks[7] = 3; // (frozen in place, this would throw)
-  assert.equal(vs.draft.peek().sparks[7], 1, 'her draft is not the caller object');
+  assert.equal(vs.draft.peek()?.sparks[7], 1, 'her draft is not the caller object');
   const parents = [node(3, { 8: 1 }), node(4)];
   vs.setDraftParents(parents);
-  parents[0].sparks[8] = 2;
-  assert.equal(vs.draft.peek().parents[0].sparks[8], 1);
-  assert.ok(Object.isFrozen(vs.draft.peek().parents[0]));
+  must(parents[0], 'her first parent').sparks[8] = 2;
+  assert.equal(vs.draft.peek()?.parents[0]?.sparks[8], 1);
+  assert.ok(Object.isFrozen(vs.draft.peek()?.parents[0]));
   vs.setDraft(null);
 });
 
@@ -315,7 +331,7 @@ test('saves: a chosen uma.moe listing is saved; the hidden page saves at once; a
   vs.setParent(1, 'u1', true);
   page.frame();
   assert.deepEqual(
-    page.saved()[ERA].vets.map((v) => v.id),
+    page.saved()[ERA].vets.map((v: vs.Veteran) => v.id),
     ['a', 'b', 'c', 'u1'],
     'the chosen listing saved, the other not',
   );
@@ -334,16 +350,18 @@ test('saves: a chosen uma.moe listing is saved; the hidden page saves at once; a
 });
 
 test('ids given twice (a malformed file or save): the first kept, so an edit and Remove find one record (review-10 5)', () => {
-  const warned = [],
+  const warned: unknown[] = [],
     warn = console.warn;
-  console.warn = (text) => warned.push(text);
+  console.warn = (text: unknown) => {
+    warned.push(text);
+  };
   try {
     fresh({
       vets: [vet('a'), vet('a', { sparks: { 7: 3 } }), vet('b')],
       plan: { trainee: null, parents: [null, null] },
     });
     assert.deepEqual(ids(), ['a', 'b'], 'loaded once each');
-    assert.equal(vs.vetById('a').sparks[7], 1, 'the first kept');
+    assert.equal(stored('a').sparks[7], 1, 'the first kept');
     vs.importVets([vet('n'), vet('n', { sparks: { 7: 2 } })]);
     assert.deepEqual(ids(), ['a', 'b', 'n'], 'an import holding one twice adds her once');
     vs.editVet('n', () => ({ sparks: { 7: 3 } }));

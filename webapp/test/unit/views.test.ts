@@ -31,6 +31,10 @@ import { loadData } from '../../src/data.ts';
 import { memory } from './fakes.ts';
 import { within } from '@testing-library/dom';
 import { SegmentedControl } from '../../src/ui/SegmentedControl.tsx';
+import { must } from '../../src/must.ts';
+import type { Sparks } from '../../src/veterans/store.ts';
+import { dialogAt, find, query, settle } from './dom.ts';
+import { careerReport, lineageNode, veteran } from './reports.ts';
 
 vi.mock('#page-data', () => import('./fakepage.ts'));
 
@@ -42,15 +46,15 @@ await loadData({
   uniques: { 30001: 'Her Own' },
   races: ['Arima Kinen'],
   race_turns: [[47, 71]],
+  factors: {},
+  saddles: {},
 });
 
-const settle = async () => {
-  for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
-};
-const node = (chara, sparks = {}) => ({ chara, sparks, pinks: {}, blues: {}, greens: {}, wins: [] });
+const node = (chara: number, sparks: Sparks = {}) => lineageNode(chara, sparks);
 const T = 20159; // a target skill of the fake page's data
 // her chip's label for target T in the drawn card
-const chipLabel = (root) => root.querySelector(`button[data-k="sim:s${T}"]`)?.getAttribute('aria-label');
+const chipLabel = (root: ParentNode) =>
+  root.querySelector(`button[data-k="sim:s${T}"]`)?.getAttribute('aria-label') ?? '';
 
 test("the spark editor shows each edit of the store's draft (a new record each)", async () => {
   // the store's draft: her card reads the signal and hands InspView her record
@@ -63,7 +67,7 @@ test("the spark editor shows each edit of the store's draft (a new record each)"
   render(h(Card, null), root);
   await settle();
   assert.match(chipLabel(root), /, 1 star\. Click for 2$/);
-  root.querySelector(`button[data-k="sim:s${T}"]`).click();
+  find(root, `button[data-k="sim:s${T}"]`).click();
   await settle();
   assert.match(chipLabel(root), /, 2 stars\. Click for 3$/, "the store's draft");
 });
@@ -77,13 +81,13 @@ test('her unique spark added back, or a first pink set: the bar is the same butt
   const root = document.body.appendChild(document.createElement('div'));
   render(h(Card, null), root);
   await settle();
-  const bar = (k) => root.querySelector(`button[data-k="${k}"]`);
+  const bar = (k: string) => find(root, `button[data-k="${k}"]`);
   const none = bar('sim:green');
   assert.match(none.textContent, /\+ Unique spark/);
   none.focus();
   none.click(); // her unique at 2 stars
   await settle();
-  assert.match(bar('sim:green').getAttribute('aria-label'), /\(unique\), 2 stars/);
+  assert.match(bar('sim:green').getAttribute('aria-label') ?? '', /\(unique\), 2 stars/);
   // (identity as a boolean: an assertion message inspecting two Preact-owned nodes walks their whole graphs)
   assert.ok(bar('sim:green') === none, "the unique's button is the one that had the focus");
   assert.ok(root.contains(document.activeElement), 'the focus is still in the card');
@@ -95,12 +99,17 @@ test('her unique spark added back, or a first pink set: the bar is the same butt
 });
 
 // an element of the drawn editors by its id
-const byId = (root, id) => root.querySelector(`#${id}`);
+const byId = (root: ParentNode, id: string) => query(root, `#${id}`);
+const dialogById = (root: ParentNode, id: string) => dialogAt(root, `#${id}`);
 // (an uma's button: her portrait, then her name)
-const button = (root, text) => [...root.querySelectorAll('button')].find((b) => b.textContent.endsWith(text));
+const button = (root: ParentNode | null, text: string) =>
+  must(
+    [...must(root, 'the list').querySelectorAll('button')].find((b) => b.textContent?.endsWith(text)),
+    `a button ${text}`,
+  );
 test('change uma: the uma is hers at the pick (saved, the page told once the prompt is gone); the prompt dismissed keeps her sparks', async () => {
   const storage = memory(),
-    frames = [];
+    frames: (() => void)[] = [];
   vs.initVets({ storage: () => storage, hidden: () => false, afterFrame: (f) => frames.push(f) });
   vs.addVets([
     { id: 'a', src: 'hand', borrowed: false, ...node(1001, { [T]: 2 }), outfit: 100101, parents: [node(1), node(2)] },
@@ -115,17 +124,17 @@ test('change uma: the uma is hers at the pick (saved, the page told once the pro
   render(h(VetEditors, null), editors);
   changeUma(vs.vetRef('a'), 'Veteran #1');
   await settle();
-  assert.equal(byId(editors, 'pick-dlg').open, true, 'the uma picker is open');
+  assert.equal(dialogById(editors, 'pick-dlg').open, true, 'the uma picker is open');
   button(byId(editors, 'pick-list'), 'Uma B').click();
   await settle();
-  const ask = byId(editors, 'ask-dlg');
+  const ask = dialogById(editors, 'ask-dlg');
   assert.equal(ask.open, true, 'the skills prompt asks');
   ask.close(); // Escape: no choice
   await settle(); // (a browser fires the dialog's close as a task of its own)
   for (const f of frames.splice(0)) f();
-  const v = vs.vetById('a');
+  const v = must(vs.vetById('a'), 'veteran a');
   assert.deepEqual([v.chara, 'outfit' in v, v.sparks], [1002, false, { [T]: 2 }], 'her uma changed, her sparks kept');
-  assert.equal(JSON.parse(storage.getItem('llp:career')).global.vets[0].chara, 1002, 'saved'); // (node's era: global)
+  assert.equal(JSON.parse(storage.getItem('llp:career') ?? 'null').global.vets[0].chara, 1002, 'saved'); // (node's era: global)
   assert.equal(woke, 1, "the page's effect saw it (its search and redraw follow)");
   // a choice on the prompt sets her sparks as a second edit, which the page sees with the uma, once
   changeUma(vs.vetRef('a'), 'Veteran #1');
@@ -133,14 +142,14 @@ test('change uma: the uma is hers at the pick (saved, the page told once the pro
   button(byId(editors, 'pick-list'), 'Uma C').click();
   await settle();
   button(byId(editors, 'ask-btns'), 'No skills').click();
-  assert.deepEqual([vs.vetById('a').chara, vs.vetById('a').sparks, woke], [1003, {}, 2]);
+  assert.deepEqual([vs.vetById('a')?.chara, vs.vetById('a')?.sparks, woke], [1003, {}, 2]);
   stop();
 });
 
 test("Try a run's legacies: a place no veteran holds any more (the list changed under the answer) is left out (review-9 F6)", async () => {
-  const career = { parents: [0, 4], trainee: { id: 1001, outfits: [] }, targets: [], deck: null };
-  const list = [{ ...node(1002), id: 'a', borrowed: false, parents: [node(1), node(2)] }];
-  const numberOf = (i) => `#${i + 1}`;
+  const career = careerReport({ parents: [0, 4] });
+  const list = [veteran('a', { ...node(1002), parents: [node(1), node(2)] })];
+  const numberOf = (i: number) => `#${i + 1}`;
   const legacies = legaciesOf(
     career,
     (i) => list[i],
@@ -153,7 +162,15 @@ test("Try a run's legacies: a place no veteran holds any more (the list changed 
     'the veteran at #5 is gone: her box goes',
   );
   vs.setDraft({ ...node(1001), borrowed: false, parents: [node(1002), node(1003)] });
-  const spec = { d: vs.draft.peek(), r: career, races: [], raceName: String, targets: [T], legacies, numberOf };
+  const spec = {
+    d: must(vs.draft.peek(), 'the draft'),
+    r: career,
+    races: [],
+    raceName: String,
+    targets: [T],
+    legacies,
+    numberOf,
+  };
   const root = document.body.appendChild(document.createElement('div'));
   render(h(Details, { spec, actions: null, winsButton: null }), root);
   await settle();
@@ -206,7 +223,7 @@ test("Escape on a pool veteran's G1 wins window releases the search hold (M1)", 
   render(h(VetEditors, null), editors);
   openWins(vs.vetRef('a'), 'Veteran #1');
   await settle();
-  const wins = byId(editors, 'wins-dlg');
+  const wins = dialogById(editors, 'wins-dlg');
   assert.equal(wins.open, true, 'open');
   assert.equal(searchHeld.peek(), true, 'the search held');
   wins.close(); // Escape (the backdrop closes it the same way)
@@ -214,7 +231,7 @@ test("Escape on a pool veteran's G1 wins window releases the search hold (M1)", 
   assert.equal(searchHeld.peek(), false, 'released');
 });
 test('a win moved to another turn of its race ("moves here") is written once, at the new turn (M3)', async () => {
-  const edits = [],
+  const edits: unknown[] = [],
     root = document.body.appendChild(document.createElement('div'));
   render(
     h(WinsEditor, {
@@ -226,7 +243,7 @@ test('a win moved to another turn of its race ("moves here") is written once, at
     root,
   );
   await settle();
-  root.querySelector('button[data-k="add:71"]').click();
+  find(root, 'button[data-k="add:71"]').click();
   await settle();
   // (the menu's race: its button, named by its title)
   const menu = within(root).getByRole('dialog', { name: /G1s held$/ });
@@ -242,13 +259,15 @@ test('a colour bar picked keeps her spark of that colour at its stars (M6)', asy
   openColour(vs.vetRef('a'), 'pink');
   await settle();
   button(byId(editors, 'col-dlg'), 'Dirt').click();
-  assert.deepEqual(vs.vetById('a').pinks, { 12: 3 }, 'Dirt, at 3 stars as Turf was');
+  assert.deepEqual(vs.vetById('a')?.pinks, { 12: 3 }, 'Dirt, at 3 stars as Turf was');
 });
 
 test('a throw while the wins window or the skills prompt is open: it goes, the hold is released, a search runs (review-11b 3)', async () => {
   const editors = document.body.appendChild(document.createElement('div')),
-    reported = [];
-  globalThis.reportError = (e) => reported.push(e);
+    reported: unknown[] = [];
+  globalThis.reportError = (e: unknown) => {
+    reported.push(e);
+  };
   render(h(VetEditors, null), editors);
   vs.editVet('a', () => ({ wins: [0], winAt: { 0: 47 } }));
   // the page's veterans effect, with its hold (career/main.tsx)
@@ -268,14 +287,15 @@ test('a throw while the wins window or the skills prompt is open: it goes, the h
       throw new Error('a name that cannot be drawn');
     },
   };
-  askSkills(unnamed, false, () => undefined);
+  // (a name that is no string: Reflect.apply hands it over unchecked, as a damaged record's would reach the prompt)
+  Reflect.apply(askSkills, undefined, [unnamed, false, () => undefined]);
   await settle();
   assert.equal(searchHeld.peek(), false, 'the prompt gone, the hold released');
   assert.equal(woke, 2, 'the page searches');
   // the other editors still draw
   openWins(vs.vetRef('a'), 'Veteran #1');
   await settle();
-  assert.equal(byId(editors, 'wins-dlg')?.open, true, 'the wins window opens again');
+  assert.equal(dialogById(editors, 'wins-dlg').open, true, 'the wins window opens again');
   winsClosed();
   stop();
 });
@@ -286,7 +306,7 @@ test('the uma picker closed draws no list; a G1 wins window whose draft is repla
   render(h(VetEditors, null), editors);
   openUmaPicker('Which uma?', () => undefined);
   await settle();
-  assert.ok(within(byId(editors, 'pick-list')).getAllByRole('button').length > 0, 'open: every uma');
+  assert.ok(within(find(editors, '#pick-list')).getAllByRole('button').length > 0, 'open: every uma');
   umaPickClosed();
   await settle();
   assert.equal(byId(editors, 'pick-list'), null, 'closed: none');
@@ -294,15 +314,19 @@ test('the uma picker closed draws no list; a G1 wins window whose draft is repla
   let back = 0;
   openWins(vs.draftRef(), 'her', { onClose: () => back++ });
   await settle();
-  assert.equal(byId(editors, 'wins-dlg').open, true, 'open on her draft');
+  assert.equal(dialogById(editors, 'wins-dlg').open, true, 'open on her draft');
   vs.setDraft({ ...node(1002), borrowed: false, parents: [node(1001), node(1003)] }); // (a roll: another draft)
   await settle();
-  assert.equal(byId(editors, 'wins-dlg').open, false, 'her draft gone: the window closes, as the colour picker does');
+  assert.equal(
+    dialogById(editors, 'wins-dlg').open,
+    false,
+    'her draft gone: the window closes, as the colour picker does',
+  );
   assert.equal(back, 1, 'its close called');
 });
 test('a pill switch: radios and tabs are one Tab stop, the arrows pick and focus; toggles each a stop', async () => {
   const root = document.body.appendChild(document.createElement('div'));
-  const draw = (kind, value, onPick) =>
+  const draw = (kind: 'radio' | 'tab' | 'toggle', value: string, onPick: (v: string | number | boolean) => void) =>
     render(
       h(SegmentedControl, {
         kind,
@@ -316,9 +340,11 @@ test('a pill switch: radios and tabs are one Tab stop, the arrows pick and focus
       }),
       root,
     );
-  const key = (el, k) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
-  let picked = [];
-  draw('radio', '1', (v) => picked.push(v));
+  const key = (el: HTMLElement, k: string) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+  let picked: (string | number | boolean)[] = [];
+  draw('radio', '1', (v) => {
+    picked.push(v);
+  });
   await settle();
   const group = within(root).getByRole('radiogroup', { name: 'Count' }),
     one = within(group).getByRole('radio', { name: 'One' }),
@@ -332,7 +358,9 @@ test('a pill switch: radios and tabs are one Tab stop, the arrows pick and focus
   three.click();
   assert.deepEqual(picked, ['3'], 'a radio picked again is no new pick');
   picked = [];
-  draw('tab', '1', (v) => picked.push(v));
+  draw('tab', '1', (v) => {
+    picked.push(v);
+  });
   await settle();
   key(within(root).getByRole('tab', { name: 'One' }), 'End');
   assert.deepEqual(picked, ['3'], 'End picks the last tab');

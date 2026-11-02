@@ -10,14 +10,15 @@ import { askClosed, askSkills, openWins, winsClosed } from '../../src/veterans/p
 import { followPool } from '../../src/career/current.ts';
 import { answerPool, showAnswer } from '../../src/career/state.ts';
 import { memory } from './fakes.ts';
+import { lineageNode, veteran } from './reports.ts';
 
 vi.mock('#page-data', () => import('./fakepage.ts'));
 
-await loadData();
+await loadData(null);
 
 // (each with the one pink a complete veteran has: the job takes her)
-const node = (chara) => ({ chara, sparks: {}, pinks: { 11: 1 }, blues: {}, greens: {}, wins: [] });
-const vet = (id) => ({ id, src: 'import', borrowed: false, ...node(1001), parents: [node(1002), node(1003)] });
+const node = (chara: number) => lineageNode(chara, {}, { 11: 1 });
+const vet = (id: string) => veteran(id, { ...node(1001), parents: [node(1002), node(1003)] });
 
 test('an edit searches again; a new pool drops the answer; a held search waits for its window to close', () => {
   vs.initVets({ storage: () => memory(), hidden: () => true, afterFrame: (f) => f() });

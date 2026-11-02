@@ -23,27 +23,39 @@ import {
   setTargets,
   settings,
   switchEra,
+  type SettingsView,
 } from '../../src/settings.ts';
 import { on } from '../../src/store.ts';
+import { must } from '../../src/must.ts';
+import type { Backing } from '../../src/storage.ts';
 
 const KEY = 'llp:settings',
   OTHER = ERA === 'gm' ? 'global' : 'gm';
 // a storage holding `saved` (an object, stored as JSON, or a string, stored as it is)
-const memory = (saved) => {
-  const map = new Map(saved === undefined ? [] : [[KEY, typeof saved === 'string' ? saved : JSON.stringify(saved)]]);
-  return { getItem: (key) => map.get(key) ?? null, setItem: (key, value) => void map.set(key, value) };
+const memory = (saved?: unknown): Backing => {
+  const map = new Map<string, string>(
+    saved === undefined ? [] : [[KEY, typeof saved === 'string' ? saved : JSON.stringify(saved)]],
+  );
+  return {
+    getItem: (key) => map.get(key) ?? null,
+    setItem: (key, value) => void map.set(key, value),
+    removeItem: (key) => void map.delete(key),
+  };
 };
-const stored = (storage) => JSON.parse(storage.getItem(KEY));
+const stored = (storage: Backing) => JSON.parse(storage.getItem(KEY) ?? 'null');
 // the store loaded from a new storage holding `saved`; returns that storage
-const fresh = (saved) => {
+const fresh = (saved?: unknown) => {
   const storage = memory(saved);
   initStore(() => storage);
   return storage;
 };
 const { rcards: _, ...SAVED_DEFAULTS } = DEFAULTS; // rcards is never saved, so never loaded
 
+type Key = keyof SettingsView;
+// a record's settings, by name
+const keysOf = (record: SettingsView): Key[] => Object.keys(record).filter((k): k is Key => k in DEFAULTS);
 // each setter: what it is called with, and the fields it replaces
-const SETTERS = [
+const SETTERS: [string, () => void, Key[]][] = [
   ['setTargets', () => setTargets([{ group: 1 }]), ['targets']],
   ['setPresets', () => setPresets([{ name: 'a', groups: [1, 2] }]), ['presets']],
   ['setRank', () => setRank('ss_and_up'), ['rank']],
@@ -59,11 +71,12 @@ const SETTERS = [
   // an import replaces what it carries, and the umas' and outfits' marks (it drops "must include")
   [
     'importSettings',
-    () => importSettings({ targets: [{ group: 2 }], roster: { 1001: 'req' } }),
+    // (an old save's "must include" mark, which the type no longer has: JSON.parse hands it over unchecked)
+    () => importSettings(JSON.parse('{"targets":[{"group":2}],"roster":{"1001":"req"}}')),
     ['targets', 'roster', 'outfits'],
   ],
 ];
-const JOB = ['targets', 'rank', 'scen', 'roster', 'outfits', 'cardsOff', 'decksTop', 'perUma', 'borrowPar'];
+const JOB: Key[] = ['targets', 'rank', 'scen', 'roster', 'outfits', 'cardsOff', 'decksTop', 'perUma', 'borrowPar'];
 
 test('each setter copies on write: the old record is unchanged, the new one shares every field it did not replace', () => {
   for (const [name, call, replaced] of SETTERS) {
@@ -75,7 +88,7 @@ test('each setter copies on write: the old record is unchanged, the new one shar
     assert.deepEqual(before, copy, `${name}: the old record is unchanged`);
     assert.notEqual(after, before, `${name}: a new record`);
     assert.deepEqual(Object.keys(after), Object.keys(before), `${name}: the same settings, in the same order`);
-    for (const key of Object.keys(before))
+    for (const key of keysOf(before))
       if (replaced.includes(key)) assert.notEqual(after[key], before[key], `${name}: ${key} replaced`);
       else assert.equal(after[key], before[key], `${name}: ${key} is the same object`);
     // and it is saved: the shared settings and this era's marks, as the record has them
@@ -104,8 +117,8 @@ test('a write is persisted before it is assigned: an effect that throws keeps it
 });
 
 test('an effect runs only when a signal it names changes, never on an unrelated setter or for what its body reads', () => {
-  const runs = {};
-  const count = (name) => () => {
+  const runs: Record<string, number> = {};
+  const count = (name: string) => () => {
     runs[name] = (runs[name] ?? 0) + 1;
   };
   const effects = () => [
@@ -123,7 +136,7 @@ test('an effect runs only when a signal it names changes, never on an unrelated 
     const stops = effects();
     assert.deepEqual(runs, {}, `${name}: no effect runs when it is made`);
     call();
-    const expected = Object.fromEntries(replaced.map((key) => [key, 1]));
+    const expected: Record<string, number> = Object.fromEntries(replaced.map((key) => [key, 1]));
     if (replaced.some((key) => JOB.includes(key))) expected.jobSetup = 1;
     if (replaced.includes('presets')) expected['reads everything'] = 1;
     assert.deepEqual(runs, expected, name);
@@ -214,24 +227,20 @@ test('storage round trip: what is saved loads back; old and broken shapes load a
 
 test('every record is frozen all the way down, DEFAULTS too, and no record shares an object of DEFAULTS', () => {
   fresh(); // (nothing saved: every setting its default)
-  for (const key of ['targets', 'presets', 'roster', 'outfits', 'cardsOff'])
-    assert.notEqual(settings.value[key], DEFAULTS[key], `${key}: a copy of the default`);
-  assert.notEqual(settings.value.presets[0].groups, DEFAULTS.presets[0].groups);
-  // writes past the read-only type: Object.assign (TS lets it through on a readonly target) and what a cast allows
+  const objects: Key[] = ['targets', 'presets', 'roster', 'outfits', 'cardsOff'];
+  for (const key of objects) assert.notEqual(settings.value[key], DEFAULTS[key], `${key}: a copy of the default`);
+  assert.notEqual(settings.value.presets[0]?.groups, DEFAULTS.presets[0]?.groups);
+  // writes past the read-only type: Object.assign (TS lets it through on a readonly target, and it throws on a frozen
+  // one as an assignment does) and a push by Reflect.apply (an unchecked call)
+  const push = (list: readonly unknown[], item: unknown) => Reflect.apply(Array.prototype.push, list, [item]);
   assert.throws(() => Object.assign(settings.value.cardsOff, { 1: false }), TypeError);
-  assert.throws(() => settings.value.targets.push({ group: 1 }), TypeError);
-  assert.throws(() => {
-    settings.value.presets[0].name = 'renamed';
-  }, TypeError);
-  assert.throws(() => DEFAULTS.targets.push({ group: 1 }), TypeError);
-  assert.throws(() => {
-    DEFAULTS.roster[1] = 'out';
-  }, TypeError);
+  assert.throws(() => push(settings.value.targets, { group: 1 }), TypeError);
+  assert.throws(() => Object.assign(must(settings.value.presets[0], 'a preset'), { name: 'renamed' }), TypeError);
+  assert.throws(() => push(DEFAULTS.targets, { group: 1 }), TypeError);
+  assert.throws(() => Object.assign(DEFAULTS.roster, { 1: 'out' }), TypeError);
   // a setter's record, its new field included, and an import's
   setTargets([{ group: 7 }]);
-  assert.throws(() => {
-    settings.value.targets[0].group = 8;
-  }, TypeError);
+  assert.throws(() => Object.assign(must(settings.value.targets[0], 'a target'), { group: 8 }), TypeError);
   importSettings({ roster: { 3: 'out' } });
   assert.throws(() => Object.assign(settings.value.roster, { 4: 'out' }), TypeError);
   assert.deepEqual(settings.value.roster, { 3: 'out' });

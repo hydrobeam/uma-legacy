@@ -53,7 +53,7 @@ const shared = {
 // asks for happy-dom's document (`@vitest-environment happy-dom`), at a desktop's size, and draws with
 // @testing-library/preact's render, whose trees test/unit/setup.ts unmounts after each test
 const test = {
-  include: ['test/unit/*.test.{ts,tsx,mjs}'],
+  include: ['test/unit/*.test.{ts,tsx}'],
   setupFiles: ['test/unit/setup.ts'],
   environmentOptions: { happyDOM: { width: 1440, height: 900 } },
   testTimeout: 60_000,

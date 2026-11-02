@@ -6,87 +6,188 @@
 // npx vitest run (in webapp)
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
-import { PAUSE_MS, createRun } from '../../src/career/run.ts';
+import { PAUSE_MS, type RunDeps, createRun } from '../../src/career/run.ts';
 import { jobKey, planKey } from '../../src/career/keys.ts';
 import { stateKey } from '../../src/engine.ts';
 import * as store from '../../src/career/state.ts';
+import type { AnswerView } from '../../src/career/state.ts';
+import * as analysisStore from '../../src/career/analysis/state.ts';
+import { Comparison, type ComparisonDeps } from '../../src/career/analysis/compare.ts';
+import { Blocked } from '../../src/career/job.ts';
+import type { CareerAnswer, CareerJob, CareerReply, CareerReport, PlanCheck } from '../../src/career/job.ts';
+import type { PairSearch } from '../../src/gen/solver.ts';
+import type { PlanProgress, SolverRefusal } from '../../src/solver.ts';
+import type { DeepReadonly } from '../../src/store.ts';
+import { must } from '../../src/must.ts';
 import { fakeClock, flush } from './fakes.ts';
+import { careerJob, careerReport, careerSearch, checkReport, pairSearch, planOption, planReport } from './reports.ts';
 
 vi.mock('#page-data', () => import('./fakepage.ts')); // run.ts reads the solver's fingerprints from it (engine.ts stateKey)
 
 const { answer, answerCareer, runView } = store;
 
 // ---------- the fakes
+interface HeldJob {
+  job: CareerJob;
+  progress: ((p: PlanProgress) => void) | undefined;
+  background: boolean;
+  resolve: (answer: CareerAnswer) => void;
+  reject: (error: Error) => void;
+  waiting: boolean;
+  live: boolean;
+}
 // the engine: each job held for the test. `cold`: jobs sent now wait on the engine's start (a restart rejects them);
 // otherwise they are in flight (a restart leaves them unanswered)
 function fakeEngine() {
-  const engine = { jobs: [], restarts: 0, saves: 0, cold: false, kill: null };
+  const jobs: HeldJob[] = [];
+  let kill: { promise: Promise<void>; resolve: () => void } | null = null;
   const killed = () => {
-    engine.kill = engine.kill || Promise.withResolvers();
-    return engine.kill.promise;
-  };
-  engine.run = (job, progress, background = false) =>
-    new Promise((resolve, reject) =>
-      engine.jobs.push({ job, progress, background, resolve, reject, waiting: engine.cold, live: true }),
-    );
-  engine.busy = () => engine.jobs.some((j) => j.live && !j.background);
-  engine.restart = () => {
-    engine.restarts++;
-    for (const j of engine.jobs.filter((x) => x.live)) {
-      j.live = false;
-      if (j.waiting) j.reject(new Error('superseded'));
+    if (!kill) {
+      let resolve: () => void = () => undefined;
+      const promise = new Promise<void>((r) => {
+        resolve = () => r();
+      });
+      kill = { promise, resolve };
     }
-    engine.kill?.resolve();
-    engine.kill = null;
+    return kill.promise;
   };
-  engine.nextKill = killed;
-  engine.saveState = () => engine.saves++;
-  // answer job n (from 0) with the report r
-  engine.answer = (n, r, ms = 1500) => {
-    const j = engine.jobs[n];
-    if (!j.live) return; // a killed job never answers
-    j.live = false;
-    j.resolve({ r, ms });
+  const engine = {
+    jobs,
+    restarts: 0,
+    saves: 0,
+    cold: false,
+    run: (job: CareerJob, progress?: (p: PlanProgress) => void, background = false) =>
+      new Promise<CareerAnswer>((resolve, reject) => {
+        jobs.push({ job, progress, background, resolve, reject, waiting: engine.cold, live: true });
+      }),
+    busy: () => jobs.some((j) => j.live && !j.background),
+    restart: () => {
+      engine.restarts++;
+      for (const j of jobs.filter((x) => x.live)) {
+        j.live = false;
+        if (j.waiting) j.reject(new Error('superseded'));
+      }
+      kill?.resolve();
+      kill = null;
+    },
+    nextKill: killed,
+    saveState: () => {
+      engine.saves++;
+    },
+    // answer job n (from 0) with the report r
+    answer: (n: number, r: CareerReply | SolverRefusal, ms = 1500) => {
+      const j = must(jobs[n], `job ${n}`);
+      if (!j.live) return; // a killed job never answers
+      j.live = false;
+      j.resolve({ r, ms });
+    },
   };
   return engine;
 }
 
 // the reports: a search's best careers, a plan (a plan job's search: no career reports, its plan in `next`), a check
 // step (a kept plan's follow-up, `kind` "check": the check alone)
-const career = (name) => ({ trainee: { id: 1001, name }, parents: [0, 1], career: name, p_all: 0.01 });
-const searched = (...names) => ({ kind: 'search', results: names.map(career), candidates: 120 });
-const planned = (pick) => ({
-  kind: 'search',
-  results: [],
-  next: { kind: 'plan', choice: career(pick), options: [career(pick)], v0: 9, outcomes: { career: pick } },
-});
-const check = (pending, pairs = null, plan = 'pick') => ({
+const career = (name: string) =>
+  careerReport({
+    trainee: { id: 1001, name, outfits: [], covers: [], schedule_outfit: 0 },
+    parents: [0, 1],
+    career: name,
+    p_all: 0.01,
+  });
+const searched = (...names: string[]) => careerSearch({ results: names.map(career), candidates: 120 });
+const plan = (pick: string) =>
+  planReport({
+    choice: career(pick),
+    options: [planOption(career(pick))],
+    v0: 9,
+    outcomes: { trainee: 1001, parents: [0, 1], career: pick, uncv: [], fixed: [] },
+  });
+const planned = (pick: string) => careerSearch({ results: [], next: plan(pick) });
+const check = (
+  pending: number,
+  pairs: Partial<PairSearch> | null = null,
+  pick = 'pick',
+): { kind: 'check'; robust: PlanCheck } => ({
   kind: 'check',
-  robust: { kind: 'report', plan, pending, stable: true, pairs },
+  robust: checkReport({ plan: pick, pending, stable: true, pairs: pairs && pairSearch(pairs) }),
 });
+// an answer's plan, made (throws: none)
+const doneOf = (a: AnswerView) => {
+  const ps = a.planState;
+  assert.ok(ps.state === 'done', 'a plan');
+  return ps;
+};
+
+// what the run machine tells the comparison, counted (a comparison is made only as the page's own class, so the counts
+// are a subclass's, its machine never run)
+interface Seen {
+  paints: number;
+  stops: number;
+  outdates: number;
+  shown: (DeepReadonly<CareerReport> | null)[];
+  cleared: number;
+  saved: { key: string; value: AnswerView }[];
+}
+const idle: ComparisonDeps = {
+  engine: {
+    run: () => Promise.reject(new Error('no comparison runs here')),
+    restart: () => undefined,
+    saveState: () => undefined,
+  },
+  clock: { setTimer: () => 0 },
+  answers: store,
+  store: analysisStore,
+  page: {
+    shown: () => null,
+    searching: () => false,
+    baseKey: () => '',
+    targets: () => [],
+    isFull: () => false,
+    planTop: 0,
+    draftOf: () => null,
+    draft: () => null,
+  },
+};
+class CountingComparison extends Comparison {
+  readonly seen: Seen;
+  constructor(seen: Seen) {
+    super(idle);
+    this.seen = seen;
+  }
+  override readonly outdate = () => {
+    this.seen.outdates++;
+  };
+  override readonly stop = () => {
+    this.seen.stops++;
+  };
+  override readonly show = (r: DeepReadonly<CareerReport> | null) => {
+    this.seen.shown.push(r);
+  };
+  override readonly clear = () => {
+    this.seen.cleared++;
+  };
+  override readonly keepBaseline = () => undefined;
+}
 
 let pages = 0;
 // a page: its own job (a target no other page's has, so no answer kept by an earlier test is taken), the machine on
-// the fakes. `trainee`: chosen by hand (no plan phase)
-function page({ trainee = null } = {}) {
+// the fakes. `trainee`: chosen by hand (no plan phase). `state`: the job can't be built (`blocked`) or throws (`broken`)
+function page({ trainee = null }: { trainee?: number | null } = {}) {
   const clock = fakeClock(),
     engine = fakeEngine(),
     target = ++pages,
-    seen = { paints: 0, stops: 0, outdates: 0, shown: [], cleared: 0, saved: [] };
-  const job = {
-    cmd: 'career',
-    skills: { targets: [{ group: target }] },
-    deck: {},
-    career: { legacies: [], trainees: trainee ? [trainee] : [], fix: [] },
-  };
-  const deps = {
+    seen: Seen = { paints: 0, stops: 0, outdates: 0, shown: [], cleared: 0, saved: [] },
+    state = { blocked: false, broken: false };
+  const base = careerJob({ legacies: [], trainees: trainee ? [trainee] : [], fix: [] });
+  const job: CareerJob = { ...base, skills: { ...base.skills, targets: [{ group: target }] } };
+  const deps: RunDeps = {
     engine,
     clock,
     store,
     page: {
       job: () => {
-        if (deps.blocked) throw Object.assign(new Error('No target skills.'), { kind: 'empty' });
-        if (deps.broken) throw new Error('the job could not be built');
+        if (state.blocked) throw new Blocked('empty', 'No target skills.');
+        if (state.broken) throw new Error('the job could not be built');
         return job;
       },
       pool: () => ['a', 'b'],
@@ -96,32 +197,31 @@ function page({ trainee = null } = {}) {
       baseKey: () => 'basekey',
       searched: (m, found) => (m.r.results.length ? { kind: 'done', text: found } : { kind: 'error', text: 'none' }),
       loadAnswer: async () => null,
-      saveAnswer: (key, value) => seen.saved.push({ key, value }),
+      saveAnswer: (key, value) => {
+        seen.saved.push({ key, value });
+      },
     },
-    analysis: {
-      outdate: () => seen.outdates++,
-      stop: () => seen.stops++,
-      show: (r) => seen.shown.push(r),
-      clear: () => seen.cleared++,
-      keepBaseline: () => undefined,
-    },
+    analysis: new CountingComparison(seen),
     view: {
       shown: () => answerCareer.peek(),
-      paint: () => seen.paints++,
+      paint: () => {
+        seen.paints++;
+      },
     },
-    blocked: false,
-    broken: false,
   };
-  return { run: createRun(deps), deps, clock, engine, seen, job };
+  return { run: createRun(deps), deps, state, clock, engine, seen, job };
 }
+type Page = ReturnType<typeof page>;
+// the job sent `i`th (from the end when negative)
+const held = (p: Page, i: number) => must(p.engine.jobs.at(i), `job ${i}`);
 // an edit and its pause: the search's job is sent
-async function edited(p) {
+async function edited(p: Page) {
   p.run.schedule();
   p.clock.advance(PAUSE_MS);
   await flush();
 }
 // the search answered with `names`, then the plan with `pick`
-async function answered(p, n, names, pick) {
+async function answered(p: Page, n: number, names: string[], pick?: string) {
   p.engine.answer(n, searched(...names));
   await flush();
   if (pick !== undefined) {
@@ -129,7 +229,7 @@ async function answered(p, n, names, pick) {
     await flush();
   }
 }
-const sent = (p) => p.engine.jobs.length;
+const sent = (p: Page) => p.engine.jobs.length;
 
 // ---------- staleness
 test("an edit during the search: the old run's late answer is dropped, the new run's is shown", async () => {
@@ -142,7 +242,7 @@ test("an edit during the search: the old run's late answer is dropped, the new r
   p.run.schedule();
   assert.equal(p.engine.restarts, 1, 'a job in flight is cut short');
   const shownBefore = answer.peek();
-  p.engine.jobs[0].live = true; // (as if the worker answered before the kill landed)
+  held(p, 0).live = true; // (as if the worker answered before the kill landed)
   p.engine.answer(0, searched('old'));
   await flush();
   assert.equal(answer.peek(), shownBefore, 'the old run draws nothing');
@@ -150,8 +250,8 @@ test("an edit during the search: the old run's late answer is dropped, the new r
   p.clock.advance(PAUSE_MS);
   await flush();
   await answered(p, 1, ['new'], 'pick');
-  assert.equal(answer.peek().last.r.results[0].career, 'new');
-  assert.equal(answer.peek().planState.r.choice.career, 'pick');
+  assert.equal(answer.peek().last?.r.results[0]?.career, 'new');
+  assert.equal(doneOf(answer.peek()).r.choice?.career, 'pick');
   assert.equal(runView.peek().searching, false);
 });
 
@@ -166,7 +266,7 @@ test('two schedules in one task: one pause, one job, nothing killed', async () =
   p.clock.advance(PAUSE_MS);
   await flush();
   assert.equal(sent(p), 1, 'one job after the pause');
-  assert.equal(p.engine.jobs[0].job, p.job);
+  assert.equal(held(p, 0).job, p.job);
   p.run.schedule(); // the same job in flight: it goes on
   p.clock.advance(PAUSE_MS);
   await flush();
@@ -178,15 +278,15 @@ test('an edit during the plan: its late progress and answer are dropped', async 
   await edited(p);
   await answered(p, 0, ['best']);
   assert.equal(runView.peek().phase, 'plan');
-  assert.deepEqual(p.engine.jobs[1].job.career.next, {}, "the plan job's next");
-  assert.equal(p.engine.jobs[1].job.career.no_reports, true);
+  assert.deepEqual(held(p, 1).job.career.next, {}, "the plan job's next");
+  assert.equal(held(p, 1).job.career.no_reports, true);
   p.job.skills.targets.push({ group: 901 });
   p.run.schedule();
   const before = runView.peek();
-  p.engine.jobs[1].progress({ ph: 2, k: 0, n: 3 });
+  must(held(p, 1).progress, 'its progress')({ ph: 2, k: 0, n: 3 });
   assert.equal(runView.peek(), before, "the old plan's progress writes nothing");
   const shownBefore = answer.peek();
-  p.engine.jobs[1].live = true;
+  held(p, 1).live = true;
   p.engine.answer(1, planned('stale'));
   await flush();
   assert.equal(answer.peek(), shownBefore, 'nothing of the old run is drawn');
@@ -214,15 +314,15 @@ test('a restart rejects a job waiting on the start: no error is shown, and the n
 
 test('a Blocked job ends the run unsearched, with its message; a thrown job error the same, as an error', async () => {
   const p = page();
-  p.deps.blocked = true;
+  p.state.blocked = true;
   await edited(p);
   assert.equal(sent(p), 0);
   assert.equal(answer.peek().status.kind, 'empty');
   assert.equal(answer.peek().status.text, 'No target skills.');
   assert.equal(runView.peek().searching, false);
   assert.equal(p.seen.cleared, 1, 'the analysis is cleared');
-  p.deps.blocked = false;
-  p.deps.broken = true;
+  p.state.blocked = false;
+  p.state.broken = true;
   await edited(p);
   assert.equal(sent(p), 0);
   assert.deepEqual(answer.peek().status, { kind: 'error', text: 'the job could not be built', act: undefined });
@@ -237,7 +337,7 @@ test('a failure clears the analysis; a Blocked edit under a live ticker ends it'
   p.job.skills.targets.push({ group: 990 });
   await edited(p);
   assert.equal(p.clock.pending().length, 1, 'ticker live');
-  p.deps.blocked = true;
+  p.state.blocked = true;
   await edited(p);
   assert.equal(p.clock.pending().length, 0, 'no ticker after Blocked');
 });
@@ -246,7 +346,7 @@ test('a failed plan: not kept, not saved, and the same job runs again', async ()
   await edited(p);
   p.engine.answer(0, searched('best'));
   await flush();
-  p.engine.answer(1, { kind: 'search', results: [], next: { kind: 'refusal', error: 'no option' } });
+  p.engine.answer(1, careerSearch({ results: [], next: { kind: 'refusal', error: 'no option' } }));
   await flush();
   assert.equal(answer.peek().planState.state, 'error');
   assert.equal(p.seen.saved.length, 0, 'not saved');
@@ -272,14 +372,14 @@ test('an undo onto a kept answer shows it at once, with her analysis; one whose 
   await edited(p);
   assert.equal(searches(), jobs + 2, 'no search for the undo (the edit made two: its search and its plan)');
   assert.equal(answer.peek().planState.state, 'done');
-  assert.equal(answer.peek().last.r.results[0].career, 'best');
+  assert.equal(answer.peek().last?.r.results[0]?.career, 'best');
   assert.equal(p.seen.shown.length, shown + 2, 'her analysis is shown with it');
   // a failed plan's answer: an edit away and back runs the job again
   const q = page();
   await edited(q);
   q.engine.answer(0, searched('best'));
   await flush();
-  q.engine.answer(1, { kind: 'search', results: [], next: { kind: 'refusal', error: 'no option' } });
+  q.engine.answer(1, careerSearch({ results: [], next: { kind: 'refusal', error: 'no option' } }));
   await flush();
   q.job.skills.targets.push({ group: 992 });
   await edited(q);
@@ -291,8 +391,8 @@ test('an undo onto a kept answer shows it at once, with her analysis; one whose 
 test('the engine failing or refusing: the error is shown and the run ends', async () => {
   const p = page();
   await edited(p);
-  p.engine.jobs[0].live = false;
-  p.engine.jobs[0].reject(new Error('the solver failed to start'));
+  held(p, 0).live = false;
+  held(p, 0).reject(new Error('the solver failed to start'));
   await flush();
   assert.equal(answer.peek().status.text, 'the solver failed to start');
   assert.equal(runView.peek().searching, false);
@@ -361,28 +461,28 @@ test("a run's check sends every variant through its own writes, and a new plan s
   const p = page();
   await edited(p);
   await answered(p, 0, ['best'], 'pick');
-  const plan = answer.peek().planState;
-  assert.equal(plan.state, 'done');
+  const made = answer.peek().planState;
+  assert.equal(made.state, 'done');
   assert.equal(p.engine.saves, 1, "a plan made: the worker's work is kept");
   assert.equal(sent(p), 3, 'the first check job');
-  assert.deepEqual(p.engine.jobs[2].job.career.next, { robust: 'next', pair_search: true });
-  assert.equal(p.engine.jobs[2].background, true);
+  assert.deepEqual(held(p, 2).job.career.next, { robust: 'next', pair_search: true });
+  assert.equal(held(p, 2).background, true);
   for (const [n, reply] of [check(2), check(1), check(0)].entries()) {
     p.engine.answer(2 + n, reply);
     await flush();
   }
-  assert.equal(answer.peek().planState.id, plan.id, 'the same plan, its record replaced by each step');
+  assert.equal(doneOf(answer.peek()).id, made.id, 'the same plan, its record replaced by each step');
   assert.equal(sent(p), 6, 'the pair search after the last variant');
   // an edit, and its run ends on a new plan: the check's late reply writes nothing
   p.job.skills.targets.push({ group: 908 });
   await edited(p);
   await answered(p, 6, ['best'], 'pick');
-  const fresh = answer.peek().planState;
-  p.engine.jobs[5].live = true;
+  const fresh = doneOf(answer.peek());
+  held(p, 5).live = true;
   p.engine.answer(5, check(0, { trainees: [] }));
   await flush();
-  assert.equal(answer.peek().planState.r.robust, undefined, "the old plan's check did not write the new one");
-  assert.equal(answer.peek().planState.id, fresh.id);
+  assert.equal(doneOf(answer.peek()).r.robust, undefined, "the old plan's check did not write the new one");
+  assert.equal(doneOf(answer.peek()).id, fresh.id);
 });
 
 test("the engine restarted under a check: the check's race ends with the kill, and a new run's edit leaves it unmarked", async () => {
@@ -393,7 +493,7 @@ test("the engine restarted under a check: the check's race ends with the kill, a
   const paints = alone.seen.paints;
   alone.engine.restart();
   await flush();
-  assert.equal(answer.peek().planState.r.check_unavailable, true);
+  assert.equal(doneOf(answer.peek()).r.check_unavailable, true);
   assert.equal(alone.seen.paints - paints, 1, 'the status line follows the check');
   // an edit first: the check is stale and marks nothing
   const p = page();
@@ -405,7 +505,8 @@ test("the engine restarted under a check: the check's race ends with the kill, a
   assert.equal(p.engine.restarts, 0);
   p.engine.restart(); // (a stopped comparison kills the worker)
   await flush();
-  assert.notEqual(answer.peek().planState.r?.check_unavailable, true, 'a stale check marks nothing');
+  const shown = answer.peek().planState;
+  assert.notEqual(shown.state === 'done' && shown.r.check_unavailable, true, 'a stale check marks nothing');
 });
 
 // ---------- the answers kept and the reload
@@ -427,11 +528,11 @@ test('an edit and its undoing: the kept answer is drawn again with no job, and i
   p.run.schedule();
   p.clock.advance(PAUSE_MS);
   await flush();
-  assert.equal(answer.peek().last.r.results[0].career, 'best');
-  assert.equal(answer.peek().planState.r.robust.pending, 1, 'the kept answer, with its check as far as it ran');
+  assert.equal(answer.peek().last?.r.results[0]?.career, 'best');
+  assert.equal(doneOf(answer.peek()).r.robust?.pending, 1, 'the kept answer, with its check as far as it ran');
   assert.equal(runView.peek().searching, false);
   assert.equal(sent(p), jobs + 1, 'no search: one job, its check resumed');
-  assert.equal(p.engine.jobs.at(-1).background, true);
+  assert.equal(held(p, -1).background, true);
   assert.equal(p.clock.pending().length, 0, "the third run's ticker ends with it");
 });
 
@@ -439,11 +540,11 @@ test('a reload: the answer kept for this setup and these fingerprints is drawn a
   const first = page();
   await edited(first);
   await answered(first, 0, ['best'], 'pick');
-  const [{ key, value }] = first.seen.saved;
+  const { key, value } = must(first.seen.saved[0], 'the answer saved');
   assert.ok(key.startsWith(`${stateKey()}\n`), "the saved answer's key carries the fingerprints");
   // the next visit, the same setup (made here on another page's job: the first page's answer is in the cache too)
   const again = page(),
-    savedFor = (p, fingerprints = stateKey()) => {
+    savedFor = (p: Page, fingerprints = stateKey()) => {
       const saved = { key: `${fingerprints}\n${jobKey(p.job)}\n${p.deps.page.places()}`, value };
       return async () => saved;
     };
@@ -451,8 +552,8 @@ test('a reload: the answer kept for this setup and these fingerprints is drawn a
   await again.run.start();
   await flush();
   assert.equal(again.engine.jobs.filter((j) => !j.background).length, 0, 'nothing searched');
-  assert.equal(answer.peek().last.r.results[0].career, 'best');
-  assert.notEqual(answer.peek().planState.id, value.planState.id, 'the saved plan gets an id of this page');
+  assert.equal(answer.peek().last?.r.results[0]?.career, 'best');
+  assert.notEqual(doneOf(answer.peek()).id, doneOf(value).id, 'the saved plan gets an id of this page');
   assert.equal(again.engine.jobs.length, 1, 'its check resumes');
   // another solver or data release: the saved answer is not taken
   const other = page();
@@ -460,23 +561,23 @@ test('a reload: the answer kept for this setup and these fingerprints is drawn a
   await other.run.start();
   await flush();
   assert.equal(other.engine.jobs.length, 1, 'a search is sent');
-  assert.equal(other.engine.jobs[0].background, false);
+  assert.equal(held(other, 0).background, false);
 });
 
 test("Compare's kept plan: the plan phase takes it and sends no plan job", async () => {
   const p = page();
   const jp = { ...p.job, career: { ...p.job.career, next: {}, no_reports: true } };
-  store.keepComparisonPlan(jp, planned('kept').next, 7);
+  store.keepComparisonPlan(jp, plan('kept'), 7);
   await edited(p);
   p.engine.answer(0, searched('best'));
   await flush();
-  assert.equal(answer.peek().planState.r.choice.career, 'kept');
-  assert.equal(answer.peek().planState.ms, 7);
+  assert.equal(doneOf(answer.peek()).r.choice?.career, 'kept');
+  assert.equal(doneOf(answer.peek()).ms, 7);
   assert.equal(p.engine.jobs.filter((j) => !j.background).length, 1, 'only the search was sent');
   // its check runs, and each step reaches the kept plan too: a run that takes it again finds the check as far as it ran
   p.engine.answer(1, check(1, null, 'kept'));
   await flush();
-  assert.deepEqual(store.keptPlan(planKey(jp)).r.robust, check(1, null, 'kept').robust);
+  assert.deepEqual(store.keptPlan(planKey(jp))?.r.robust, check(1, null, 'kept').robust);
 });
 
 test('a trainee chosen by hand: no plan phase, the best odds shown', async () => {
@@ -486,7 +587,7 @@ test('a trainee chosen by hand: no plan phase, the best odds shown', async () =>
   await flush();
   assert.equal(answer.peek().planState.state, 'none');
   assert.equal(sent(p), 1);
-  assert.equal(p.seen.shown.at(-1).career, 'mine');
+  assert.equal(p.seen.shown.at(-1)?.career, 'mine');
 });
 
 // review-7 P1: Compare's kept plan whose check an edit cut short (its record holds the variants run so far): a run that
@@ -494,18 +595,18 @@ test('a trainee chosen by hand: no plan phase, the best odds shown', async () =>
 test("Compare's kept plan with its check cut short: the run that takes it resumes the check", async () => {
   const p = page();
   const jp = { ...p.job, career: { ...p.job.career, next: {}, no_reports: true } },
-    plan = planned('kept').next;
-  store.keepComparisonPlan(jp, { ...plan, robust: check(1, null, 'kept').robust }, 7);
+    kept = plan('kept');
+  store.keepComparisonPlan(jp, { ...kept, robust: check(1, null, 'kept').robust }, 7);
   await edited(p);
   p.engine.answer(0, searched('best'));
   await flush();
-  assert.equal(answer.peek().planState.r.robust.pending, 1);
+  assert.equal(doneOf(answer.peek()).r.robust?.pending, 1);
   assert.equal(p.engine.jobs.length, 2, 'a check job');
-  assert.equal(p.engine.jobs[1].background, true);
+  assert.equal(held(p, 1).background, true);
   // its check done, or unavailable: nothing more is sent
   for (const r of [
-    { ...plan, robust: check(0, { trainees: [] }, 'kept').robust },
-    { ...plan, check_unavailable: true },
+    { ...kept, robust: check(0, { trainees: [] }, 'kept').robust },
+    { ...kept, check_unavailable: true },
   ]) {
     const q = page();
     store.keepComparisonPlan({ ...q.job, career: { ...q.job.career, next: {}, no_reports: true } }, r, 7);

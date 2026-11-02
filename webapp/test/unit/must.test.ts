@@ -6,8 +6,10 @@ import { test } from 'vitest';
 import { assert as holds, must, orNull } from '../../src/must.ts';
 
 class Expected extends Error {}
-const reported = [];
-globalThis.reportError = (error) => reported.push(error);
+const reported: unknown[] = [];
+globalThis.reportError = (error: unknown) => {
+  reported.push(error);
+};
 
 test('orNull: the value; null for an expected error, unreported; null for any other, reported', () => {
   reported.length = 0;

@@ -19,13 +19,16 @@ import { setupViews } from '../../src/ui/Setup.tsx';
 import { SettingsSort, SortMenu } from '../../src/ui/SortMenu.tsx';
 import { gameData, loadData } from '../../src/data.ts';
 import { SKILLS, UMAS } from './fakepage.ts';
+import { must } from '../../src/must.ts';
+import { find } from './dom.ts';
 
 vi.mock('#page-data', () => import('./fakepage.ts'));
 
 document.documentElement.className = 'game'; // (the planner pages' class)
 // the editors' boxes, as both planner pages' layouts hold them (career/Layout.tsx, loop/Layout.tsx), and the view
 // each draws (ui/Setup.tsx `setupViews`)
-const BOXES = {
+type BoxId = 'scen-dd' | 'rank-ctl' | 'skills-panel' | 'set-umas-root' | 'set-cards-root';
+const BOXES: Record<BoxId, keyof ReturnType<typeof setupViews>> = {
   'scen-dd': 'scenario',
   'rank-ctl': 'rank',
   'skills-panel': 'targets',
@@ -36,25 +39,32 @@ for (const id of Object.keys(BOXES)) document.body.appendChild(document.createEl
 // two skills of one white name (the GM era's two "Pressure" skills)
 SKILLS.push([20301, 'Pressure', null], [20302, 'Pressure', null]);
 // the outfits' labels the Umas panel shows (the fake page's outfits have none)
-for (const u of UMAS) for (const o of u.outfits || []) o.label = `[Outfit ${o.id}]`;
+for (const u of UMAS) for (const o of u.outfits || []) Object.assign(o, { label: `[Outfit ${o.id}]` });
 await loadData(null);
 
 const KEY = 'llp:settings';
 // the store loaded from a new storage holding these shared settings; returns what is stored, read afresh each call
-const fresh = (common) => {
+const fresh = (common: Record<string, unknown>) => {
   const map = new Map([[KEY, JSON.stringify({ v: 2, era: 'global', common, global: {} })]]);
-  S.initStore(() => ({ getItem: (k) => map.get(k) ?? null, setItem: (k, v) => void map.set(k, v) }));
-  return () => JSON.parse(map.get(KEY)).common;
+  S.initStore(() => ({
+    getItem: (k) => map.get(k) ?? null,
+    setItem: (k, v) => void map.set(k, v),
+    removeItem: (k) => void map.delete(k),
+  }));
+  return () => JSON.parse(map.get(KEY) ?? 'null').common;
 };
+// a box of the page by its id
+const boxOf = (id: string) => must(document.getElementById(id), `the box #${id}`);
 // an editor into its box, behind its guard, as the layouts draw it
-const mount = (id) => render(setupViews({ page: 'career' })[BOXES[id]], document.getElementById(id));
+const mount = (id: BoxId) => render(setupViews({ page: 'career' })[BOXES[id]], boxOf(id));
 const settle = async () => {
   for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
 };
-const byId = (root, id) => root.querySelector(`#${id}`);
-const text = (e) => e.textContent.trim();
+const byId = (root: ParentNode, id: string) => find(root, `#${id}`);
+const text = (e: Element) => (e.textContent ?? '').trim();
 // typing into a box: its value, then the input event
-const type = (box, value) => {
+const type = (box: HTMLElement, value: string) => {
+  if (!(box instanceof HTMLInputElement)) throw new Error(`#${box.id} is not a text box`);
   box.value = value;
   box.dispatchEvent(new Event('input', { bubbles: true }));
 };
@@ -72,8 +82,12 @@ test('presets by name: Load, a rename onto a taken name (refused), a rename, Ove
   openPresets();
   await settle();
   const rows = () => [...root.querySelectorAll('#pr-list [role="group"]')];
-  const row = (name) => within(byId(root, 'pr-list')).getByRole('group', { name });
-  const button = (name, label) => [...row(name).querySelectorAll('button')].find((b) => text(b) === label);
+  const row = (name: string) => within(byId(root, 'pr-list')).getByRole('group', { name });
+  const button = (name: string, label: string) =>
+    must(
+      [...row(name).querySelectorAll('button')].find((b) => text(b) === label),
+      `${name}'s ${label}`,
+    );
   assert.deepEqual(
     rows().map((r) => r.getAttribute('aria-label')),
     ['A', 'B'],
@@ -83,13 +97,13 @@ test('presets by name: Load, a rename onto a taken name (refused), a rename, Ove
   await settle();
   assert.deepEqual(stored().targets, [{ group: 20046 }, { group: 20166 }]);
   assert.deepEqual(
-    stored().presets.map((p) => p.name),
+    stored().presets.map((p: { name: string }) => p.name),
     ['A', 'B'],
   );
   // A's view: a rename onto B is refused and stores nothing; a rename to "  C " stores C (trimmed) in A's place
   openPresets();
   await settle();
-  row('A').querySelector('button[aria-haspopup="dialog"]').click(); // its name and count: its view
+  find(row('A'), 'button[aria-haspopup="dialog"]').click(); // its name and count: its view
   await settle();
   assert.equal(text(byId(root, 'prv-title')), 'A');
   byId(root, 'prv-rename').click();
@@ -100,7 +114,7 @@ test('presets by name: Load, a rename onto a taken name (refused), a rename, Ove
   await settle();
   assert.match(text(byId(root, 'prv-msg')), /“B” is taken/);
   assert.deepEqual(
-    stored().presets.map((p) => p.name),
+    stored().presets.map((p: { name: string }) => p.name),
     ['A', 'B'],
   );
   type(byId(root, 'prv-name'), '  C ');
@@ -113,7 +127,10 @@ test('presets by name: Load, a rename onto a taken name (refused), a rename, Ove
     { name: 'B', groups: [20046, 20166] },
   ]);
   // the view closed, C's row (keyed by its new name) overwrites C alone, then its trash deletes C alone
-  [...byId(root, 'pr-view').querySelectorAll('button')].find((b) => text(b) === 'Close').click();
+  must(
+    [...byId(root, 'pr-view').querySelectorAll('button')].find((b) => text(b) === 'Close'),
+    'Close',
+  ).click();
   await settle();
   button('C', 'Overwrite').click();
   await settle();
@@ -133,21 +150,22 @@ test("a target's × removes its own place (one skill held twice too); the focus 
   const stored = fresh({ targets: [{ group: 20049 }, { group: 20159 }, { group: 20049 }, { group: 20166 }] });
   mount('skills-panel');
   await settle();
-  const box = document.getElementById('skills-panel');
+  const box = boxOf('skills-panel');
   const removes = () => within(box).getAllByRole('button', { name: /^Remove / });
-  const groups = () => stored().targets.map((t) => t.group);
+  const groups = () => stored().targets.map((t: { group: number }) => t.group);
   const labels = () => removes().map((b) => b.getAttribute('aria-label'));
   assert.deepEqual(labels(), ['Remove Skill 20049', 'Remove Skill 20159', 'Remove Skill 20049', 'Remove Skill 20166']);
-  removes()[1].click(); // the second place
+  const remove = (i: number) => must(removes()[i], `the × of place ${i + 1}`);
+  remove(1).click(); // the second place
   await settle();
   assert.deepEqual(groups(), [20049, 20049, 20166]);
   assert.deepEqual(labels(), ['Remove Skill 20049', 'Remove Skill 20049', 'Remove Skill 20166']);
   assert.ok(document.activeElement === removes()[1], 'the focus on the next place');
-  removes()[0].click();
+  remove(0).click();
   await settle();
   assert.deepEqual(groups(), [20049, 20166]);
   assert.ok(document.activeElement === removes()[0], 'the focus on the next place');
-  removes()[1].click(); // the last
+  remove(1).click(); // the last
   await settle();
   assert.deepEqual(groups(), [20049]);
   assert.ok(document.activeElement === removes()[0], 'the focus on the last place left');
@@ -158,7 +176,7 @@ test("the lineage rank's ? opens its note and stops its click there (other popup
   fresh({});
   mount('rank-ctl');
   await settle();
-  const box = document.getElementById('rank-ctl'),
+  const box = boxOf('rank-ctl'),
     question = byId(box, 'rank-q');
   let reached = false;
   const outside = () => {
@@ -186,8 +204,7 @@ test('a sort menu given a value it does not list (a hand-edited storage) shows i
     { k: 'a', label: 'First', hint: '' },
     { k: 'b', label: 'Second', hint: '' },
   ];
-  const props = { id: 'vs', cls: 'btn', what: 'order', items, value: 'gone', arrow: '↓', title: '', onPick: () => 0 };
-  render(h(SortMenu, props), root);
+  render(h(SortMenu, { id: 'vs', what: 'order', items, value: 'gone', arrow: '↓', title: '', onPick: () => 0 }), root);
   await settle();
   assert.equal(text(byId(root, 'vs')), 'First ↓');
   render(null, root);
@@ -223,10 +240,10 @@ test('a commit of a setting the editors do not show redraws none of them and re-
   mount('set-umas-root');
   mount('skills-panel');
   await settle();
-  type(byId(document.getElementById('skills-panel'), 't-add'), 'sk'); // the suggestions listed
+  type(byId(boxOf('skills-panel'), 't-add'), 'sk'); // the suggestions listed
   await settle();
   // the components drawn from here on (Preact's hook, chained to the signals' own), and each tile's reads of her id
-  const drawn = [],
+  const drawn: string[] = [],
     chained = options.diffed;
   options.diffed = (vnode) => {
     if (typeof vnode.type === 'function') drawn.push(vnode.type.name);
@@ -249,13 +266,14 @@ test('a commit of a setting the editors do not show redraws none of them and re-
     await settle();
     readsAfter = idReads;
   } finally {
-    options.diffed = chained;
+    if (chained) options.diffed = chained;
+    else delete options.diffed;
     for (const u of gameData().umas) Object.defineProperty(u, 'id', { value: u.id, writable: true, enumerable: true });
   }
   assert.deepEqual(drawn, [], 'no editor redrawn');
   assert.equal(readsAfter, 0, "no tile's state re-read");
-  render(null, document.getElementById('set-umas-root'));
-  render(null, document.getElementById('skills-panel'));
+  render(null, boxOf('set-umas-root'));
+  render(null, boxOf('skills-panel'));
 });
 
 test("a list's keys are unique: a target held twice, in the list and in a preset's view; two skills of one name", async () => {
@@ -264,19 +282,21 @@ test("a list's keys are unique: a target held twice, in the list and in a preset
     targets: [{ group: 20049 }, { group: 20159 }, { group: 20049 }, { group: 20301 }, { group: 20302 }],
   });
   // preact/debug says so on the console
-  const said = [],
+  const said: string[] = [],
     { error } = console;
-  console.error = (...args) => said.push(String(args[0]));
+  console.error = (...args: unknown[]) => {
+    said.push(String(args[0]));
+  };
   try {
     mount('skills-panel');
     await settle();
-    const panel = document.getElementById('skills-panel');
+    const panel = boxOf('skills-panel');
     type(byId(panel, 't-add'), 'pressure'); // both are targets already: a note each
     await settle();
     assert.equal(byId(panel, 't-sugg').querySelectorAll('p').length, 2);
     openPresets();
     await settle();
-    panel.querySelector('#pr-list button[aria-haspopup="dialog"]').click();
+    find(panel, '#pr-list button[aria-haspopup="dialog"]').click();
     await settle();
     assert.equal(byId(panel, 'prv-tiles').childNodes.length, 3);
     render(null, panel);
@@ -293,15 +313,17 @@ test('two picks of the rank in one task (an edit and its undoing, before any red
   fresh({ rank: 'below_ss' });
   mount('rank-ctl');
   await settle();
-  const box = document.getElementById('rank-ctl'),
-    pill = (v) => box.querySelector(`button[data-v="${v}"]`);
-  const written = [],
-    stop = S.fields.rank.subscribe((rank) => written.push(rank));
+  const box = boxOf('rank-ctl'),
+    pill = (v: string) => find(box, `button[data-v="${v}"]`);
+  const written: string[] = [],
+    stop = S.fields.rank.subscribe((rank) => {
+      written.push(rank);
+    });
   pill('ss_and_up').click();
   pill('below_ss').click();
   await settle();
   const group = byId(box, 'rank'),
-    key = (k) => group.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+    key = (k: string) => group.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
   key('ArrowRight');
   key('ArrowRight'); // (two pills: round to where it was)
   await settle();

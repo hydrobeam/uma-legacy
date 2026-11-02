@@ -12,7 +12,7 @@ import '@preact/signals';
 import { h, render } from 'preact';
 import * as vs from '../../src/veterans/store.ts';
 import { initStore, setTargets } from '../../src/settings.ts';
-import { dropAnswer, showAnswer } from '../../src/career/state.ts';
+import { type Answer, dropAnswer, showAnswer } from '../../src/career/state.ts';
 import { takeCareer } from '../../src/career/options.ts';
 import { draftOf } from '../../src/career/analysis/view.tsx';
 import { legaciesOf } from '../../src/career/analysis/Details.tsx';
@@ -20,39 +20,29 @@ import { legacyNumber, legacyVet } from '../../src/career/current.ts';
 import { Targets } from '../../src/career/view/Sections.tsx';
 import { loadData } from '../../src/data.ts';
 import { memory } from './fakes.ts';
+import { allG, careerReport, careerTarget, lineageNode, veteran } from './reports.ts';
 
 vi.mock('#page-data', () => import('./fakepage.ts'));
 
 document.documentElement.className = 'game'; // (the planner pages' class)
-await loadData({ blues: {}, pinks: {}, uniques: {}, races: [], mobs: [], sourced: [] });
+await loadData({ blues: {}, pinks: {}, uniques: {}, races: [], mobs: [], sourced: [], factors: {}, saddles: {} });
 initStore(() => memory());
 
-const node = (chara) => ({ chara, sparks: {}, pinks: {}, blues: {}, greens: {}, wins: [] });
-const vet = (id, chara) => ({ id, src: 'hand', borrowed: false, ...node(chara), parents: [node(1), node(2)] });
-// grades G at every aptitude
-const allG = { distance: [1, 1, 1, 1], surface: [1, 1], style: [1, 1, 1, 1] };
+const vet = (id: string, chara: number) =>
+  veteran(id, { src: 'hand', ...lineageNode(chara), parents: [lineageNode(1), lineageNode(2)] });
 // a career on the job's veterans #3 and #4 (legacy indices 2 and 3): what the report and the plan rows carry
-const career = {
-  trainee: { id: 1005, name: 'Uma E', outfits: [] },
+const career = careerReport({
+  trainee: { id: 1005, name: 'Uma E', outfits: [], covers: [], schedule_outfit: 0 },
   parents: [2, 3],
-  slots: [],
-  targets: [],
   p_all: 0.5,
   p_minus1: 0.5,
-  expected: 0,
-  bound: 0,
-  deck: { cards: [], card_ids: [], odds: [] },
-  pinks: [],
   aptitudes: { base: allG, start: { kind: 'known', start: allG, fire: [] }, pink_gen: [] },
-  schedule: null,
-  outcome_sets: null,
-  g1_wins: null,
-};
+});
 // the pool a, b, c, d; the answer on show was searched on it; then b leaves while the answer is held
 function heldAnswer() {
   vs.initVets({ storage: () => memory(), hidden: () => true, afterFrame: (f) => f() });
   vs.addVets([vet('a', 1001), vet('b', 1002), vet('c', 1003), vet('d', 1004)]);
-  const answer = { status: { kind: 'done', text: '' }, last: null, planState: { state: 'none' } };
+  const answer: Answer = { status: { kind: 'done', text: '' }, last: null, planState: { state: 'none' } };
   dropAnswer();
   showAnswer(answer, null, ['a', 'b', 'c', 'd']);
   vs.removeVet('b');
@@ -92,10 +82,9 @@ test("a career's parents are numbered by their place in the pool now, as the poo
 
 test("the targets' count chart is the report's: a target removed since leaves it whole", async () => {
   setTargets([{ group: 20049 }, { group: 20166 }]);
-  const target = (group, p) => ({ group, p, buy: {} });
   const r = {
     ...career,
-    targets: [target(20049, 0.5), target(20166, 0.5), target(20159, 0.5)],
+    targets: [careerTarget(20049, 0.5), careerTarget(20166, 0.5), careerTarget(20159, 0.5)],
     outcome_sets: [0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125],
     expected: 1.5,
   };

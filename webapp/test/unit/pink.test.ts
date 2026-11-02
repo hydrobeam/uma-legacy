@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { drawPink } from '../../src/pink.ts';
-import { Aptitude } from '../../src/gen/solver.ts';
+import { Aptitude, type Aptitudes, type Grade, type Grades } from '../../src/gen/solver.ts';
 
 // every aptitude in the solver's order, the sprint first (`pink_gen`)
 const pinkGen = [
@@ -21,14 +21,14 @@ const pinkGen = [
   Aptitude.EndCloser,
 ].map((aptitude) => ({ aptitude, p: 0.1 }));
 // her grades: `a` at sprint, G elsewhere
-const grades = (a) => ({ distance: [a, 1, 1, 1], surface: [1, 1], style: [1, 1, 1, 1] });
-const sequence = (values) => {
+const grades = (a: Grade): Grades => ({ distance: [a, 1, 1, 1], surface: [1, 1], style: [1, 1, 1, 1] });
+const sequence = (values: number[]) => {
   let i = 0;
   return () => values[i++] ?? 0.5;
 };
 
 test('drawPink draws a several-outcome start by its chances first', () => {
-  const ap = {
+  const ap: Aptitudes = {
     base: grades(1),
     pink_gen: pinkGen,
     start: {
@@ -49,6 +49,6 @@ test('drawPink draws a several-outcome start by its chances first', () => {
 });
 
 test('drawPink on one known start reads no outcome number', () => {
-  const ap = { base: grades(1), pink_gen: pinkGen, start: { kind: 'known', start: grades(8), fire: [] } };
+  const ap: Aptitudes = { base: grades(1), pink_gen: pinkGen, start: { kind: 'known', start: grades(8), fire: [] } };
   assert.deepEqual(drawPink(ap, sequence([0.1, 0.5])), { pinks: { [Aptitude.Sprint]: 2 }, apt: grades(8) });
 });

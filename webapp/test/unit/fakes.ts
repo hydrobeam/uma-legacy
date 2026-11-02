@@ -1,4 +1,4 @@
-// Fakes the node tests of the run machines share (loop.test.mjs, careerrun.test.mjs): storage in a Map, a clock and
+// Fakes the node tests of the run machines share (loop.test.ts, careerrun.test.ts): storage in a Map, a clock and
 // timers the test moves, and a way to let pending promise callbacks run.
 // a localStorage in a Map
 export const memory = () => {

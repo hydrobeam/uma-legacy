@@ -8,7 +8,7 @@ import { test, vi } from 'vitest';
 import { loadData } from '../../src/data.ts';
 import { parseExport } from '../../src/umadump.ts';
 import { jobLegacy, knownPinks, unknownPinksIn } from '../../src/veterans/records.ts';
-import { asVeteran } from '../../src/veterans/store.ts';
+import { asVeteran, type Veteran } from '../../src/veterans/store.ts';
 import { Aptitude } from '../../src/gen/solver.ts';
 
 vi.mock('#page-data', () => import('./fakepage.ts'));
@@ -17,7 +17,7 @@ await loadData({ blues: {}, pinks: {}, uniques: {}, races: [], mobs: [], sourced
 // factor_id = factor group x 100 + stars: 3202 a mile pink at 2 stars, 1503 a pink of group 15 (no such aptitude)
 const MILE_2 = 3202,
   UNKNOWN_3 = 1503;
-const exported = (factors) =>
+const exported = (factors: number[]) =>
   JSON.stringify([
     {
       card_id: 100101,
@@ -36,8 +36,9 @@ test("the game's export leaves out a pink of an unknown aptitude and counts it",
   const read = parseExport(exported([MILE_2, UNKNOWN_3]));
   assert.equal(read.veterans.length, 1, 'one veteran');
   const [her] = read.veterans;
+  assert.ok(her);
   assert.deepEqual(her.pinks, { [Aptitude.Mile]: 2 }, 'her known pink kept');
-  assert.deepEqual(her.parents[0].pinks, {}, "her parent's unknown pink left out");
+  assert.deepEqual(her.parents[0]?.pinks, {}, "her parent's unknown pink left out");
   assert.equal(read.unknownPinks, 2, 'one of hers and one of her parent');
   assert.deepEqual(parseExport(exported([MILE_2])).unknownPinks, 1, "the parent's alone");
 });
@@ -51,7 +52,7 @@ test('a stored or pasted pink map keeps the solver aptitudes with 1 to 3 stars',
   const raw = {
     id: 'h1',
     // (an import: her parent with no uma is one the record lacks, absent; on a veteran entered here she would be one
-    // not entered, which no job takes: complete.test.mjs)
+    // not entered, which no job takes: complete.test.ts)
     src: 'import',
     borrowed: false,
     chara: 1001,
@@ -68,12 +69,13 @@ test('a stored or pasted pink map keeps the solver aptitudes with 1 to 3 stars',
   assert.equal(unknownPinksIn(raw), 2, 'one of hers, one of a parent');
   const v = asVeteran(raw);
   assert.deepEqual(v.pinks, { [Aptitude.Mile]: 1 }, 'her known pink kept');
-  assert.deepEqual(v.parents[0].pinks, {}, 'the unknown left out');
+  assert.deepEqual(v.parents[0]?.pinks, {}, 'the unknown left out');
   assert.deepEqual(v.apt, { distance: [7, 6, 5, 4], surface: [8, 1], style: [2, 3, 4, 5] }, 'grades by kind');
   // a job takes a whole record: her pink, each parent entered with hers or absent
   assert.equal(jobLegacy(v), null, "a parent whose pink was left out: the record isn't whole, no job takes her");
-  const [first, unknown] = v.parents,
-    whole = { ...v, parents: [{ ...first, pinks: { [Aptitude.Turf]: 2 } }, unknown] };
+  const [first, unknown] = v.parents;
+  assert.ok(first);
+  const whole: Veteran = { ...v, parents: [{ ...first, pinks: { [Aptitude.Turf]: 2 } }, unknown] };
   const job = jobLegacy(whole);
   assert.deepEqual(job?.pink, { aptitude: Aptitude.Mile, stars: 1 }, 'the job carries the solver record');
   assert.deepEqual(job?.parents[0]?.pink, { aptitude: Aptitude.Turf, stars: 2 }, "her parent's");
