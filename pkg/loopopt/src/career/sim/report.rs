@@ -226,8 +226,8 @@ pub(crate) struct LegacyRecord {
     pub(crate) borrowed: bool,
     pub(crate) sparks: Vec<Spark>,
     pub(crate) wins: Vec<usize>,
-    pub(crate) pinks: Vec<Pink>,
-    pub(crate) parents: Vec<AncestorRecord>,
+    pub(crate) pink: Pink,
+    pub(crate) parents: [Option<AncestorRecord>; 2],
 }
 
 /// A recorded parent of a veteran.
@@ -236,5 +236,5 @@ pub(crate) struct AncestorRecord {
     pub(crate) chara: u32,
     pub(crate) sparks: Vec<Spark>,
     pub(crate) wins: Vec<usize>,
-    pub(crate) pinks: Vec<Pink>,
+    pub(crate) pink: Pink,
 }

@@ -82,7 +82,9 @@ comes first and the setup under it.
   without her pink or a parent's (an uma.moe veteran listed without one, a veteran made here before parents were asked
   for) is marked *Incomplete*, and the planner leaves her out until she is finished in her popup; a parent the game's
   export doesn't record stays absent. The trainee's race chances use her grades raised by her legacies' pinks, with an
-  extra cost at the lowest aptitudes that was fitted on raised grades.
+  extra cost at the lowest aptitudes that was fitted on raised grades. A pink of an aptitude the planner doesn't know
+  is left out at import, and the import says how many. Sample veterans are mobs, whose grades the data doesn't have:
+  each, and each of her parents, gets a pink drawn as if she ended at A in every aptitude (assumed).
 
 **Borrowed parent** (in Career setup, saved with the other settings): you can borrow only a few veterans a day.
 *Allowed* (the default) lets a career use one borrowed parent, and the plan counts on borrowing in the careers after it

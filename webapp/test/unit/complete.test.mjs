@@ -11,7 +11,8 @@ import { loadData } from '../../src/data.ts';
 import { parseExport } from '../../src/umadump.ts';
 import { initStore, settings } from '../../src/settings.ts';
 import * as vs from '../../src/veterans/store.ts';
-import { isComplete, lacks, lacksSaid } from '../../src/veterans/complete.ts';
+import { isComplete, lacks, lacksSaid, notEntered } from '../../src/veterans/complete.ts';
+import { jobLegacy } from '../../src/veterans/records.ts';
 import { enterVeteran } from '../../src/veterans/entry.ts';
 import { colourClosed, colourEditing } from '../../src/veterans/sparks.ts';
 import { skillsAsked, skillsChosen, umaPicked, umaPicking } from '../../src/veterans/pickers.ts';
@@ -107,7 +108,7 @@ test("a parent the game's export lacks is absent: no one in the job, and no lack
   load([her, vet('b')]);
   assert.equal(vs.vetById(her.id).parents[1], null, 'saved and loaded absent');
   const [job] = vs.legaciesJob();
-  assert.deepEqual(job.parents[1], { chara: 0, sparks: [], pinks: [], wins: [] }, 'the job reads no one there');
+  assert.equal(job.parents[1], null, 'the job reads no one there');
   // a save from before: an imported veteran's missing parent stored as a node with no uma reads absent
   load([{ ...vet('a'), parents: [node(1), { chara: null, sparks: {}, pinks: {}, wins: [] }] }]);
   assert.equal(vs.vetById('a').parents[1], null);
@@ -193,4 +194,26 @@ test('"A new one": her sparks and pink, then each parent\'s uma, sparks and pink
     ['pink', 'parent', 'parent'],
     'she stays, incomplete',
   );
+});
+
+test("complete is what a job takes: the page's rule and the job builder's agree", () => {
+  const her = vet('a'),
+    cases = [
+      ['whole', her],
+      ['no pink', { ...her, pinks: {} }],
+      ['two pinks', { ...her, pinks: { 11: 1, 12: 2 } }],
+      ['a pink of no aptitude the solver knows', { ...her, pinks: { 15: 1 } }],
+      ['no uma', { ...her, chara: null }],
+      ['a parent absent', { ...her, parents: [node(1), null] }],
+      ['both absent', { ...her, parents: [null, null] }],
+      ['a parent not entered', { ...her, parents: [notEntered(), node(2)] }],
+      ['a parent made up (sparks, no uma)', { ...her, parents: [{ ...notEntered(), sparks: { 7: 2 } }, node(2)] }],
+      ['a parent without her pink', { ...her, parents: [node(1, {}), node(2)] }],
+    ];
+  for (const [name, v] of cases)
+    assert.equal(
+      isComplete(v),
+      jobLegacy(v) !== null,
+      `${name}: complete ${isComplete(v)}, job ${jobLegacy(v) !== null}`,
+    );
 });

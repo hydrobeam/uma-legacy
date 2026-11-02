@@ -331,7 +331,8 @@ mod tests {
     /// veteran, another trainee filter or another scope voids the kept caps; the least applicable cap is taken.
     #[test]
     fn caps_apply_only_while_the_pool_holds_the_kept_one() {
-        let (first, second, third) = (json!({"chara": 1}), json!({"chara": 2}), json!({"chara": 3}));
+        let record = |chara: u32| json!({"chara": chara, "pink": {"aptitude": 11, "stars": 1}});
+        let (first, second, third) = (record(1), record(2), record(3));
         let kept_pool = pool(json!({"legacies": [first, second], "trainees": []}));
         let mut kept = KeptState::default();
         let (slow, fast) = (kept_cap(0.01), kept_cap(0.05));
@@ -354,7 +355,7 @@ mod tests {
         let other_scope = pool_of(&json!({"legacies": [first, second, third], "trainees": []}), &[], 8);
         assert!(careers(&kept, &other_scope).is_none(), "another scope");
         keep_caps(&mut kept, added, vec![(UmaIndex(4), fast)]);
-        let more = pool(json!({"legacies": [first, second, third, json!({"chara": 9})], "trainees": []}));
+        let more = pool(json!({"legacies": [first, second, third, record(9)], "trainees": []}));
         assert_eq!(careers(&kept, &more), Some(fast_careers), "the least cap");
         assert_eq!(careers(&kept, &kept_pool), Some(slow_careers), "the larger pool's cap");
         // stored and read back, bit for bit
@@ -375,7 +376,8 @@ mod tests {
     /// veteran fixed at another position keeps the caps, another veteran fixed at the same position voids them
     #[test]
     fn caps_follow_the_fixed_veterans_not_their_positions() {
-        let veterans = [json!({"chara": 1}), json!({"chara": 2}), json!({"chara": 3})];
+        let record = |chara: u32| json!({"chara": chara, "pink": {"aptitude": 11, "stars": 1}});
+        let veterans = [record(1), record(2), record(3)];
         let (first, second, third) = (&veterans[0], &veterans[1], &veterans[2]);
         let swapped = json!({"legacies": [first, third, second], "trainees": []});
         let in_order = json!({"legacies": [first, second, third], "trainees": []});

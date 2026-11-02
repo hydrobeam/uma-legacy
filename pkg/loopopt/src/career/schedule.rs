@@ -630,7 +630,7 @@ impl<'data> CareerSetup<'data> {
         let mut pinks = vec![];
         for slot in self.slots(pool, lineage) {
             pinks.push(aff_factor(slot.relation_points, slot.race).to_bits());
-            pinks.extend(slot.pinks.iter().map(|&pink| pink_word(pink)));
+            pinks.extend(slot.pink.map(pink_word));
             for possible in slot.pink_chances.iter() {
                 pinks.extend([pink_word(possible.pink), possible.chance.to_bits()]);
             }
@@ -672,7 +672,7 @@ impl CareerSetup<'_> {
                 slot: slot_index,
                 stars: pink.stars,
             };
-            for spark in slot.pinks.iter().map(|&pink| spark_of(pink)) {
+            if let Some(spark) = slot.pink.map(spark_of) {
                 for partial in &mut partials {
                     partial.stars[spark.aptitude.index()] += u32::from(spark.stars);
                     partial.fire.push(spark.clone());
@@ -776,19 +776,16 @@ impl CareerSetup<'_> {
         chances
     }
     /// Her veteran's pink spark after the career `lineage` runs in outfit `outfit` (card id; `ExpectedRecord::outfit`),
-    /// drawn as the page's roll draws it (`draw_pink`), as `Legacy::pinks` holds it (empty: none, or no aptitude data).
+    /// drawn as the page's roll draws it (`draw_pink`) (None: no aptitude data, or no grade at A or better).
     pub(crate) fn draw_veteran_pink(
         &self,
         pool: &Pool,
         lineage: Lineage,
         outfit: u32,
         uniform: impl FnMut() -> f64,
-    ) -> Vec<Pink> {
+    ) -> Option<Pink> {
         let aptitudes = self.data.umas[lineage.trainee].aptitudes_of(outfit);
-        self.pink_career(pool, lineage, aptitudes)
-            .and_then(|pink_career| draw_pink(&pink_career, uniform))
-            .into_iter()
-            .collect()
+        self.pink_career(pool, lineage, aptitudes).and_then(|pink_career| draw_pink(&pink_career, uniform))
     }
     /// The report's rows of a planned schedule (`plan_schedule`): every G1 she could enter, in turn order; `run`
     /// false for those she skips, with what she does that turn. A G1 counts each parent's chance of having won it (a

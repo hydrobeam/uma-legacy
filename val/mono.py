@@ -247,13 +247,13 @@ def drawn_veteran(report, job, race_names, rng):
     node = lambda legacy: {
         "chara": legacy.get("chara", 0),
         "sparks": legacy.get("sparks", []),
-        "pinks": legacy.get("pinks", []),
+        "pink": legacy["pink"],
         "wins": list(legacy.get("wins", [])),
     }
     her = {
         "chara": report["trainee"]["id"],
         "sparks": sparks,
-        "pinks": [{"aptitude": aptitude, "stars": stars} for aptitude, stars in pinks.items()],
+        "pink": next({"aptitude": aptitude, "stars": stars} for aptitude, stars in pinks.items()),
         "wins": wins,
         "borrowed": False,
         "parents": [node(solver.part(job, "career")["legacies"][parent]) for parent in report["parents"]],

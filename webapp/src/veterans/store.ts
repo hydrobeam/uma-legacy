@@ -15,9 +15,9 @@ import { browserStorage, readJson, updateJson } from '../storage.ts';
 import type { Backing } from '../storage.ts';
 import { gradesOfList, isGrades } from '../grades.ts';
 import type { Grades } from '../gen/solver.ts';
-import { jobNode, knownPinks } from './records.ts';
+import { jobLegacy, knownPinks } from './records.ts';
+import { must } from '../must.ts';
 import type { JobLegacy } from './records.ts';
-import { isComplete } from './complete.ts';
 import { store } from '../store.ts';
 import type { DeepReadonly } from '../store.ts';
 
@@ -270,23 +270,27 @@ function placesFor(list: readonly VetRecord[], plan: PlacesRecord): PlacesRecord
   const parents = plan.parents.map((id) => (id && list.some((v) => v.id === id) ? id : null));
   return parents.every((id, k) => id === plan.parents[k]) ? plan : { ...plan, parents };
 }
-// an absent parent as the job takes her: no one (character 0, no sparks)
-const NO_ONE: NodeRecord = { chara: null, sparks: {}, pinks: {}, wins: [] };
-// each veteran as the job takes her, made once per record
-const jobOf = new WeakMap<VetRecord, JobLegacy>();
-function jobLegacy(v: VetRecord) {
+// each veteran as the job takes her, made once per record (null: her record is not whole: records.ts `jobLegacy`, which
+// agrees with complete.ts `lacks`)
+const jobOf = new WeakMap<VetRecord, JobLegacy | null>();
+function jobOfVet(v: VetRecord): JobLegacy | null {
   let job = jobOf.get(v);
-  if (!job) {
-    job = { ...jobNode(v), borrowed: !!v.borrowed, parents: v.parents.map((p) => jobNode(p ?? NO_ONE)) };
+  if (job === undefined) {
+    job = jobLegacy(v);
     jobOf.set(v, job);
   }
   return job;
 }
-/** the complete veterans (complete.ts), in the pool's order: the ones a job takes, its legacy index a place here */
-export const readyVets: ReadonlySignal<readonly VetRecord[]> = computed(() => vets.value.filter(isComplete));
-const legacies = computed(() => readyVets.value.map(jobLegacy));
+// the veterans a job takes, in the pool's order, and each as the job takes her
+const jobPool = computed(() => {
+  const vetsIn = vets.value.filter((v) => jobOfVet(v) !== null);
+  return { vets: vetsIn, legacies: vetsIn.map((v) => must(jobOfVet(v), 'a veteran the job takes is whole')) };
+});
+/** the complete veterans (complete.ts): those a job takes, in the pool's order, legacy index i the i-th; the same
+ *  array until the veterans change */
+export const readyVets: ReadonlySignal<readonly VetRecord[]> = computed(() => jobPool.value.vets);
 /** every complete veteran as the job takes her: the same array until the veterans change (callers don't change it) */
-export const legaciesJob = () => legacies.value;
+export const legaciesJob = () => jobPool.value.legacies;
 
 // ---------- the list
 // `list` with item `at` replaced

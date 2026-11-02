@@ -25,7 +25,7 @@ use std::rc::Rc;
 struct VeteranResult {
     stars: Vec<u8>,
     wins: Vec<usize>,
-    pinks: Vec<Pink>,
+    pink: Pink,
 }
 /// One path's state: veterans, the solver's pool, owned veterans per family (dominance), the surrogate's best
 #[derive(Clone)]
@@ -91,7 +91,7 @@ impl VeteranResult {
     fn dominates(&self, candidate: &Self) -> bool {
         self.stars.iter().zip(&candidate.stars).all(|(owned, new)| owned >= new)
             && candidate.wins.iter().all(|race| self.wins.binary_search(race).is_ok())
-            && self.pinks == candidate.pinks
+            && self.pink == candidate.pink
     }
 }
 
@@ -152,9 +152,7 @@ impl Sim<'_, '_> {
         let mut wins = legacy.wins.clone();
         wins.sort_unstable();
         wins.dedup();
-        let mut pinks = legacy.pinks.clone();
-        pinks.sort_unstable();
-        VeteranResult { stars, wins, pinks }
+        VeteranResult { stars, wins, pink: legacy.pink }
     }
     /// a veteran joins the pool; `evaluate_candidates`: the surrogate values every new candidate (she is one of its parents)
     pub(super) fn add_veteran(
@@ -629,16 +627,14 @@ mod tests {
     use crate::codes::Aptitude;
 
     #[test]
-    /// Dominance pruning keeps a veteran whose pinks differ from an owned one with the same stars and wins (the pinks
-    /// change her children's aptitudes), and drops one whose pinks are the same.
+    /// Dominance pruning keeps a veteran whose pink differs from an owned one with the same stars and wins (the pink
+    /// changes her children's aptitudes), and drops one whose pink is the same.
     fn sim_pruning_keeps_different_pinks() {
-        let veteran = |pinks: Vec<Pink>| VeteranResult { stars: vec![2, 1, 3], wins: vec![4, 9], pinks };
-        let pink = |aptitude, stars| Pink { aptitude, stars };
-        let owned = veteran(vec![pink(Aptitude::Mile, 2)]);
-        assert!(owned.dominates(&veteran(vec![pink(Aptitude::Mile, 2)])), "the same pink");
-        assert!(!owned.dominates(&veteran(vec![pink(Aptitude::Turf, 2)])), "another aptitude");
-        assert!(!owned.dominates(&veteran(vec![pink(Aptitude::Mile, 3)])), "more stars");
-        assert!(!owned.dominates(&veteran(vec![])), "no pink");
-        assert!(!veteran(vec![]).dominates(&veteran(vec![pink(Aptitude::Mile, 1)])), "a pink over none");
+        let veteran =
+            |aptitude, stars| VeteranResult { stars: vec![2, 1, 3], wins: vec![4, 9], pink: Pink { aptitude, stars } };
+        let owned = veteran(Aptitude::Mile, 2);
+        assert!(owned.dominates(&veteran(Aptitude::Mile, 2)), "the same pink");
+        assert!(!owned.dominates(&veteran(Aptitude::Turf, 2)), "another aptitude");
+        assert!(!owned.dominates(&veteran(Aptitude::Mile, 3)), "more stars");
     }
 }

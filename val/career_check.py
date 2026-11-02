@@ -82,7 +82,7 @@ def slots_of(relations, legacies, trainee, parents):
     slots = []
     for own, partner in ((parents[0], parents[1]), (parents[1], parents[0])):
         parent, other = legacies[own], legacies[partner]
-        grandparents = parent.get("parents", [])
+        grandparents = [g for g in parent.get("parents", []) if g is not None]  # (null: a parent her record lacks)
         rel = (
             relations.points(trainee, parent["chara"])
             + relations.points(parent["chara"], other["chara"])

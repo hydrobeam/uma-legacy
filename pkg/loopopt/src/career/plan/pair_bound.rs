@@ -156,7 +156,7 @@ mod tests {
         let records: Vec<Legacy> = (0..9u32)
             .map(|k| {
                 serde_json::from_value(
-                    serde_json::json!({"chara": 1001 + k, "sparks": [{"group": 20000 + k, "stars": 1 + k % 3}]}),
+                    serde_json::json!({"chara": 1001 + k, "sparks": [{"group": 20000 + k, "stars": 1 + k % 3}], "pink": {"aptitude": 11, "stars": 1}}),
                 )
             })
             .collect::<Result<_, _>>()

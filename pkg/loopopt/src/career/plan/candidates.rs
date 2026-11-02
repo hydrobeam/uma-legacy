@@ -359,7 +359,9 @@ fn stage_candidates(
     };
     let parent_umas = umas_by_index(&mut parents.iter().map(|parent| parent.character_id));
     let grandparent_umas = umas_by_index(
-        &mut parents.iter().flat_map(|parent| parent.parents.iter().map(|grandparent| grandparent.character_id)),
+        &mut parents
+            .iter()
+            .flat_map(|parent| parent.parents.iter().flatten().map(|grandparent| grandparent.character_id)),
     );
     for uma in parent_umas.into_iter().chain(grandparent_umas) {
         push(uma, &mut trainees);

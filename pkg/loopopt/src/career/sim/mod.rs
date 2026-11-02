@@ -308,18 +308,17 @@ pub(crate) struct Sim<'env, 'data> {
     record_audits: bool,
     audits: Vec<report::SurrogateAudit>,
 }
-/// a recorded parent as a key's text: her character, then her sparks, pinks and wins sorted (a key compared for
+/// a recorded parent as a key's text: her character, her sparks sorted, her pink, her wins sorted (a key compared for
 /// equality only: `family`)
 fn canon(parent: &Ancestor) -> String {
-    let (mut sparks, mut pinks, mut wins) = (parent.sparks.clone(), parent.pinks.clone(), parent.wins.clone());
+    let (mut sparks, mut wins) = (parent.sparks.clone(), parent.wins.clone());
     sparks.sort_unstable();
-    pinks.sort_unstable();
     wins.sort_unstable();
-    format!("{}|{sparks:?}|{pinks:?}|{wins:?}", parent.character_id)
+    format!("{}|{sparks:?}|{:?}|{wins:?}", parent.character_id, parent.pink)
 }
 /// a veteran's family: the character and her two parents as recorded
 fn family(legacy: &Legacy) -> String {
-    let mut parents: Vec<String> = legacy.parents.iter().map(canon).collect();
+    let mut parents: Vec<String> = legacy.parents.iter().flatten().map(canon).collect();
     parents.sort();
     format!("{}#{}", legacy.character_id, parents.join("#"))
 }
@@ -329,17 +328,15 @@ fn legacy_record(legacy: &Legacy) -> report::LegacyRecord {
         borrowed: legacy.borrowed,
         sparks: legacy.sparks.clone(),
         wins: legacy.wins.clone(),
-        pinks: legacy.pinks.clone(),
-        parents: legacy
-            .parents
-            .iter()
-            .map(|parent| report::AncestorRecord {
+        pink: legacy.pink,
+        parents: legacy.parents.each_ref().map(|parent| {
+            parent.as_ref().map(|parent| report::AncestorRecord {
                 chara: parent.character_id,
                 sparks: parent.sparks.clone(),
                 wins: parent.wins.clone(),
-                pinks: parent.pinks.clone(),
+                pink: parent.pink,
             })
-            .collect(),
+        }),
     }
 }
 
