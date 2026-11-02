@@ -1339,7 +1339,7 @@ Results and commands: `val/sim/README.md`.
 
 ## 4. Validation
 
-`cargo test --release` (in `pkg/loopopt`) covers, among others:
+`cargo test --profile checks` (in `pkg/loopopt`) covers, among others:
 - **Reference fixtures** (`tests/fixtures/`):
   - 200 best responses from an exact MILP, including forced races;
   - 71 rest-forced best responses from the MILP, including boundary turns 24, 25 and 48;

@@ -22,7 +22,9 @@ OUT: str = os.path.join(DATA, "out")  # intermediate outputs of the scripts (job
 RUNS: str = os.path.join(DATA, "runs.jsonl")
 GD: str = os.path.join(ROOT, "pkg", "loopopt", "data", "global")
 MDB: str = os.path.join(ROOT, "game", "global", "master.mdb")
-SOLVER: str = os.path.join(ROOT, "pkg", "loopopt", "target", "release", "loopopt")
+# the release build (./build.sh research builds it); LOOPOPT_SOLVER names another build of the same source (lint
+# runs section 8's test on the checks' build, whose outputs are the same to the byte)
+SOLVER: str = os.environ.get("LOOPOPT_SOLVER") or os.path.join(ROOT, "pkg", "loopopt", "target", "release", "loopopt")
 
 SCEN: dict[int, str] = {1: "URA Finale", 2: "Unity Cup", 3: "Grand Concert", 4: "Trackblazer"}
 DEFAULT: list[int] = [
@@ -148,10 +150,9 @@ def must[T](value: T | None, what: str) -> T:
 @functools.cache
 def solver_constants() -> dict[str, Any]:
     """the model constants the solver itself uses, as `loopopt constants` prints them (chain_n, chain_a, chain_b,
-    chain_stop_share, exact_builders_targets, ceil_share, lam_decay, star_mix, gen_gold, gen_white, insp_per_star); the
-    release build is needed"""
+    chain_stop_share, exact_builders_targets, ceil_share, lam_decay, star_mix, gen_gold, gen_white, insp_per_star)"""
     if not os.path.exists(SOLVER):
-        raise FileNotFoundError(f"{SOLVER} is missing: ./build.sh native builds it")
+        raise FileNotFoundError(f"{SOLVER} is missing: ./build.sh research builds it")
     return json.loads(subprocess.run([SOLVER, "constants"], capture_output=True, text=True, check=True).stdout)
 
 

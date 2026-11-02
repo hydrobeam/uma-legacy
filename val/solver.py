@@ -10,7 +10,7 @@ import subprocess
 VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(VALIDATION_DIR)
 PLAN_DIR = os.path.join(VALIDATION_DIR, "plan")
-BINARY = os.path.join(REPO, "pkg", "loopopt", "target", "release", "loopopt")  # ./build.sh native
+BINARY = os.path.join(REPO, "pkg", "loopopt", "target", "checks", "loopopt")  # ./build.sh native, val, valq, mono
 
 
 @functools.cache

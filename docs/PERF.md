@@ -14,7 +14,7 @@ speed record: where it stands, what is open, what was tried and rejected.
      on identical inputs and execution paths. Line-level `callgrind_annotate` shows whether a phase's cost is the work
      or the scan around it.
    - Wall time for slow jobs: the two binaries side by side, best of 3, at the same machine load.
-4. **Verify each item.** `cargo test --release --manifest-path pkg/loopopt/Cargo.toml`;
+4. **Verify each item.** `cargo test --profile checks --manifest-path pkg/loopopt/Cargo.toml`;
    `./build.sh valq TAG` (every job but the slow ones in `val/slow.json` and `val/plan/slow.json`, each compared whole
    by `val/same.py`, plan outputs included); the full `./build.sh val TAG` when the change touches shared searches
    with `top_decks` > 1, and once at the end. Career-planner changes also run `./build.sh mono`.
