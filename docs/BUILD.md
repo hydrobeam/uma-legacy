@@ -224,13 +224,13 @@ with a portrait in `webapp/img/`. It writes:
   widths; the game's sprites as `--nine-*` (9-slice border-images, their faces `--face-*` swapped by dark mode, drawn
   by the `nine-*` utility), layered backgrounds as `--art-*` (`art-*`; never with a `bg-*` on one element) and the
   bars' slant as `clip-*`; and named custom variants for state a root carries (`stale:`, `on:`, `career:`, ...).
-  Arbitrary values are for layout only (Biome's `noTailwindArbitraryValue`). Primitives in `src/ui/` (Button,
-  GameBar, Dialog and its parts, SegmentedControl, Checkbox, Switch, the panel and popover frames, AffTable, the
-  image components) carry the shared looks; a caller's `class` on a component only places it. A single element with
-  options is one `tv()` (prop types from `VariantProps`); a multi-part component is subcomponents with fixed class
-  strings, an option that changes several parts a `data-*` attribute on its root read by a custom variant; `cx()` for
-  one-off conditionals; class names are always written whole. Tests find elements by role, name, id or `data-*`,
-  never by a style class.
+  Arbitrary values are for layout only (Biome's `noTailwindArbitraryValue`). Primitives in `src/ui/` (Button with
+  FileButton, PortraitButton and EnhButton, GameBar, Dialog and its parts, SegmentedControl, Checkbox, Switch, the panel
+  and popover frames, the image components) carry the shared looks; a caller's `class` on a component only places it.
+  A single element with options is one `tv()` (prop types from `VariantProps`); a multi-part component is subcomponents
+  with fixed class strings, an option that changes several parts a `data-*` attribute on its root read by a custom
+  variant; `cx()` for one-off conditionals; class names are always written whole. Tests find elements by role, name, id
+  or `data-*`, never by a style class.
 - `assets/`: every shared file named by a fingerprint of its content and cached for a year: the stylesheet (with the
   font faces and the UI sprites as CSS variables, `vite/images.mjs`), the page scripts (each page's entry and the
   modules both share, with the Global era's data: `#page-data`, and the career tables on the career page:
