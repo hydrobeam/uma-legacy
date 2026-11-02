@@ -14,7 +14,7 @@ import type { VetRecord } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
 import { lacks, lacksSaid } from '../../veterans/complete.ts';
 import { SortMenu } from '../../ui/SortMenu.tsx';
-import { VetCell } from '../../ui/VetCell.tsx';
+import { VetCell } from '../../veterans/VetCell.tsx';
 import { idxOf } from '../current.ts';
 import { openNode } from './dialogs.ts';
 import { VetPane } from './NodeDialog.tsx';

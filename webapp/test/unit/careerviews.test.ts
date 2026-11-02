@@ -15,7 +15,7 @@ import { sayRenderErrors } from '../../src/ui/RenderGuard.tsx';
 import { answer, loadFails } from '../../src/career/state.ts';
 import { PoolBody, PoolHead } from '../../src/career/view/Pool.tsx';
 import { choose, openPool, poolClosed } from '../../src/career/view/poolState.ts';
-import { OddsDialog, openOdds } from '../../src/ui/OddsDialog.tsx';
+import { OddsDialog, openOdds } from '../../src/loop/OddsDialog.tsx';
 import { ScheduleDialog, openSched } from '../../src/results/Schedule.tsx';
 import { loadData } from '../../src/model/data.ts';
 import { memory } from './fakes.ts';

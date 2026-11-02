@@ -4,12 +4,12 @@
 // Sparks): it draws again whenever its parent does. Each row her portrait in the game's white and cream rings beside her
 // sparks (48 px on a narrow phone, 64 elsewhere), a line joining hers to her parents' down the portraits' middle; the
 // rows are data-row (me, parent).
-import { umaName } from '../veterans/names.ts';
-import { parentsPlaced } from '../veterans/store.ts';
-import type { NodeRecord, NodeRef, ParentPlace } from '../veterans/store.ts';
-import { UmaAv } from './Images.tsx';
+import { umaName } from './names.ts';
+import { parentsPlaced } from './store.ts';
+import type { NodeRecord, NodeRef, ParentPlace } from './store.ts';
+import { UmaAv } from '../ui/Images.tsx';
 import { Sparks } from './Sparks.tsx';
-import { GameBar } from './GameBar.tsx';
+import { GameBar } from '../ui/GameBar.tsx';
 
 interface InspViewProps {
   /** the veteran shown */

@@ -9,7 +9,7 @@ import { CardAv, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle } from '../../ui/Dialog.tsx';
 import { Guard } from './Guard.tsx';
 import { popupHeading } from './parts.ts';
-import { skillTile } from '../../ui/skillTile.ts';
+import { skillTile } from './skillTile.ts';
 import { cx } from 'tailwind-variants/lite';
 
 /** the skill on show: `b` its buying report; `got` 'gold' | 'white' | null (not acquired), or undefined for a career

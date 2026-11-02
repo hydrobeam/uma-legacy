@@ -1,4 +1,4 @@
-// ---------- the odds as the planner pages print them (the odds popup itself is ui/OddsDialog.tsx) ----------
+// ---------- the odds as the planner pages print them (the odds popup itself is loop/OddsDialog.tsx) ----------
 // under 1%: two significant figures (0.0061%, 0.013%), so long odds that differ don't print the same
 export const pct = (p: number): string => {
   const percent = p * 100;

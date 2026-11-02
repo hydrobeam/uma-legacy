@@ -22,7 +22,7 @@ import { Button } from '../../ui/Button.tsx';
 import { panel } from '../../ui/Panel.tsx';
 import { GameBar } from '../../ui/GameBar.tsx';
 import { chip } from '../../results/deckChip.ts';
-import { skillTile } from '../../ui/skillTile.ts';
+import { skillTile } from './skillTile.ts';
 import { cx } from 'tailwind-variants/lite';
 
 /** the career on show, as the answer store hands it (read-only) */

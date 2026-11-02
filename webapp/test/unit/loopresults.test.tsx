@@ -31,7 +31,7 @@ import {
   setTargets,
 } from '../../src/state/settings.ts';
 import { on } from '../../src/state/store.ts';
-import { OddsDialog } from '../../src/ui/OddsDialog.tsx';
+import { OddsDialog } from '../../src/loop/OddsDialog.tsx';
 import { RenderGuard, sayRenderErrors } from '../../src/ui/RenderGuard.tsx';
 import { memory } from './fakes.ts';
 import { SKILL_ART, skills, umas } from './globalpage.ts';

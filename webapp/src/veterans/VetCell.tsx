@@ -9,9 +9,9 @@
 import { useState } from 'preact/hooks';
 import { careerTables } from '../model/data.ts';
 import { srcFor } from '../model/images.ts';
-import { blueName, pinkName, uniqueName, umaName } from '../veterans/names.ts';
-import type { NodeRecord, VetRecord } from '../veterans/store.ts';
-import { UmaAv } from './Images.tsx';
+import { blueName, pinkName, uniqueName, umaName } from './names.ts';
+import type { NodeRecord, VetRecord } from './store.ts';
+import { UmaAv } from '../ui/Images.tsx';
 
 // her main sparks' short tags, as the game's legacy list letters them
 const BLUE_TAG: Record<string, string> = { 1: 'SPD', 2: 'STA', 3: 'PWR', 4: 'GUTS', 5: 'WIT' },

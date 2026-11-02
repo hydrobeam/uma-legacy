@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // The veterans' views and editors on happy-dom's document, compiled as the page's build compiles them: the
-// spark editor (ui/Sparks under ui/InspView) shows each edit of the store's draft, a new record each (review-8c 1); change uma commits the uma at the pick, saved and
+// spark editor (veterans/Sparks under veterans/InspView) shows each edit of the store's draft, a new record each (review-8c 1); change uma commits the uma at the pick, saved and
 // seen by the page's effects once the skills prompt is gone (the search held while it is open, review-10 1), and the
 // prompt dismissed keeps her sparks (review-8c 7).
 // npx vitest run (in webapp)
@@ -25,7 +25,7 @@ import {
 import { AddList, VetEditors } from '../../src/veterans/Editors.tsx';
 import { WinsEditor } from '../../src/results/Agenda.tsx';
 import { openColour } from '../../src/veterans/sparks.ts';
-import { InspView } from '../../src/ui/InspView.tsx';
+import { InspView } from '../../src/veterans/InspView.tsx';
 import { Details, legaciesOf } from '../../src/career/analysis/Details.tsx';
 import { loadData } from '../../src/model/data.ts';
 import { memory } from './fakes.ts';
@@ -195,7 +195,7 @@ test("the search is held while a pool veteran's G1 wins window or a skills promp
 
 test('a second "+" pressed while a "+" list is open moves the list there (review-11b 1)', async () => {
   const host = document.body.appendChild(document.createElement('div'));
-  // a "+" opens the list on its click (ui/Sparks.tsx)
+  // a "+" opens the list on its click (veterans/Sparks.tsx)
   const plus = () => {
     const btn = document.body.appendChild(document.createElement('button'));
     btn.addEventListener('click', () => openAdd(btn, vs.vetRef('a')));

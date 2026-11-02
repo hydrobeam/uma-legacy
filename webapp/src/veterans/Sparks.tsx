@@ -14,11 +14,11 @@
 // none, data-off for a spark not a target), its bar data-bar, its name data-spark-name (results/details.ts fitSparks
 // shrinks it to fit).
 import { useRef } from 'preact/hooks';
-import { NEW_STARS } from '../veterans/store.ts';
-import { pinkName, skillName, starsOf, uniqueName } from '../veterans/names.ts';
-import { addOpener, openAdd } from '../veterans/pickers.ts';
-import { KIND, currentSpark, openColour } from '../veterans/sparks.ts';
-import type { NodeRecord, NodeRef } from '../veterans/store.ts';
+import { NEW_STARS } from './store.ts';
+import { pinkName, skillName, starsOf, uniqueName } from './names.ts';
+import { addOpener, openAdd } from './pickers.ts';
+import { KIND, currentSpark, openColour } from './sparks.ts';
+import type { NodeRecord, NodeRef } from './store.ts';
 import { cx, tv } from 'tailwind-variants/lite';
 import type { VariantProps } from 'tailwind-variants/lite';
 

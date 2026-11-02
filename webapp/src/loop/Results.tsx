@@ -18,7 +18,7 @@ import { usePopOpener } from '../results/CardPop.tsx';
 import { outfitNote, pickOutfit, umaState } from '../state/roster.ts';
 import { openSched } from '../results/Schedule.tsx';
 import { deckHint, fmtIn } from '../model/odds.ts';
-import { openOdds } from '../ui/OddsDialog.tsx';
+import { openOdds } from './OddsDialog.tsx';
 import { fields, setDecksTop } from '../state/settings.ts';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { CardAv, SkillIcon, UmaAv } from '../ui/Images.tsx';

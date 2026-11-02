@@ -24,7 +24,7 @@ import { initScenario } from '../state/scenario.ts';
 import { Results, ResultsCount, drawResult } from './Results.tsx';
 import { AffinityDialog } from './Affinity.tsx';
 import { ExportDialog, openExport } from './Export.tsx';
-import { OddsDialog } from '../ui/OddsDialog.tsx';
+import { OddsDialog } from './OddsDialog.tsx';
 import { ScheduleDialog } from '../results/Schedule.tsx';
 import { initPopover } from '../results/popover.ts';
 import { CardPop } from '../results/CardPop.tsx';

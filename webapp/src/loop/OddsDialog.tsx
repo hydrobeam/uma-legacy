@@ -3,8 +3,8 @@
 // it, and the browser gives the focus back to the button that opened it.
 import { computed, signal } from '@preact/signals';
 import { pct } from '../model/odds.ts';
-import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle } from './Dialog.tsx';
-import { RenderGuard } from './RenderGuard.tsx';
+import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle } from '../ui/Dialog.tsx';
+import { RenderGuard } from '../ui/RenderGuard.tsx';
 
 /** what the popup shows: `ex[k]` the chance of exactly k (k = 0 .. n); `pAll` the all-n figure shown (the solver's
  *  exact one); `expected` the mean count */

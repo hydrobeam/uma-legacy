@@ -26,7 +26,7 @@ import type { NodeRecord, NodeRef, ParentPlace, VetRecord } from '../../veterans
 import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle, anyDialogOpen } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
 import { AffTable } from '../../results/AffTable.tsx';
-import { InspView } from '../../ui/InspView.tsx';
+import { InspView } from '../../veterans/InspView.tsx';
 import { listed } from '../job.ts';
 import { idxOf, shown, parentAt } from '../current.ts';
 import type { ShownCareer as CareerReport } from './Sections.tsx';

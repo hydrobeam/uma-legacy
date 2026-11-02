@@ -39,7 +39,7 @@ import {
 import type { SkillsAsk, UmaPick, WinsEdit } from './pickers.ts';
 import { Button } from '../ui/Button.tsx';
 import { field } from '../ui/Field.ts';
-import { SPARK_CELL, SPARK_NAME, sparkBar } from '../ui/Sparks.tsx';
+import { SPARK_CELL, SPARK_NAME, sparkBar } from './Sparks.tsx';
 
 /** the editors' dialogs (their requests read here, so one render opens one and closes another in this order), each
  *  in a render guard of its own: one that throws is gone, says so on the status line, and gives up its request (a

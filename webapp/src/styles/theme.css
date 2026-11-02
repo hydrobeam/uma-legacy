@@ -123,7 +123,7 @@
   --color-legacy-pink: #ff7ab3;
   --color-legacy-blue-soft: color-mix(in srgb, var(--color-legacy-blue) 7%, var(--color-gm-panel));
   --color-legacy-pink-soft: color-mix(in srgb, var(--color-legacy-pink) 7%, var(--color-gm-panel));
-  /* a skill tile's words on the game's white tile (ui/skillTile.ts; dark mode's tile is dark) */
+  /* a skill tile's words on the game's white tile (career/view/skillTile.ts; dark mode's tile is dark) */
   --color-skill-ink: #794016;
   /* a veteran's targets-carried badge, "6/8" (career/view/NodeDialog.tsx) */
   --color-carried: #448f00;
@@ -131,14 +131,14 @@
   --color-bar-info: #3c7a00;
   /* the career's count chart: the average roll's words (career/view/Sections.tsx) */
   --color-count-avg: #c4245a;
-  /* a veteran's spark bars (ui/Sparks.tsx): a white bar's words and the rim at its foot (dark mode's bar is dark), the
-     "+" list's cells' rim, the dashed edge of a bar she has no spark for (blue; the unique's green) */
+  /* a veteran's spark bars (veterans/Sparks.tsx): a white bar's words and the rim at its foot (dark mode's bar is
+     dark), the "+" list's cells' rim, the dashed edge of a bar she has no spark for (blue; the unique's green) */
   --color-spark-ink: var(--color-gm-bar-ink);
   --color-spark-rim: #bdbdbd;
   --color-spark-add-rim: #bdbdbd;
   --color-spark-none: #6fc3ef;
   --color-spark-none-green: #9fd94a;
-  /* a veteran tile's stars where the game's star row isn't shipped (ui/VetCell.tsx) */
+  /* a veteran tile's stars where the game's star row isn't shipped (veterans/VetCell.tsx) */
   --color-vet-star: #f0a800;
   /* Try a run's comparison (career/analysis/view.tsx): a figure she makes better, worse */
   --color-sim-up: #3c8f00;
@@ -234,15 +234,15 @@
   /* the career's count chart's columns (career/view/Sections.tsx): their edge and light top, green, and gold for all n */
   --inset-shadow-count-bar: inset 0 0 0 1px rgba(40, 140, 60, 0.35), inset 0 2px 0 rgba(255, 255, 255, 0.5);
   --inset-shadow-count-all: inset 0 0 0 1px rgba(200, 130, 0, 0.45), inset 0 2px 0 rgba(255, 255, 255, 0.55);
-  /* a veteran's spark bars (ui/Sparks.tsx): each colour's darker foot; the "+" list's cells' */
+  /* a veteran's spark bars (veterans/Sparks.tsx): each colour's darker foot; the "+" list's cells' */
   --inset-shadow-spark-white: inset 0 -3px 0 var(--color-spark-rim);
   --inset-shadow-spark-pink: inset 0 -3px 0 #e2558f;
   --inset-shadow-spark-blue: inset 0 -3px 0 #1287c8;
   --inset-shadow-spark-green: inset 0 -3px 0 #5aa300;
   --inset-shadow-spark-add: inset 0 -3px 0 var(--color-spark-add-rim);
-  /* a veteran tile's role tab, "Parent 1" (ui/VetCell.tsx) */
+  /* a veteran tile's role tab, "Parent 1" (veterans/VetCell.tsx) */
   --shadow-vet-tab: 0 1px 0 rgba(0, 0, 0, 0.2);
-  /* a portrait in the Inspiration view (ui/InspView.tsx): the game's white and cream rings */
+  /* a portrait in the Inspiration view (veterans/InspView.tsx): the game's white and cream rings */
   --shadow-insp-face: 0 0 0 3px var(--color-gm-panel), 0 0 0 5px #efe3cf;
   /* her card in Try a run (career/analysis/Details.tsx): her portrait's cream ring round its white mat; an aptitude
      cell's darker foot */
@@ -258,7 +258,7 @@
   --drop-shadow-enh-glow: 0 0 4px var(--color-gm-bright2);
   /* the affinity heart's (results/AffTable.tsx AffHeart) */
   --drop-shadow-heart: 0 1px 1px rgba(150, 30, 80, 0.35);
-  /* the game's stars: under a spark bar (ui/Sparks.tsx), the colour picker's (veterans/Editors.tsx) */
+  /* the game's stars: under a spark bar (veterans/Sparks.tsx), the colour picker's (veterans/Editors.tsx) */
   --drop-shadow-star: 0 1px 1px rgba(80, 50, 10, 0.35);
   --drop-shadow-star-lg: 0 2px 2px rgba(80, 50, 10, 0.35);
   /* several drop shadows as one filter (`shade-*`; a drop-shadow-* token holds one): "uma"'s letters' doubled halos,
@@ -270,7 +270,7 @@
     drop-shadow(1px 0 0 var(--color-outline)) drop-shadow(-1px 0 0 var(--color-outline));
   /* the white odds on an optional race's grey badge (results/Agenda.tsx) */
   --text-shadow-badge: 0 1px 1px rgba(40, 30, 40, 0.55);
-  /* the white words on a pink, blue or green spark bar (ui/Sparks.tsx), over a shade of its colour */
+  /* the white words on a pink, blue or green spark bar (veterans/Sparks.tsx), over a shade of its colour */
   --text-shadow-spark-pink: 0 1px 1px rgba(150, 30, 80, 0.6);
   --text-shadow-spark-blue: 0 1px 1px rgba(10, 60, 110, 0.55);
   --text-shadow-spark-green: 0 1px 1px rgba(40, 80, 0, 0.55);
@@ -322,8 +322,9 @@
   --nine-sched-badge: var(--sched-badge, linear-gradient(#ff5d9e, #f43d88)) 0 40 fill / 0 9px / 0 stretch;
   /* the game's bond gauge's track (a career target's acquired chance: career/view/Sections.tsx) */
   --nine-gauge: var(--gauge-bond, none) 12 fill / 9px / 0 stretch;
-  /* the game's spark bars (ui/Sparks.tsx), over the bar's gradient: the sprite (244 x 71) its caps sliced at 40 and
-     200 px, drawn 19 / 96 px wide on the 34 px bar, 16 / 79 px on a phone's 28 px (`-sm`); dark mode's white bar dark */
+  /* the game's spark bars (veterans/Sparks.tsx), over the bar's gradient: the sprite (244 x 71) its caps sliced at 40
+     and 200 px, drawn 19 / 96 px wide on the 34 px bar, 16 / 79 px on a phone's 28 px (`-sm`); dark mode's white bar
+     dark */
   --nine-spark-white: var(--face-spark-white) 0 200 0 40 fill / 0 96px 0 19px / 0 stretch;
   --nine-spark-white-sm: var(--face-spark-white) 0 200 0 40 fill / 0 79px 0 16px / 0 stretch;
   --nine-spark-pink: var(--spark-pink, none) 0 200 0 40 fill / 0 96px 0 19px / 0 stretch;
@@ -376,9 +377,9 @@
   /* the game's affinity heart: pink, a white rim (results/AffTable.tsx AffHeart) */
   --art-heart: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 22'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ff9cc8'/%3E%3Cstop offset='1' stop-color='%23f0407f'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M12 20.5C5.5 15.6 1.5 12 1.5 7.4 1.5 4.2 4 1.7 7.1 1.7c2 0 3.8 1 4.9 2.6 1.1-1.6 2.9-2.6 4.9-2.6 3.1 0 5.6 2.5 5.6 5.7 0 4.6-4 8.2-10.5 13.1z' fill='url(%23g)' stroke='%23fff' stroke-width='1.8' stroke-linejoin='round'/%3E%3Cpath d='M6.5 5.2c-1.3.3-2.2 1.4-2.2 2.7' fill='none' stroke='%23fff' stroke-width='1.4' stroke-linecap='round' opacity='.8'/%3E%3C/svg%3E")
     center / contain no-repeat;
-  /* a veteran's spark bars (ui/Sparks.tsx), under their sprites (the whole bar where the sprite isn't shipped): white
-     (dark in dark mode), pink, blue, green; the dot at a bar's left (a unique's gold); the "+" list's cells, white and
-     their dot (the game's sprite) */
+  /* a veteran's spark bars (veterans/Sparks.tsx), under their sprites (the whole bar where the sprite isn't shipped):
+     white (dark in dark mode), pink, blue, green; the dot at a bar's left (a unique's gold); the "+" list's cells,
+     white and their dot (the game's sprite) */
   --art-spark-white: linear-gradient(#f7f7f7, var(--color-gm-bar2)) var(--color-gm-bar);
   --art-spark-pink: linear-gradient(#ffb1d4, var(--color-gm-pink2)) var(--color-gm-pink);
   --art-spark-blue: linear-gradient(#6fd0ff, #22a5ea) #37b9f7;
@@ -397,7 +398,7 @@
   --art-star-off: var(--face-star-off) 0 0 / 15px 15px space;
   --art-star-off-sm: var(--face-star-off) 0 0 / 12px 12px space;
   --art-star-off-lg: var(--face-star-off) center / 40px 40px no-repeat;
-  /* a veteran tile's role tab, the game's red (ui/VetCell.tsx) */
+  /* a veteran tile's role tab, the game's red (veterans/VetCell.tsx) */
   --art-vet-tab: linear-gradient(#ff5a4a, #d8261c);
   /* the game's close cross (a target tile's remove button) */
   --art-close: var(--close, none) center / 10px 10px no-repeat;
@@ -574,7 +575,8 @@
 @custom-variant slot-many (&:where([data-slot~="many"] *));
 /* inside an uma's roster tile marked not owned (data-s="out": setup/Roster.tsx), which greys her portrait and name */
 @custom-variant unowned (&:where([data-s="out"] *));
-/* a screen without hover (touch): what shows under the pointer elsewhere shows always (ui/Sparks.tsx's corner x) */
+/* a screen without hover (touch): what shows under the pointer elsewhere shows always (veterans/Sparks.tsx's corner
+   x) */
 @custom-variant touch (@media (hover: none));
 
 /* a 9-slice sprite frame: `nine-btn-w` draws the button's face from the --nine-btn-w token above */
