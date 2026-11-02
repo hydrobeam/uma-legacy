@@ -63,15 +63,10 @@
   --color-gm-pink: #ff8fc0;
   --color-gm-pink2: #ff6fa9;
   --color-gm-pink-ink: #ffffff;
-  --color-gm-tile: #dfdbeb;
-  --color-gm-tile2: #cbc5de;
   --color-gm-tile-edge: #a9a2c3;
-  --color-gm-tile-ink: #794016;
   --color-gm-off: #ecebef;
   --color-gm-off-ink: #8f857c;
   --color-gm-gold: #ffd36b;
-  --color-gm-gold2: #ffbf33;
-  --color-gm-gold-edge: #d68a00;
   --color-gm-gold-ink: #794016;
   --color-gm-g1: #3c7fd8;
   --color-gm-won: #f08a00;
@@ -89,10 +84,6 @@
   /* the legacy colours in the affinity table (Legacy 1 blue, Legacy 2 pink) */
   --color-leg1: #2f7fd6;
   --color-leg2: #d4407f;
-  /* the race schedule's three years */
-  --color-yr0: #0b5a4d;
-  --color-yr1: #2f3f99;
-  --color-yr2: #8a3c0c;
   /* the dimmed page behind a modal dialog */
   --color-backdrop: rgba(20, 20, 30, 0.45);
   /* the header's wordmark: "uma" as the favicon's three sparkles (each letter's pale fill, its outline, its halo),
