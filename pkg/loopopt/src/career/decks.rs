@@ -307,6 +307,9 @@ impl Env<'_> {
     /// (`last_product_bound` None): `solve` then bounds the class's candidates by ceilings alone, keeps no fully
     /// checked deck of it, and is not complete when it searched the class.
     pub(crate) fn best_deck(&mut self, search: DeckSearch, starts: &[&SelectedDeck], scored: &mut usize) -> DeckRes {
+        if self.setup.uncertain_targets.is_empty() {
+            return self.targetless_deck(search.trainee, scored);
+        }
         let (breaches_before, assumed_before, multi_before) =
             (self.audit.capped_breaches, self.audit.assumed_searches, self.audit.multi_searches);
         let result = self.best_deck_memo(search, starts, scored);
@@ -323,6 +326,18 @@ impl Env<'_> {
             self.state.last_product_bound = None;
         }
         result
+    }
+    /// `best_deck` where every target is the scenario's gold (no uncertain target): no card changes her odds, so there
+    /// is nothing to search. The deck of the job's locked cards and filler (`DeckSpace::locked_filler_deck`), scored
+    /// once, is a best deck, proven (`full`); no deck where a locked card blocks her. It leaves no product proof.
+    fn targetless_deck(&mut self, trainee: crate::uma::UmaIndex, scored: &mut usize) -> DeckRes {
+        self.state.last_product_bound = None;
+        let Some(deck) = self.setup.space.locked_filler_deck(&[self.setup.data.umas[trainee].id]) else {
+            return DeckRes::NoDeck;
+        };
+        let value = self.setup.score_exact(&mut self.state, trainee, &deck);
+        *scored += 1;
+        DeckRes::Done(value, deck, true)
     }
     /// `best_deck` before its breach rule: the memo, else the search
     fn best_deck_memo(&mut self, search: DeckSearch, starts: &[&SelectedDeck], scored: &mut usize) -> DeckRes {

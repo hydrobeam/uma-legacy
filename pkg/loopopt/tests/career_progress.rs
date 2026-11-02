@@ -2,6 +2,31 @@ mod common;
 use common::{run_job, val_job};
 use serde_json::json;
 
+/// A job whose targets are all the scenario's gold (`guaranteed` 2, no uncertain target) answers: no card changes the
+/// odds, so each career takes the deck of filler with no search (the deck search, which takes at least one target,
+/// panicked on it), and the plan prices its trios on those careers. val/plan p10 with its two guaranteed targets.
+#[test]
+fn a_job_whose_targets_are_all_guaranteed_answers() {
+    let mut job = val_job("plan/p10.json");
+    let targets = job["job"]["skills"]["targets"].take();
+    let guaranteed: Vec<_> =
+        targets.as_array().unwrap().iter().filter(|target| target["guaranteed"] == 2).cloned().collect();
+    assert_eq!(guaranteed.len(), 2, "p10 has two guaranteed targets");
+    job["job"]["skills"]["targets"] = json!(guaranteed);
+    let output = run_job("career-guaranteed", &job);
+    assert_eq!(output["complete"], true, "the search is proven");
+    let results = output["results"].as_array().unwrap();
+    assert!(!results.is_empty(), "careers are found");
+    for career in results {
+        assert_eq!(career["deck"]["card_ids"], json!([]), "no card is needed: filler only");
+        let p_all = career["p_all"].as_f64().unwrap();
+        assert!(p_all > 0.0 && p_all <= 1.0, "P(all) {p_all}");
+    }
+    let next = &output["next"];
+    assert_eq!(next["umas_unproven"], 0);
+    assert!(next["v0"].as_f64().is_some_and(f64::is_finite), "the plan has a V: {}", next["v0"]);
+}
+
 /// The weak pool: the landed-set distribution agrees with the career's own odds, and the schedule includes
 /// both run and skipped G1s.
 #[test]

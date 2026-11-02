@@ -93,7 +93,8 @@ fn owned_cards() -> Vec<u64> {
 }
 
 /// p10's targets, by their place in its job: a case takes one to three it must land and at most one its scenario
-/// guarantees (`guaranteed` above 0; a job of guaranteed targets alone panics the deck search, a separate defect)
+/// guarantees (`guaranteed` above 0; a job of guaranteed targets alone, whose odds no deck changes, is
+/// `career_progress.rs`'s `a_job_whose_targets_are_all_guaranteed_answers`)
 fn targets() -> impl Strategy<Value = Vec<usize>> {
     let Value::Array(targets) = val_job("plan/p10.json")["job"]["skills"]["targets"].take() else {
         panic!("p10 has targets")
