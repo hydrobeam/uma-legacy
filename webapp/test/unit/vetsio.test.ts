@@ -7,7 +7,7 @@
 // tab on the other era keeps the era chosen since.
 // npx vitest run (in webapp)
 import { expect, test, vi } from 'vitest';
-import { loadData } from '../../src/data.ts';
+import { loadData } from '../../src/model/data.ts';
 import { ERA, loadSaved, writeSaved } from '../../src/saved.ts';
 import { parseListing } from '../../src/umadump.ts';
 import * as vs from '../../src/veterans/store.ts';

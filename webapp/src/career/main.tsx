@@ -35,20 +35,20 @@ import type { ComponentChildren } from 'preact';
 import { signal } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import { ERA } from '../saved.ts';
-import type { Era } from '../eras.ts';
+import type { Era } from '../model/eras.ts';
 import { must } from '../must.ts';
 import { update } from '../storage.ts';
-import { loadData } from '../data.ts';
+import { loadData } from '../model/data.ts';
 import CAREER from '#career-data';
 import { jobSetup, settings } from '../settings.ts';
 import { on } from '../store.ts';
 import { restartEngine, engineBusy, enginePersist, engineSaveState, nextKill } from '../engine.ts';
 import { answerLoad, answerSave } from '../statestore.ts';
-import { goldGiven } from '../job.ts';
+import { goldGiven } from '../model/job.ts';
 import { initScenario } from '../scenario.ts';
 import { initPopover } from '../popover.ts';
 import { CardPop } from '../ui/CardPop.tsx';
-import '../agenda.ts'; // (its document listener is added before gmtip's)
+import '../model/agenda.ts'; // (its document listener is added before gmtip's)
 import { openSetupDialog, pickEra, setupBadges, setupViews } from '../ui/Setup.tsx';
 import { useHydrated } from '../ui/Shell.tsx';
 import '../gmtip.ts'; // the game-style tooltips (both planner pages)
@@ -66,7 +66,7 @@ import {
 } from '../veterans/store.ts';
 import { AddList, VetEditors } from '../veterans/Editors.tsx';
 import { ScheduleDialog } from '../ui/Schedule.tsx';
-import { setRunner } from '../images.ts';
+import { setRunner } from '../model/images.ts';
 import { connectUmamoe, syncListings } from '../umamoesetup.ts';
 import { UmButton, UmamoeDialog } from './view/Umamoe.tsx';
 import { sayRenderErrors } from '../ui/RenderGuard.tsx';
@@ -95,7 +95,7 @@ import { Results, SavesPopup } from './view/Options.tsx';
 import { VetsDialog } from './view/Pool.tsx';
 import { openPool } from './view/poolState.ts';
 import { ExportDialog, PasteDialog, openExport } from './view/Io.tsx';
-import { searchCaveat } from '../proofs.ts';
+import { searchCaveat } from '../model/proofs.ts';
 import { fitSparks } from '../details.ts';
 import type { Status } from './state.ts';
 import type { CareerSearch } from './job.ts';
@@ -154,11 +154,11 @@ const run = createRun({
   analysis: comparison,
   view: { shown, paint },
 });
-// the search's status: done, with a caveat (proofs.ts `searchCaveat`) when the search could not prove the best odds'
-// order (`proven_top`), or proved it only under a lower deck cap (`complete` false), saying what the report establishes
-// of why, or proved it while a scored deck beat its class's assumed cap (the caps are assumptions the proofs rest on);
-// or, when no career can land every target, which targets nothing can give (no veteran or parent carries their spark;
-// no deck, outfit or event gives them either, or some career would have them)
+// the search's status: done, with a caveat (model/proofs.ts `searchCaveat`) when the search could not prove the best
+// odds' order (`proven_top`), or proved it only under a lower deck cap (`complete` false), saying what the report
+// establishes of why, or proved it while a scored deck beat its class's assumed cap (the caps are assumptions the
+// proofs rest on); or, when no career can land every target, which targets nothing can give (no veteran or parent
+// carries their spark; no deck, outfit or event gives them either, or some career would have them)
 function searchStatus(m: { r: CareerSearch; ms: number }, found: string): Status {
   const cert = searchCaveat(m.r),
     note = dropped.peek(),

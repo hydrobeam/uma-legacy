@@ -7,7 +7,7 @@ import type { ComponentChildren } from 'preact';
 import { cx } from 'tailwind-variants/lite';
 import { AddPop, EnhButton, EnhButtons, EraRow, Footer, Ribbon, setLabel, setRow } from '../ui/Shell.tsx';
 import type { Badge } from '../ui/Shell.tsx';
-import type { Era } from '../eras.ts';
+import type { Era } from '../model/eras.ts';
 import { Button } from '../ui/Button.tsx';
 import { panel } from '../ui/Panel.tsx';
 

@@ -1,5 +1,5 @@
-// The page data for node tests of modules that read the game data (data.ts): a module shaped as the '#page-data' the
-// build writes (vite/pagedata.mjs), for a small made-up game. A test file hands it to the page's modules with
+// The page data for node tests of modules that read the game data (model/data.ts): a module shaped as the '#page-data'
+// the build writes (vite/pagedata.mjs), for a small made-up game. A test file hands it to the page's modules with
 // `vi.mock('#page-data', () => import('./fakepage.ts'))`, then `await loadData(career)` as the page does; the lists
 // are its arrays, so a test may add to them before `loadData`. Its released dates are in the past (FUTURE: one card not
 // out yet), so what a job holds does not depend on the day the test runs.

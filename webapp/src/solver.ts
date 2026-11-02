@@ -58,7 +58,7 @@ export type FromWorker =
   /** a job failed in the worker (`id`), or the start did (`id` undefined) */
   | { type: 'error'; id: number | undefined; message: string };
 
-// ---------- the schedule report both commands carry (each G1 a member could run; agenda.ts reads it) ----------
+// ---------- the schedule report both commands carry (each G1 a member could run; model/agenda.ts reads it) ----------
 /** One member's attempt at a scheduled race: the solver's cell, and on the career page the community table's figures
  * the page adds (career/view/parts.ts) */
 export type ScheduleCell = SolverCell & {

@@ -9,7 +9,7 @@
 // unchanged. Her sparks are edited through the store (`draftRef`).
 import type { ComponentChildren, RefObject } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
-import { gameData } from '../../data.ts';
+import { gameData } from '../../model/data.ts';
 import { settings } from '../../settings.ts';
 import { umaName } from '../../veterans/names.ts';
 import { borrowedLast, deckCards, fitSparks } from '../../details.ts';
@@ -20,7 +20,7 @@ import { usePopOpener } from '../../ui/CardPop.tsx';
 import { chip, FRIENDS_TAG } from '../../ui/deckChip.ts';
 import { skillTile } from '../../ui/skillTile.ts';
 import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
-import { gradeOf } from '../../grades.ts';
+import { gradeOf } from '../../model/grades.ts';
 import { Aptitude, Grade } from '../../gen/solver.ts';
 import { CardAv, GradeBadge, SkillIcon, UmaAv } from '../../ui/Images.tsx';
 import type { DeepReadonly } from '../../store.ts';

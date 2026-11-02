@@ -1,5 +1,5 @@
 // ---------- the names the career page shows (umas, skills, sparks), a spark's stars, the target skills' groups ----------
-import { careerTables, gameData } from '../data.ts';
+import { careerTables, gameData } from '../model/data.ts';
 import type { SettingsView } from '../settings.ts';
 import type { DeepReadonly } from '../store.ts';
 import type { Sparks } from './store.ts';

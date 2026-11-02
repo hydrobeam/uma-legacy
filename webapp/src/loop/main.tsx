@@ -8,9 +8,9 @@ import { started } from '../errorlog.ts'; // first: it listens before any other 
 import { createRef, hydrate } from 'preact';
 import { signal } from '@preact/signals';
 import { ERA } from '../saved.ts';
-import type { Era } from '../eras.ts';
+import type { Era } from '../model/eras.ts';
 import { browserStorage } from '../storage.ts';
-import { loadData } from '../data.ts';
+import { loadData } from '../model/data.ts';
 import EXAMPLE from '../../example.json'; // the default settings' result, precomputed (example.mjs)
 import { DEFAULTS, fields, jobSetup, settings, setAuto, setPerUma } from '../settings.ts';
 import { on } from '../store.ts';

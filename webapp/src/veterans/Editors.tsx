@@ -8,8 +8,8 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { createPortal } from 'preact';
 import type { Ref } from 'preact';
-import { gameData } from '../data.ts';
-import type { Uma } from '../data.ts';
+import { gameData } from '../model/data.ts';
+import type { Uma } from '../model/data.ts';
 import { Dialog, DialogBody, DialogClose, DialogFoot, DialogHead, DialogPanel, DialogTitle } from '../ui/Dialog.tsx';
 import { RenderGuard } from '../ui/RenderGuard.tsx';
 import { UmaAv } from '../ui/Images.tsx';

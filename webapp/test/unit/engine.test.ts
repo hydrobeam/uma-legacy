@@ -5,7 +5,7 @@
 // roll that stops an exact comparison) restores before its first job. npx vitest run (in webapp)
 import { afterEach, expect, test, vi } from 'vitest';
 import { engineSaveState, enginePersist, restartEngine, run } from '../../src/engine.ts';
-import { loadData } from '../../src/data.ts';
+import { loadData } from '../../src/model/data.ts';
 import type { Request } from '../../src/gen/solver.ts';
 import type { FromWorker, StateOutReply, ToWorker } from '../../src/solver.ts';
 import { flush } from './fakes.ts';

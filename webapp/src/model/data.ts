@@ -1,10 +1,10 @@
 // The page's data, for the chosen era: the Global era's comes with the page's scripts ('#page-data', built in by
 // vite/pagedata.mjs; a node test mocks it with test/unit/fakepage.ts), the GM era's is fetched.
 import * as page from '#page-data';
-import { ERA } from './saved.ts';
-import { assert, must } from './must.ts';
-import { Distance, Surface } from './gen/solver.ts';
-import type { Grades } from './gen/solver.ts';
+import { ERA } from '../saved.ts';
+import { assert, must } from '../must.ts';
+import { Distance, Surface } from '../gen/solver.ts';
+import type { Grades } from '../gen/solver.ts';
 /** Fingerprinted files of the build (vite/pagedata.mjs): the wasm, each era's solver data, the GM era's page data. */
 export interface Assets {
   wasm: string;

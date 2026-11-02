@@ -2,15 +2,15 @@
 // Three year columns of half-month slots, Junior's from July (the career starts in Junior Year, early July). On the
 // planner pages (html.game) all three years side by side, each 4 x 6 slots, Junior's first three rows the game's grey
 // cells for April to June (labelled as the game labels them, each half-month twice); stacked on a narrow screen, the
-// grey cells left out. agenda.ts holds the logic. A slot is the game's white frame (its ::before), its race or "+"
-// over the frame and the turn under it; what it holds, data-slot's kinds (pre, on, opt, many, free), reaches its parts
-// through the theme's slot-pre:, slot-opt: and slot-many:. The checks find a year by data-year, its grid by
+// grey cells left out. model/agenda.ts holds the logic. A slot is the game's white frame (its ::before), its race or
+// "+" over the frame and the turn under it; what it holds, data-slot's kinds (pre, on, opt, many, free), reaches its
+// parts through the theme's slot-pre:, slot-opt: and slot-many:. The checks find a year by data-year, its grid by
 // data-grid, a slot by data-slot, a race by data-race (a win's button: data-ix), its banner by data-banner, a turn's
 // bar by data-turn.
 import type { ComponentChildren, Ref, VNode } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { MONTHS, YEARS, bannerSrc, shownP, slotLabel, turnName, why } from '../agenda.ts';
-import type { WinInfo } from '../agenda.ts';
+import { MONTHS, YEARS, bannerSrc, shownP, slotLabel, turnName, why } from '../model/agenda.ts';
+import type { WinInfo } from '../model/agenda.ts';
 import type { ScheduleCell } from '../solver.ts';
 import { must } from '../must.ts';
 import { Button } from './Button.tsx';

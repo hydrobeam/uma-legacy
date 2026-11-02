@@ -3,7 +3,7 @@
 // (umadump.ts parseOwned). A file is the game's whole list of what you own, so it replaces this era's marks: what it
 // lists is owned, everything else in the data not owned. Ids the data doesn't have (R cards it leaves out, another
 // era's) are skipped.
-import { gameData } from './data.ts';
+import { gameData } from './model/data.ts';
 import { setOwned } from './settings.ts';
 import { parseOwned } from './umadump.ts';
 import { must } from './must.ts';

@@ -2,11 +2,11 @@
 // Values in, values out (the settings, the result on show): Export.tsx shows them and applies an import.
 import { fmtIn } from '../dom.ts';
 import { SETTINGS, ERA } from '../saved.ts';
-import { SCENARIOS, gameData } from '../data.ts';
-import { goldGiven, isOwned } from '../job.ts';
+import { SCENARIOS, gameData } from '../model/data.ts';
+import { goldGiven, isOwned } from '../model/job.ts';
 import { pickOutfit } from '../roster.ts';
 import { mergePresets } from '../presets.ts';
-import { deckHint } from '../odds.ts';
+import { deckHint } from '../model/odds.ts';
 import { scenarioOf } from '../scenario.ts';
 import type { SettingsView } from '../settings.ts';
 import type { DeepReadonly } from '../store.ts';

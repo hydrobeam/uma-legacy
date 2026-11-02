@@ -48,8 +48,8 @@ export interface Settings {
 }
 export type SettingsView = DeepReadonly<Settings>;
 
-// the 8/8 example: the default eight targets, as skill groups (Unity Cup's two guaranteed golds among them: job.ts
-// goldGiven)
+// the 8/8 example: the default eight targets, as skill groups (Unity Cup's two guaranteed golds among them:
+// model/job.ts goldGiven)
 export const PRESET = [20159, 20049, 20166, 20046, 20161, 21010, 20165, 20203];
 export const DEFAULTS: SettingsView = deepFreeze({
   targets: PRESET.map((group) => ({ group })),

@@ -5,7 +5,7 @@ import { Fragment } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { fmtIn } from '../../dom.ts';
 import { settings } from '../../settings.ts';
-import { pct } from '../../odds.ts';
+import { pct } from '../../model/odds.ts';
 import { places as yourPlaces, backToPick } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
 import { must } from '../../must.ts';

@@ -4,7 +4,7 @@
 import { Fragment } from 'preact';
 import { signal } from '@preact/signals';
 import { Runner } from '../../ui/Images.tsx';
-import { planCaveat } from '../../proofs.ts';
+import { planCaveat } from '../../model/proofs.ts';
 import { answer, runView } from '../state.ts';
 import { Button } from '../../ui/Button.tsx';
 

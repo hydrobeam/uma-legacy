@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/preact';
-import { loadData } from '../../src/data.ts';
+import { loadData } from '../../src/model/data.ts';
 import { initStore } from '../../src/settings.ts';
 import * as vs from '../../src/veterans/store.ts';
 import { exportText, importText } from '../../src/career/io.ts';

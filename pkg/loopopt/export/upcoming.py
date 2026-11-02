@@ -2,7 +2,7 @@
 
 The exports keep every uma, outfit and support card that master.mdb dates up to era.AHEAD past the build: a master taken
 ahead of its update already holds the next week's, with their start times. The page hides each one
-until its start time (webapp/src/data.ts), so a banner turns on without a rebuild. Content the game has not dated
+until its start time (webapp/src/model/data.ts), so a banner turns on without a rebuild. Content the game has not dated
 yet carries a 2050 placeholder and stays out.
 
 Run as a script (step data, after the other exports): pkg/loopopt/data/global/upcoming.json, the entries dated after the build, as

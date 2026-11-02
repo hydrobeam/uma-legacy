@@ -12,7 +12,7 @@ import { cx } from 'tailwind-variants/lite';
 import { EnhButtons, EraRow, Footer, Ribbon, setRow } from '../ui/Shell.tsx';
 import { panel } from '../ui/Panel.tsx';
 import type { Badge } from '../ui/Shell.tsx';
-import type { Era } from '../eras.ts';
+import type { Era } from '../model/eras.ts';
 import { Button } from '../ui/Button.tsx';
 import { Switch } from '../ui/Switch.tsx';
 

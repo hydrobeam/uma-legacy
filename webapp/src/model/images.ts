@@ -1,7 +1,7 @@
-// ---------- character icons, card art and skill icons: files in the page's image folder (data.ts IMG_BASE; from the game's own files) ----------
+// ---------- character icons, card art and skill icons: files in the page's image folder (model/data.ts IMG_BASE; from the game's own files) ----------
 // Their paths, the runner's pick and what a portrait or a card tile shows without art; ui/Images.tsx draws them.
 import { SHIPPED, IMG_EXT, IMG_BASE, SKILLICON, SKILLICON_GOLD } from './data.ts';
-import { must } from './must.ts';
+import { must } from '../must.ts';
 // kind: the image folder ('uma', 'outfit', 'card', 'skill', 'run', ...)
 export function srcFor(kind: string, id: number | string): string | null {
   return SHIPPED.has(`${kind}:${id}`) ? `${IMG_BASE}${kind}/${id}.${IMG_EXT[kind]}` : null;

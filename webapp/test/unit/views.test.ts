@@ -27,7 +27,7 @@ import { WinsEditor } from '../../src/ui/Agenda.tsx';
 import { openColour } from '../../src/veterans/sparks.ts';
 import { InspView } from '../../src/ui/InspView.tsx';
 import { Details, legaciesOf } from '../../src/career/analysis/Details.tsx';
-import { loadData } from '../../src/data.ts';
+import { loadData } from '../../src/model/data.ts';
 import { memory } from './fakes.ts';
 import { within } from '@testing-library/dom';
 import { SegmentedControl } from '../../src/ui/SegmentedControl.tsx';

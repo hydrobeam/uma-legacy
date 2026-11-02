@@ -1,17 +1,17 @@
-// A roll of the career planner (career/roll.ts) and her pink spark (pink.ts `drawPink`) against the solver's reports
-// they are drawn from, exactly: each draw maps one uniform in [0, 1) to an outcome, so a scripted random source (the
-// uniforms in order) puts u just below and just above each cut point and the outcome changes there, on a reference
+// A roll of the career planner (career/roll.ts) and her pink spark (model/pink.ts `drawPink`) against the solver's
+// reports they are drawn from, exactly: each draw maps one uniform in [0, 1) to an outcome, so a scripted random source
+// (the uniforms in order) puts u just below and just above each cut point and the outcome changes there, on a reference
 // career (val/ref__global__career_U.out, the solver's output validation pins). The interval between two cut points is
 // each outcome's chance, so these show every piece drawn with the chance the report gives it, and one whole roll shows
 // which piece reads which uniform. npx vitest run (in webapp)
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { test } from 'vitest';
-import { drawPink, pinkAmong } from '../../src/pink.ts';
+import { drawPink, pinkAmong } from '../../src/model/pink.ts';
 import { rolledBlueGreen, rolledBought, rolledOutcome, scheduledRaces, starDraw } from '../../src/career/roll.ts';
 import type { RollSetup } from '../../src/career/roll.ts';
 import type { CareerReport } from '../../src/career/job.ts';
-import { gradeOf, withGrade } from '../../src/grades.ts';
+import { gradeOf, withGrade } from '../../src/model/grades.ts';
 import { SOLVER } from '../../src/gen/constants.ts';
 import { Grade } from '../../src/gen/solver.ts';
 import type { Aptitude, Grades, RankClass } from '../../src/gen/solver.ts';

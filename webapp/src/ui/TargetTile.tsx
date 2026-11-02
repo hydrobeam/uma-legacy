@@ -3,7 +3,7 @@
 // tiles (`list`) are compact, to fit the setup's column, with a remove button (the game's close cross); the Presets
 // view's (`view`) are the game's full size, the tiles alone.
 import { fields } from '../settings.ts';
-import { goldGiven } from '../job.ts';
+import { goldGiven } from '../model/job.ts';
 import { namesOf } from '../targets.ts';
 import { SkillIcon } from './Images.tsx';
 import { cx } from 'tailwind-variants/lite';

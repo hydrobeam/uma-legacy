@@ -3,13 +3,13 @@
 // the community table (`tableCost`, `tableChance`).
 import { RACEIDS } from './data.ts';
 import { srcFor } from './images.ts';
-import { Distance, Grade, Surface } from './gen/solver.ts';
-import type { Grades } from './gen/solver.ts';
-import { SOLVER } from './gen/constants.ts';
-import { assert, must } from './must.ts';
+import { Distance, Grade, Surface } from '../gen/solver.ts';
+import type { Grades } from '../gen/solver.ts';
+import { SOLVER } from '../gen/constants.ts';
+import { assert, must } from '../must.ts';
 import type { RaceTrack } from './data.ts';
-import type { ScheduleCell, ScheduleRow } from './solver.ts';
-import type { DeepReadonly } from './store.ts';
+import type { ScheduleCell, ScheduleRow } from '../solver.ts';
+import type { DeepReadonly } from '../store.ts';
 
 /** A race in her schedule, for the G1 wins editor: its turn and its schedule cell with the win odds; `parent`: a parent
  *  won it too. */
@@ -76,7 +76,7 @@ const DISTANCE: Record<Distance, string> = {
   [Distance.Long]: 'Long',
 };
 const SURFACE: Record<Surface, string> = { [Surface.Turf]: 'Turf', [Surface.Dirt]: 'Dirt' };
-/** her grades' cost for a race on `track` (data.ts `RaceTrack`), on her aptitude grades (grades.ts) */
+/** her grades' cost for a race on `track` (model/data.ts `RaceTrack`), on her aptitude grades (model/grades.ts) */
 export function tableCost(apt: DeepReadonly<Grades>, track: RaceTrack): { cost: number; grades: string } {
   const d = apt.distance[track.cat],
     s = apt.surface[track.ground];

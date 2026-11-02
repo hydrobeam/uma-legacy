@@ -5,7 +5,7 @@
 // reloads the page with the other data set. The settings themselves (the record, its setters) are settings.ts's.
 import { browserStorage, readJson, updateJson } from './storage.ts';
 import type { Backing } from './storage.ts';
-import type { Era } from './eras.ts';
+import type { Era } from './model/eras.ts';
 
 const SETTINGS_KEY = 'llp:settings',
   SETTINGS_VERSION = 2;

@@ -5,7 +5,7 @@ assumed inputs: the run records show only the legacies players chose, which are 
 an unselected veteran cannot be read from them. What is computed here:
 - the band each scenario's careers reach: the run list's rank-score estimate with every skill point spent
   (research/data/summary.jsonl, not included; Independent Training runs from uma-it), share at 17,500 or more per
-  scenario, against the band the page picks for the scenario (webapp/src/data.ts, `ss`). That estimate is an upper
+  scenario, against the band the page picks for the scenario (webapp/src/model/data.ts, `ss`). That estimate is an upper
   bound on the score a career ends with, so the shares are also given with the career's score taken SLACK points below
   it, and on the run list's floor (no skill point spent), with each scenario's median ceiling and the expected base of
   the run-weighted mixture of the two mixes;

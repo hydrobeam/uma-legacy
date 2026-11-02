@@ -175,7 +175,7 @@ test.describe('from no veterans', () => {
       expect(t.bar).toBe(2);
       expect(t.legs).toMatch(/^Inherited: [<\d.]+%$/);
     });
-    // the deck's chance of hinting a target is one figure wherever it shows (odds.ts deckHint: its gold, else its white)
+    // the deck's chance of hinting a target is one figure wherever it shows (model/odds.ts deckHint: its gold, else its white)
     const targets = [...(plan.choice?.targets ?? [])].sort((a, b) => a.p - b.p);
     // (the deck's part of a sourced buy; a scenario's skill has none)
     const deckOf = (t: (typeof targets)[number]) =>

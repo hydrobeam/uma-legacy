@@ -7,7 +7,7 @@
 // check writes its report. npx vitest run (in webapp)
 import { expect, test, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/preact';
-import { loadData } from '../../src/data.ts';
+import { loadData } from '../../src/model/data.ts';
 import { initStore } from '../../src/settings.ts';
 import { setPlanCheck } from '../../src/career/state.ts';
 import { keyOf } from '../../src/career/keys.ts';

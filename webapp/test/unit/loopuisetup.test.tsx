@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fireEvent, render, within } from '@testing-library/preact';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { gameData, loadData } from '../../src/data.ts';
+import { gameData, loadData } from '../../src/model/data.ts';
 import * as S from '../../src/settings.ts';
 import { setupViews } from '../../src/ui/Setup.tsx';
 import { CardsPanel } from '../../src/ui/Cards.tsx';

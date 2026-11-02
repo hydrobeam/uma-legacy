@@ -6,7 +6,7 @@ import { batch } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { settings } from '../../settings.ts';
-import { isOwned } from '../../job.ts';
+import { isOwned } from '../../model/job.ts';
 import { fitSparks } from '../../details.ts';
 import {
   vets,

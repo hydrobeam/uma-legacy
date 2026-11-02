@@ -4,11 +4,11 @@
 // (career/state.ts) and the career's helpers from job.ts, current.ts and keys.ts; its one write there is
 // `forgetDroppedChoice`.
 import { settings } from '../settings.ts';
-import { pct } from '../odds.ts';
+import { pct } from '../model/odds.ts';
 import { batch } from '@preact/signals';
 import { places as yourPlaces, usePlaces, setChosen } from '../veterans/store.ts';
 import { umaName } from '../veterans/names.ts';
-import { whyText } from '../proofs.ts';
+import { whyText } from '../model/proofs.ts';
 import { answer, forgetDroppedChoice } from './state.ts';
 import { keyOf } from './keys.ts';
 import { Blocked, chosenSetup, placesKey, BORROW_CHOICES } from './job.ts';

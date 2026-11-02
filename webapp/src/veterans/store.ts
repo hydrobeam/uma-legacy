@@ -13,7 +13,7 @@ import type { ReadonlySignal } from '@preact/signals';
 import { ERA } from '../saved.ts';
 import { browserStorage, readJson, updateJson } from '../storage.ts';
 import type { Backing } from '../storage.ts';
-import { gradesOfList, isGrades } from '../grades.ts';
+import { gradesOfList, isGrades } from '../model/grades.ts';
 import type { Grades } from '../gen/solver.ts';
 import { jobLegacy, knownPinks } from './records.ts';
 import { must } from '../must.ts';

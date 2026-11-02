@@ -2,8 +2,8 @@
 // Each takes the settings it reads (settings.ts: `settings.value`, or the defaults for the example's job).
 import { gameData, SCEN_GOLDS } from './data.ts';
 import type { Uma } from './data.ts';
-import type { Scenario } from './gen/solver.ts';
-import type { SettingsView } from './settings.ts';
+import type { Scenario } from '../gen/solver.ts';
+import type { SettingsView } from '../settings.ts';
 
 export type { SettingsView };
 // skills a career always gives an uma outside her outfit and the deck: Tokai Teio's Head-On (her Triple Crown event;

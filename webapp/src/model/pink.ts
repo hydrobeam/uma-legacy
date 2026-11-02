@@ -5,10 +5,10 @@
 // on a reference output (val/ref__global__career_U.out). `rnd`: the random source (tests pass scripted uniforms).
 // Grades are the solver's (gen/solver.ts `Grades`); stars are 1 to 3.
 import { gradeOf, withGrade } from './grades.ts';
-import { Grade } from './gen/solver.ts';
-import type { Aptitude, Aptitudes, Grades, PinkOutcomeReport, WeightedPinkOutcome } from './gen/solver.ts';
-import type { DeepReadonly } from './store.ts';
-import { must } from './must.ts';
+import { Grade } from '../gen/solver.ts';
+import type { Aptitude, Aptitudes, Grades, PinkOutcomeReport, WeightedPinkOutcome } from '../gen/solver.ts';
+import type { DeepReadonly } from '../store.ts';
+import { must } from '../must.ts';
 
 // April inspirations in a career: each legacy pink gets a chance to fire at each
 const INSPIRATIONS = 2;

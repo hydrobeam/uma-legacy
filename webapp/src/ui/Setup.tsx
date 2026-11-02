@@ -17,7 +17,7 @@ import { CardsPanel } from './Cards.tsx';
 import { TargetSkills } from './Targets.tsx';
 import { RankControl, ScenarioPicker } from './Scenario.tsx';
 import type { Badge, Page } from './Shell.tsx';
-import type { Era } from '../eras.ts';
+import type { Era } from '../model/eras.ts';
 
 type Which = 'umas' | 'cards';
 const openOne = signal<Which | null>(null);

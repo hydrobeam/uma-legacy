@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Page } from 'playwright/test';
-import type { Card, Uma } from '../../src/data.ts';
+import type { Card, Uma } from '../../src/model/data.ts';
 import { expect, test } from './fixtures.ts';
 import { SIDEWAYS, closeEditor, loopSettled, openEditor, openLoop } from './pages.ts';
 import { quiet } from './solver.ts';

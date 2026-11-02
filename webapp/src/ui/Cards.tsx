@@ -7,10 +7,10 @@
 import { computed, signal, useComputed } from '@preact/signals';
 import { Fragment } from 'preact';
 import { useRef } from 'preact/hooks';
-import { SCENARIOS, gameData } from '../data.ts';
-import type { Card } from '../data.ts';
+import { SCENARIOS, gameData } from '../model/data.ts';
+import type { Card } from '../model/data.ts';
 import { fields, settings } from '../settings.ts';
-import { goldGiven } from '../job.ts';
+import { goldGiven } from '../model/job.ts';
 import { cardGives, cardTitle, ownAllCards, ownNoCards, toggleCard } from '../cards.ts';
 import type { CardGift } from '../cards.ts';
 import { CardAv } from './Images.tsx';

@@ -13,12 +13,15 @@
 // Swc parses (dependency-cruiser reads TypeScript through TypeScript's JavaScript API, which TypeScript 7 no longer has).
 // (biome.json's overrides name the stores layer's modules: they make their records with store.ts's store())
 export const LAYERS = [
-  ['types', ['globals.d', 'must', 'grades', 'solver', 'store', 'loop/types', 'eras', 'gen/solver', 'gen/constants']],
+  [
+    'types',
+    ['globals.d', 'must', 'model/grades', 'solver', 'store', 'loop/types', 'model/eras', 'gen/solver', 'gen/constants'],
+  ],
   // (gen/loopopt: wasm-bindgen's glue, which the worker imports; JavaScript, the one module of src/ that is)
-  ['io', ['dom', 'data', 'engine', 'statestore', 'errorlog', 'worker', 'gen/loopopt', 'saved', 'storage']],
+  ['io', ['dom', 'model/data', 'engine', 'statestore', 'errorlog', 'worker', 'gen/loopopt', 'saved', 'storage']],
   [
     'model',
-    ['job', 'pink', 'proofs', 'umadump', 'umamoe', 'career/roll', 'career/job', 'career/reply']
+    ['model/job', 'model/pink', 'model/proofs', 'umadump', 'umamoe', 'career/roll', 'career/job', 'career/reply']
       .concat(['career/keys', 'career/run'])
       .concat(['career/analysis/compare', 'loop/job', 'loop/keys', 'loop/members', 'loop/run', 'umamoesetup'])
       .concat(['veterans/names', 'veterans/records', 'veterans/complete']),

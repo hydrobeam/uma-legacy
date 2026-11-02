@@ -36,7 +36,7 @@ DATA_INPUTS: list[str] = [
     "cache/gametora",
     "val/jobs.json",
     "val/jobs",
-    "webapp/src/data.ts",
+    "webapp/src/model/data.ts",
 ]
 CACHE: str = os.path.join(common.OUT, "claims")
 JOBS: int = 4  # worker processes (--jobs=N; 1 runs scripts one after another)

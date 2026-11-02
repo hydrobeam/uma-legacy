@@ -1,6 +1,6 @@
 // ---------- the engine: a Web Worker running the WebAssembly solver (shared by the planner and the career page) ----------
 import { ERA } from './saved.ts';
-import { ASSETS, loadFail, gameData } from './data.ts';
+import { ASSETS, loadFail, gameData } from './model/data.ts';
 import { stateLoad, stateSave, stateDrop } from './statestore.ts';
 import { must } from './must.ts';
 import type {
@@ -237,7 +237,7 @@ export function engineSaveState() {
     }
   }, 100);
 }
-// what has not started yet (data.ts gameData().later) is left out of every search (a roll's plan job, `next.roll`, alike: the
+// what has not started yet (model/data.ts gameData().later) is left out of every search (a roll's plan job, `next.roll`, alike: the
 // solver finds the plan's kept state by the job as it ran)
 const gate = (job: SolverJob): SolverJob =>
   job.cmd !== 'deck' && job.cmd !== 'career'

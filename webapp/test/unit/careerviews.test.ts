@@ -17,7 +17,7 @@ import { PoolBody, PoolHead } from '../../src/career/view/Pool.tsx';
 import { choose, openPool, poolClosed } from '../../src/career/view/poolState.ts';
 import { OddsDialog, openOdds } from '../../src/ui/OddsDialog.tsx';
 import { ScheduleDialog, openSched } from '../../src/ui/Schedule.tsx';
-import { loadData } from '../../src/data.ts';
+import { loadData } from '../../src/model/data.ts';
 import { memory } from './fakes.ts';
 import { within } from '@testing-library/dom';
 import { must } from '../../src/must.ts';

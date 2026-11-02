@@ -6,7 +6,7 @@
 import { render, screen } from '@testing-library/preact';
 import { WinsEditor } from '../../src/ui/Agenda.tsx';
 import { expect, test, vi } from 'vitest';
-import { loadData } from '../../src/data.ts';
+import { loadData } from '../../src/model/data.ts';
 import { Blocked, buildJob } from '../../src/career/job.ts';
 import { initStore, settings } from '../../src/settings.ts';
 import { NodeDialog } from '../../src/career/view/NodeDialog.tsx';

@@ -5,8 +5,8 @@
 import { computed, signal, useComputed } from '@preact/signals';
 import { Fragment } from 'preact';
 import { useRef } from 'preact/hooks';
-import { gameData } from '../data.ts';
-import type { Outfit, Uma } from '../data.ts';
+import { gameData } from '../model/data.ts';
+import type { Outfit, Uma } from '../model/data.ts';
 import { fields } from '../settings.ts';
 import { ownAllUmas, ownNoUmas, rosterCounts, tileOutfits, tileState, toggleTile } from '../roster.ts';
 import { UmaAv } from './Images.tsx';

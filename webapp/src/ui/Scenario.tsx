@@ -1,10 +1,10 @@
 import type { RefObject } from 'preact';
 import { batch } from '@preact/signals';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import type { Scenario } from '../data.ts';
+import type { Scenario } from '../model/data.ts';
 import { fields, setRank } from '../settings.ts';
 import { LIST, artUrl, chooseScenario, goldNames, label, scenarioOf } from '../scenario.ts';
-import { skillIconSrc, srcFor } from '../images.ts';
+import { skillIconSrc, srcFor } from '../model/images.ts';
 import { SegmentedControl } from './SegmentedControl.tsx';
 import type { Segment } from './SegmentedControl.tsx';
 import type { RankClass } from '../gen/solver.ts';

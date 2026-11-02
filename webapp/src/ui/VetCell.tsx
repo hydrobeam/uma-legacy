@@ -7,8 +7,8 @@
 // with their bottoms on the portrait's, each tag's star row 0.86 of the tag right under it. The button is data-vet
 // (data-sel while chosen); its parts data-part: tab, rank, tag, stars, name.
 import { useState } from 'preact/hooks';
-import { careerTables } from '../data.ts';
-import { srcFor } from '../images.ts';
+import { careerTables } from '../model/data.ts';
+import { srcFor } from '../model/images.ts';
 import { blueName, pinkName, uniqueName, umaName } from '../veterans/names.ts';
 import type { NodeRecord, VetRecord } from '../veterans/store.ts';
 import { UmaAv } from './Images.tsx';

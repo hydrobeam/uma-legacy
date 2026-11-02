@@ -5,7 +5,7 @@ import { ERA } from '../../saved.ts';
 import { read, update } from '../../storage.ts';
 import { settings, setBorrowPar } from '../../settings.ts';
 import { scenarioOf } from '../../scenario.ts';
-import { ERA_NAMES } from '../../eras.ts';
+import { ERA_NAMES } from '../../model/eras.ts';
 import { BORROW_CHOICES, borrowChoice } from '../job.ts';
 import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
 

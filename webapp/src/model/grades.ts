@@ -2,11 +2,11 @@
 // Grades are the solver's (gen/solver.ts `Grades`: each kind's grades at their codes' places, `distance[Distance]`,
 // `surface[Surface]`, `style[Style]`); where an aptitude's grade is comes from the solver too (gen/constants.ts
 // `aptitude_kinds`). The checks are for what a file, a save or uma.moe hands the page, which no type covers at runtime.
-import { Grade } from './gen/solver.ts';
-import type { Aptitude, Grades } from './gen/solver.ts';
-import { SOLVER } from './gen/constants.ts';
-import { assert } from './must.ts';
-import type { DeepReadonly } from './store.ts';
+import { Grade } from '../gen/solver.ts';
+import type { Aptitude, Grades } from '../gen/solver.ts';
+import { SOLVER } from '../gen/constants.ts';
+import { assert } from '../must.ts';
+import type { DeepReadonly } from '../store.ts';
 
 /** her grade at `aptitude` */
 export function gradeOf(grades: DeepReadonly<Grades>, aptitude: Aptitude): Grade {

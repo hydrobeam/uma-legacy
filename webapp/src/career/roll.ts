@@ -2,7 +2,7 @@
 // each function takes the report, what it reads of the settings and data (`RollSetup`) and the random source (`rnd`,
 // Math.random on the page; test/unit/careerroll.test.ts passes scripted uniforms).
 import { must } from '../must.ts';
-import { drawPink } from '../pink.ts';
+import { drawPink } from '../model/pink.ts';
 import { SOLVER } from '../gen/constants.ts';
 import type { Grades, RankClass } from '../gen/solver.ts';
 import type { DeepReadonly } from '../store.ts';
@@ -10,7 +10,7 @@ import type { CareerReport } from './job.ts';
 
 /** What a roll reads besides the career's report. */
 export interface RollSetup {
-  /** the career tables (data.ts `careerTables()`): the G1 races by index, the outfits with a unique skill */
+  /** the career tables (model/data.ts `careerTables()`): the G1 races by index, the outfits with a unique skill */
   career: { races: readonly string[]; uniques?: Readonly<Record<number, unknown>> };
   /** the target skills, in the job's order (the outcome sets' bit order) */
   targets: readonly { group: number }[];
@@ -18,7 +18,8 @@ export interface RollSetup {
   rank: RankClass;
 }
 /** A roll: the sparks she landed (skill group -> stars), the skills she bought (group -> 'gold' | 'white'), the G1s she
- * won (race indices, ascending), her pink spark and end grades (pink.ts), her blue (stat -> stars) and unique (outfit
+ * won (race indices, ascending), her pink spark and end grades (model/pink.ts), her blue (stat -> stars) and unique
+ * (outfit
  * -> stars) sparks. */
 export interface Roll {
   sparks: Record<number, number>;

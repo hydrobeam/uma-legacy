@@ -122,7 +122,7 @@ def chain_ends(skills_by_name, card_events):
 # 30067-the-thrones-assemblage; characters: the slug of /characters/<outfit id>-<slug>)
 def check_race_tracks(career, era):
     """Each G1's distance (0-3, sprint to long) and ground (0 turf, 1 dirt), one of each per race: the career page reads
-    them as the solver's `Distance` and `Surface` (webapp/src/data.ts `tracksOf`, which fails the page's data load on any
+    them as the solver's `Distance` and `Surface` (webapp/src/model/data.ts `tracksOf`, which fails the page's data load on any
     other), so one out of range, or lists of the wrong length, stops the export here, naming it."""
     races, distances, grounds = career["races"], career.get("race_cat"), career.get("race_ground")
     where = f"pkg/loopopt/data/{era}/data.json"

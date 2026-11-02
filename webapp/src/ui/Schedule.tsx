@@ -7,7 +7,17 @@ import { batch, signal, untracked } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
-import { YEARS, ROW_PLACES, TABLE_PAIRS, cellAt, shownP, slotOf, tableFigure, turnLabel, why } from '../agenda.ts';
+import {
+  YEARS,
+  ROW_PLACES,
+  TABLE_PAIRS,
+  cellAt,
+  shownP,
+  slotOf,
+  tableFigure,
+  turnLabel,
+  why,
+} from '../model/agenda.ts';
 import { Grade } from '../gen/solver.ts';
 import type { ScheduleCell, ScheduleRow } from '../solver.ts';
 import { pickOutfit } from '../roster.ts';

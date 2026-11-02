@@ -1,10 +1,10 @@
 // ---------- support cards: a card's name and what it gives, as the page shows them; what you own of them ----------
 // The Support cards panel that draws the picker is ui/Cards.tsx.
 import { computed } from '@preact/signals';
-import { gameData } from './data.ts';
+import { gameData } from './model/data.ts';
 import { fields, settings, setOwned } from './settings.ts';
 import { must } from './must.ts';
-import type { Card } from './data.ts';
+import type { Card } from './model/data.ts';
 const RARITY = { 1: 'R', 2: 'SR', 3: 'SSR' };
 // a card's name split as the game shows it: {nm: the character (with the rarity, "Daitaku Helios SSR", unless `rar` is
 // false: the card list leaves it out, its frame and section heading show it), ti: the card's title ('' when none)}

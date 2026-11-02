@@ -1,9 +1,9 @@
 // The career job: built from the settings and the veterans store's record (`buildJob`, values in: career/current.ts
 // passes the stores' as they stand), the Use this choice it carries, the parent rules, and the solver's career job and
 // reports, typed here. A model module: it reads no store (.dependency-cruiser.mjs checks it).
-import { gameData } from '../data.ts';
+import { gameData } from '../model/data.ts';
 import { stateKey } from '../engine.ts';
-import { deckPart, isOwned, skillsPart } from '../job.ts';
+import { deckPart, isOwned, skillsPart } from '../model/job.ts';
 import { starsOf, umaName } from '../veterans/names.ts';
 import { lacks, lacksSaid } from '../veterans/complete.ts';
 import { assert, must } from '../must.ts';

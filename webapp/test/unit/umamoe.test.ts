@@ -40,7 +40,7 @@ let listed: readonly Veteran[] = [];
 // the modules as a page load makes them (a reload: fresh modules, the same storage)
 const fresh = async () => {
   vi.resetModules();
-  await (await import('../../src/data.ts')).loadData(CAREER);
+  await (await import('../../src/model/data.ts')).loadData(CAREER);
   const um = await import('../../src/umamoesetup.ts');
   um.connectUmamoe({ targets: () => TARGETS, setListings: (l) => (listed = l) });
   return um;
@@ -130,7 +130,7 @@ test('a late reply for a target set left before it came replaces neither the lis
 
 test('the Grand Masters era asks uma.moe only for the sparks Global has', async () => {
   const { targetFactors } = await import('../../src/umamoe.ts');
-  const { loadData } = await import('../../src/data.ts');
+  const { loadData } = await import('../../src/model/data.ts');
   const all = targetFactors(TARGETS.map((t) => t.group)).flat();
   const [kept] = all;
   if (kept === undefined) throw new Error('the targets have no factors');

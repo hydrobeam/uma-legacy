@@ -1,13 +1,13 @@
-// ---------- portraits, card art, skill icons, the runner (their files: images.ts) ----------
+// ---------- portraits, card art, skill icons, the runner (their files: model/images.ts) ----------
 // Portraits, card art and skill icons are lazy unless marked eager: the browser fetches one only when it scrolls near
 // the view. One that keeps state (an image that fails) is keyed by its subject at the call site, so a reused one never
 // shows the last subject's state. Each carries a data-* mark (data-av, data-card, data-icon, data-grade, data-spinner,
 // data-scen-logo) by which the checks find it.
 import { useState } from 'preact/hooks';
-import { gameData } from '../data.ts';
-import type { Card } from '../data.ts';
+import { gameData } from '../model/data.ts';
+import type { Card } from '../model/data.ts';
 import { Grade } from '../gen/solver.ts';
-import { KIND_ABBR, RARITY_CLASS, RUN_CYCLE_MS, initials, runnerSrc, skillIconSrc, srcFor } from '../images.ts';
+import { KIND_ABBR, RARITY_CLASS, RUN_CYCLE_MS, initials, runnerSrc, skillIconSrc, srcFor } from '../model/images.ts';
 import { cx, tv } from 'tailwind-variants/lite';
 import type { VariantProps } from 'tailwind-variants/lite';
 

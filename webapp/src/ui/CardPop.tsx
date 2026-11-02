@@ -3,10 +3,10 @@
 // One slot in the results column (each entry renders it into #pop-root) and one in every ui/Dialog: the slot where the
 // panel's opener sits draws it. Placed against its opener and focused from a layout effect, once per opening.
 import { useLayoutEffect, useRef } from 'preact/hooks';
-import { gameData } from '../data.ts';
-import type { Card, Uma } from '../data.ts';
+import { gameData } from '../model/data.ts';
+import type { Card, Uma } from '../model/data.ts';
 import { settings, setOwned } from '../settings.ts';
-import { goldGiven } from '../job.ts';
+import { goldGiven } from '../model/job.ts';
 import { umaState } from '../roster.ts';
 import { cardTitle, cardGives, chainEndAt } from '../cards.ts';
 import type { CardGift } from '../cards.ts';

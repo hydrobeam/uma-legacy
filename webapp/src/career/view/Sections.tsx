@@ -3,10 +3,10 @@
 import { fmtIn } from '../../dom.ts';
 import { assert } from '../../must.ts';
 import { settings } from '../../settings.ts';
-import { srcFor } from '../../images.ts';
+import { srcFor } from '../../model/images.ts';
 import { scenarioOf } from '../../scenario.ts';
 import { usePopOpener } from '../../ui/CardPop.tsx';
-import { pct, deckHint } from '../../odds.ts';
+import { pct, deckHint } from '../../model/odds.ts';
 import { starsOf } from '../../veterans/names.ts';
 import { borrowedLast, deckCards } from '../../details.ts';
 import type { DeckSlot } from '../../details.ts';

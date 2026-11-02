@@ -7,8 +7,8 @@
 import type { ComponentChildren, Ref } from 'preact';
 import { useLayoutEffect, useState } from 'preact/hooks';
 import { cx } from 'tailwind-variants/lite';
-import { ERA_NAMES } from '../eras.ts';
-import type { Era } from '../eras.ts';
+import { ERA_NAMES } from '../model/eras.ts';
+import type { Era } from '../model/eras.ts';
 import { SegmentedControl } from './SegmentedControl.tsx';
 import { popover } from './Popover.tsx';
 

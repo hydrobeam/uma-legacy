@@ -5,7 +5,7 @@
 // step dismissed (Escape, Close, the colour picker shut with no pink) ends the entry, and she stays as far as it got:
 // incomplete (complete.ts), left out of the jobs, until her popup's editors finish her.
 import { batch } from '@preact/signals';
-import type { Uma } from '../data.ts';
+import type { Uma } from '../model/data.ts';
 import { notEntered } from './complete.ts';
 import { umaName } from './names.ts';
 import { askSkills, openUmaPicker } from './pickers.ts';

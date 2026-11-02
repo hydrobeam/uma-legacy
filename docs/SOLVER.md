@@ -1233,7 +1233,7 @@ A finishing career's success stays analytic in S: the path goes on through its f
 all-landed one last. Both are inverse CDFs over the sets ordered fewest-landed first. This is unbiased: the path is drawn
 from the process with the finishing careers forced to fail, and S_t is the chance the real process is still running at
 t given the rest of the path. The stars come from `rank_class`'s star mix, each race is won with the schedule's chance of at least
-one win, and her pink is drawn as the page's roll draws it (`webapp/src/pink.ts`; the April inspirations fire from
+one win, and her pink is drawn as the page's roll draws it (`webapp/src/model/pink.ts`; the April inspirations fire from
 her start grades, then one aptitude among those at A or S, stars 20/70/10). Her parents are the career's.
 
 A run stops when S_t < eps or at `max_careers`, and a tail is added there. The tail is S_t / p_t when career t

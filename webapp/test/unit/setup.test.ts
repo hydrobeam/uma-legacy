@@ -17,7 +17,7 @@ import * as P from '../../src/presets.ts';
 import { PresetDialogs, openPresets } from '../../src/ui/Presets.tsx';
 import { setupViews } from '../../src/ui/Setup.tsx';
 import { SettingsSort, SortMenu } from '../../src/ui/SortMenu.tsx';
-import { gameData, loadData } from '../../src/data.ts';
+import { gameData, loadData } from '../../src/model/data.ts';
 import { SKILLS, UMAS } from './fakepage.ts';
 import { must } from '../../src/must.ts';
 import { find } from './dom.ts';

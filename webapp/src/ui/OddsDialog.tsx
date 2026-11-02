@@ -2,7 +2,7 @@
 // One dialog, there from load (empty); a result card's Odds fills and opens it. Escape, the backdrop and Close all close
 // it, and the browser gives the focus back to the button that opened it.
 import { computed, signal } from '@preact/signals';
-import { pct } from '../odds.ts';
+import { pct } from '../model/odds.ts';
 import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle } from './Dialog.tsx';
 import { RenderGuard } from './RenderGuard.tsx';
 

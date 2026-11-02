@@ -1,10 +1,10 @@
-// The page's pink draw (pink.ts `drawPink`) on the solver's report of a career whose start is not one set of grades
-// (career/reply.rs `AptitudeStart::Outcomes`: a veteran before her result is known among the legacies): one number
-// first draws the outcome by its chance, as the solver's own draw does (career/schedule.rs `draw_pink`), then the
-// draw goes on from that outcome's start.
+// The page's pink draw (model/pink.ts `drawPink`) on the solver's report of a career whose start is not one set of
+// grades (career/reply.rs `AptitudeStart::Outcomes`: a veteran before her result is known among the legacies): one
+// number first draws the outcome by its chance, as the solver's own draw does (career/schedule.rs `draw_pink`), then
+// the draw goes on from that outcome's start.
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { drawPink } from '../../src/pink.ts';
+import { drawPink } from '../../src/model/pink.ts';
 import { Aptitude, type Aptitudes, type Grade, type Grades } from '../../src/gen/solver.ts';
 
 // every aptitude in the solver's order, the sprint first (`pink_gen`)

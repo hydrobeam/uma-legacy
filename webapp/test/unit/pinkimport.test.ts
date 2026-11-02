@@ -5,7 +5,7 @@
 // npx vitest run (in webapp)
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
-import { loadData } from '../../src/data.ts';
+import { loadData } from '../../src/model/data.ts';
 import { parseExport } from '../../src/umadump.ts';
 import { jobLegacy, knownPinks, unknownPinksIn } from '../../src/veterans/records.ts';
 import { asVeteran, type Veteran } from '../../src/veterans/store.ts';

@@ -4,12 +4,12 @@
 // G1 wins window or a skills prompt is open the page holds its search (`searchHeld`): the edits made meanwhile reach
 // one search when it closes.
 import { batch, computed, signal } from '@preact/signals';
-import { careerTables } from '../data.ts';
+import { careerTables } from '../model/data.ts';
 import { umaName } from './names.ts';
 import type { ReadonlySignal } from '@preact/signals';
 import type { NodeRef, Sparks } from './store.ts';
-import type { Uma } from '../data.ts';
-import type { WinInfo } from '../agenda.ts';
+import type { Uma } from '../model/data.ts';
+import type { WinInfo } from '../model/agenda.ts';
 
 // ---------- the uma picker: every uma (or those `only` lets through), filterable; onPick(chara id)
 export interface UmaPick {

@@ -18,7 +18,7 @@ import { draftOf } from '../../src/career/analysis/view.tsx';
 import { legaciesOf } from '../../src/career/analysis/Details.tsx';
 import { legacyNumber, legacyVet } from '../../src/career/current.ts';
 import { Targets } from '../../src/career/view/Sections.tsx';
-import { loadData } from '../../src/data.ts';
+import { loadData } from '../../src/model/data.ts';
 import { memory } from './fakes.ts';
 import { allG, careerReport, careerTarget, lineageNode, veteran } from './reports.ts';
 
