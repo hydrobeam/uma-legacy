@@ -70,7 +70,7 @@ def templates(base_targets):
             if key not in seen:
                 seen.add(key)
                 veterans.append(record)
-    sparked = lambda record: sum(group in base_targets for group, _stars in record["sparks"])
+    sparked = lambda record: sum(spark["group"] in base_targets for spark in record["sparks"])
     partial = [v for v in veterans if sparked(v) < len(base_targets)]
     return Templates(
         full=[v for v in veterans if sparked(v) == len(base_targets)],

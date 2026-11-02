@@ -29,6 +29,8 @@ initStore(() => memory());
 
 const node = (chara) => ({ chara, sparks: {}, pinks: {}, blues: {}, greens: {}, wins: [] });
 const vet = (id, chara) => ({ id, src: 'hand', borrowed: false, ...node(chara), parents: [node(1), node(2)] });
+// grades G at every aptitude
+const allG = { distance: [1, 1, 1, 1], surface: [1, 1], style: [1, 1, 1, 1] };
 // a career on the job's veterans #3 and #4 (legacy indices 2 and 3): what the report and the plan rows carry
 const career = {
   trainee: { id: 1005, name: 'Uma E', outfits: [] },
@@ -41,7 +43,7 @@ const career = {
   bound: 0,
   deck: { cards: [], card_ids: [], odds: [] },
   pinks: [],
-  aptitudes: { base: [], start: { kind: 'known', start: [], fire: [] }, pink_gen: [] },
+  aptitudes: { base: allG, start: { kind: 'known', start: allG, fire: [] }, pink_gen: [] },
   schedule: null,
   outcome_sets: null,
   g1_wins: null,

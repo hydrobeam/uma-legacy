@@ -94,7 +94,7 @@ def plan_summary(plan):
 def her_stars(her, job):
     """her stars per job target (0 where she has no spark of it): a roll as the page's Reroll sends it"""
     return [
-        max([stars for group, stars in her["sparks"] if group == target["group"]] or [0])
+        max([spark["stars"] for spark in her["sparks"] if spark["group"] == target["group"]] or [0])
         for target in solver.part(job, "skills")["targets"]
     ]
 
@@ -197,22 +197,31 @@ def scheduled_races(report, race_names):
     return races
 
 
-def drawn_pink(aptitudes, rng):
-    """pink.ts drawPink: {group: stars}, its draws in the same order (fires per inspiration, aptitude, stars)"""
+def drawn_pink(aptitudes, kinds, rng):
+    """pink.ts drawPink: {aptitude: stars}, its draws in the same order (fires per inspiration, aptitude, stars).
+    `kinds`: the solver's `aptitude_kinds` (where each aptitude's grade is in its grades: kind, then place)"""
     if not aptitudes:
         return {}
     start = aptitudes["start"]  # (kind "known": a job's own veterans always have their pinks on record)
-    grades = list(start["start"])
+    grades = copy.deepcopy(start["start"])
+
+    def place(aptitude):
+        """its grade's place in `grades`: the kind's list (the kind's name is its field), then the place in it"""
+        kind = kinds[str(aptitude)]
+        return kind["kind"], kind[kind["kind"]]
+
     for _ in range(INSPIRATIONS):
         for fire in start["fire"]:
             if rng.random() < fire["p"]:
-                grades[fire["apt"]] = min(GRADE_S, grades[fire["apt"]] + 1)
-    at_least_a = [k for k, grade in enumerate(grades) if grade >= GRADE_A]
+                kind, at = place(fire["aptitude"])
+                grades[kind][at] = min(GRADE_S, grades[kind][at] + 1)
+    grade = lambda aptitude: grades[place(aptitude)[0]][place(aptitude)[1]]
+    at_least_a = [entry for entry in aptitudes["pink_gen"] if grade(entry["aptitude"]) >= GRADE_A]
     if not at_least_a:
         return {}
-    k = at_least_a[int(rng.random() * len(at_least_a))]
+    pink = at_least_a[int(rng.random() * len(at_least_a))]
     u = rng.random()
-    return {aptitudes["pink_gen"][k]["group"]: 1 if u < 0.2 else 2 if u < 0.9 else 3}
+    return {pink["aptitude"]: 1 if u < 0.2 else 2 if u < 0.9 else 3}
 
 
 def drawn_veteran(report, job, race_names, rng):
@@ -232,9 +241,9 @@ def drawn_veteran(report, job, race_names, rng):
         landed = [k for k in range(len(targets)) if mask >> k & 1]
     else:
         landed = [k for k, target in enumerate(report["targets"]) if rng.random() < target["p"]]
-    sparks = [[targets[k]["group"], star()] for k in landed]
+    sparks = [{"group": targets[k]["group"], "stars": star()} for k in landed]
     wins = sorted(index for index, chance in scheduled_races(report, race_names).items() if rng.random() < chance)
-    pinks = drawn_pink(report.get("aptitudes"), rng)
+    pinks = drawn_pink(report.get("aptitudes"), solver.constants(binary)["aptitude_kinds"], rng)
     node = lambda legacy: {
         "chara": legacy.get("chara", 0),
         "sparks": legacy.get("sparks", []),
@@ -244,7 +253,7 @@ def drawn_veteran(report, job, race_names, rng):
     her = {
         "chara": report["trainee"]["id"],
         "sparks": sparks,
-        "pinks": [[group, stars] for group, stars in pinks.items()],
+        "pinks": [{"aptitude": aptitude, "stars": stars} for aptitude, stars in pinks.items()],
         "wins": wins,
         "borrowed": False,
         "parents": [node(solver.part(job, "career")["legacies"][parent]) for parent in report["parents"]],

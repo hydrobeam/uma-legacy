@@ -63,6 +63,7 @@ use crate::career::run::{
 use crate::career::search::{Ref, solve_kept};
 use crate::career::setup::{CareerBuild, career_setup};
 use crate::career::state::{KeptState, ProductProof};
+use crate::codes::Aptitude;
 use crate::data::Data;
 use crate::deck::space::{DeckSpace, SelectedDeck};
 use crate::deck::{CardsRaw, d_true};
@@ -134,25 +135,62 @@ pub(crate) struct JobInputs<'data> {
     pub(crate) job: &'data CareerRequest,
 }
 
+/// A white (skill) spark on a record: its skill group and stars.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, ts_rs::TS)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Spark {
+    pub(crate) group: u32,
+    pub(crate) stars: u8,
+}
+
+/// A pink (aptitude) spark: the aptitude it raises and its stars, 1 to 3 as the game's (master.mdb `succession_factor`'s
+/// rarity); other stars do not parse, nor does an aptitude outside `Aptitude`. Ordered by aptitude code, then stars.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, ts_rs::TS)]
+#[serde(try_from = "PinkFields")]
+pub(crate) struct Pink {
+    pub(crate) aptitude: Aptitude,
+    pub(crate) stars: u8,
+}
+
+/// A pink spark as read, before its stars are checked (`Pink`).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PinkFields {
+    aptitude: Aptitude,
+    stars: u8,
+}
+
+impl TryFrom<PinkFields> for Pink {
+    type Error = String;
+
+    fn try_from(PinkFields { aptitude, stars }: PinkFields) -> Result<Self, Self::Error> {
+        if (1..=3).contains(&stars) {
+            Ok(Self { aptitude, stars })
+        } else {
+            Err(format!("a pink spark has 1 to 3 stars, not {stars} ({aptitude:?})"))
+        }
+    }
+}
+
 /// A veteran's parent as her record names it.
 #[derive(Serialize, Deserialize, Clone, Default, ts_rs::TS)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Ancestor {
     #[serde(rename = "chara")]
     pub character_id: u32,
-    /// (skill group, stars 1..=3) of its white skill sparks
+    /// its white skill sparks
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
-    pub sparks: Vec<(u32, u8)>,
+    pub sparks: Vec<Spark>,
     /// race indices (data.json `races`) of the single-race G1s it won
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     pub wins: Vec<usize>,
-    /// (aptitude factor group, stars) of its pink sparks: 11 turf, 12 dirt, 21-24 front runner .. end closer, 31-34
-    /// sprint .. long; reported (inheritance chance per aptitude), not part of the odds
+    /// its pink sparks: reported (inheritance chance per aptitude), and they raise her children's grades (their
+    /// schedules); not part of the skill odds
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
-    pub pinks: Vec<(u32, u8)>,
+    pub pinks: Vec<Pink>,
     /// internal (the parent of a veteran before her result is known is such a veteran): the pinks it may carry
     /// (`Legacy::pink_chances`)
     #[serde(skip)]
@@ -197,8 +235,10 @@ struct IdentityRecord<'legacy> {
     borrowed: bool,
     chara: u32,
     parents: Vec<IdentityParent<'legacy>>,
-    pinks: &'legacy [(u32, u8)],
-    sparks: &'legacy [(u32, u8)],
+    #[serde(serialize_with = "pink_pairs")]
+    pinks: &'legacy [Pink],
+    #[serde(serialize_with = "spark_pairs")]
+    sparks: &'legacy [Spark],
     wins: &'legacy [usize],
 }
 
@@ -206,9 +246,22 @@ struct IdentityRecord<'legacy> {
 #[derive(Serialize)]
 struct IdentityParent<'legacy> {
     chara: u32,
-    pinks: &'legacy [(u32, u8)],
-    sparks: &'legacy [(u32, u8)],
+    #[serde(serialize_with = "pink_pairs")]
+    pinks: &'legacy [Pink],
+    #[serde(serialize_with = "spark_pairs")]
+    sparks: &'legacy [Spark],
     wins: &'legacy [usize],
+}
+
+/// Sparks in an identity's text as `[group, stars]` pairs, as the records were written when the identities were first
+/// taken (the identities order the pairs, `plan::pair_bound`, so their text stays).
+fn spark_pairs<S: serde::Serializer>(sparks: &&[Spark], serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.collect_seq(sparks.iter().map(|spark| (spark.group, spark.stars)))
+}
+
+/// Pink sparks in an identity's text as `[aptitude code, stars]` pairs (`spark_pairs`).
+fn pink_pairs<S: serde::Serializer>(pinks: &&[Pink], serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.collect_seq(pinks.iter().map(|pink| (pink.aptitude, pink.stars)))
 }
 
 impl Legacy {
@@ -288,13 +341,13 @@ pub(crate) struct Legacy {
     pub borrowed: bool,
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
-    pub sparks: Vec<(u32, u8)>,
+    pub sparks: Vec<Spark>,
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
     pub wins: Vec<usize>,
     #[serde(default)]
     #[ts(as = "Option<_>", optional)]
-    pub pinks: Vec<(u32, u8)>,
+    pub pinks: Vec<Pink>,
     /// its own parents (the new trainee's grandparents), at most two; empty when unknown
     #[serde(default, deserialize_with = "recorded_parents")]
     #[ts(as = "Option<_>", optional)]

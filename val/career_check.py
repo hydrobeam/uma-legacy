@@ -103,7 +103,7 @@ def slots_of(relations, legacies, trainee, parents):
 
 
 def stars(legacy, group):
-    return min(3, max([s for g, s in legacy.get("sparks", []) if g == group] or [0]))
+    return min(3, max([spark["stars"] for spark in legacy.get("sparks", []) if spark["group"] == group] or [0]))
 
 
 class Inheritance(NamedTuple):

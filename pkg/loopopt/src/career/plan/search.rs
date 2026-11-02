@@ -5,7 +5,7 @@ use crate::career::plan::{ParentPool, PlanJob};
 use crate::career::pool::Pool;
 use crate::career::search::{Bar, Found, RankedPair};
 use crate::career::sim::{Sim, SimJob, SimulationOptions, SimulationRoster};
-use crate::career::{Ancestor, CareerSetup, Env, JobInputs, Legacy, Lineage};
+use crate::career::{Ancestor, CareerSetup, Env, JobInputs, Legacy, Lineage, Spark};
 use crate::data::Data;
 use crate::refusal::Refusal;
 use crate::skills::SkillJob;
@@ -350,8 +350,8 @@ struct SurrogateBest {
 }
 
 /// a full veteran (a spark of every job target), yours or borrowed
-pub(crate) fn is_full(skill_job: &SkillJob, sparks: &[(u32, u8)]) -> bool {
-    skill_job.targets.iter().all(|target| sparks.iter().any(|spark| spark.0 == target.group && spark.1 > 0))
+pub(crate) fn is_full(skill_job: &SkillJob, sparks: &[Spark]) -> bool {
+    skill_job.targets.iter().all(|target| sparks.iter().any(|spark| spark.group == target.group && spark.stars > 0))
 }
 
 /// `searches` under the plan's career-search work cap `work` (`PlanJob::search_work`; 0: none), the env's own budget
@@ -396,7 +396,7 @@ pub(crate) struct FullLoop {
 /// `CareerSetup::veteran` makes the fresh ones), no pinks; as a legacy with `parents`, or as an ancestor
 struct HypotheticalVeteran<'veteran> {
     character_id: u32,
-    full: &'veteran [(u32, u8)],
+    full: &'veteran [Spark],
     star_mix: [f64; 3],
     win_chances: Vec<f64>,
 }
@@ -442,7 +442,7 @@ pub(crate) fn loop_ceiling(
     let data = simulator.data;
     let skill_job = simulator.env.setup.skill_job;
     let star_mix = simulator.env.setup.skill_job.star_mix();
-    let full: Vec<(u32, u8)> = skill_job.targets.iter().map(|target| (target.group, 2)).collect();
+    let full: Vec<Spark> = skill_job.targets.iter().map(|target| Spark { group: target.group, stars: 2 }).collect();
     let hypothetical = |uma: crate::uma::UmaIndex| HypotheticalVeteran {
         character_id: data.umas[uma].id,
         full: &full,
@@ -494,7 +494,7 @@ pub(crate) fn hint_umas(
     let data = setup.data;
     let skill_job = setup.skill_job;
     let star = skill_job.star_mix();
-    let full: Vec<(u32, u8)> = skill_job.targets.iter().map(|target| (target.group, 2)).collect();
+    let full: Vec<Spark> = skill_job.targets.iter().map(|target| Spark { group: target.group, stars: 2 }).collect();
     let mut sides: Vec<u32> = vec![];
     for &candidate in candidates {
         let id = data.umas[candidate].id;

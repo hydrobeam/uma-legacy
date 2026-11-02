@@ -17,6 +17,8 @@ import { planIn, rollIn, searchIn } from '../reply.ts';
 import type { CareerAnswer as Answer } from '../job.ts';
 import type { CareerAnswer, CareerJob, CareerReport, PlanReport } from '../job.ts';
 import type { Draft, NodeRecord } from '../../veterans/store.ts';
+import { jobNode } from '../../veterans/records.ts';
+import type { JobLegacy } from '../../veterans/records.ts';
 import { keyOf } from '../keys.ts';
 import { PLAN_NEXT } from '../run.ts';
 
@@ -67,17 +69,9 @@ export interface ComparisonDeps {
 /** how long a roll's quick figures stand before the exact comparison checks them, ms */
 export const STAND_MS = 800;
 
-// the draft as a legacy of the comparison's jobs (a veteran's job record: career/job.ts `jobNode`)
-function draftJob(v: DeepReadonly<Draft>) {
-  const pairs = (o: DeepReadonly<Record<number, number>>) =>
-    Object.entries(o).map(([g, s]): [number, number] => [+g, s]);
-  const node = (x: NodeRecord) => ({
-    chara: x.chara || 0,
-    sparks: pairs(x.sparks),
-    pinks: pairs(x.pinks),
-    wins: [...x.wins],
-  });
-  return { ...node(v), borrowed: false, parents: v.parents.map(node) };
+// the draft as a legacy of the comparison's jobs (a veteran's job record: veterans/records.ts `jobNode`)
+function draftJob(v: DeepReadonly<Draft>): JobLegacy {
+  return { ...jobNode(v), borrowed: false, parents: v.parents.map(jobNode) };
 }
 
 // where a comparison's saving lands: the next career when she is one of its parents; else a later career, named (the

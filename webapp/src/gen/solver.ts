@@ -32,23 +32,30 @@ gen_gold: number, pairs: Array<PairDetail>, lineages: Array<Lineage>, };
  */
 export type Ancestor = { chara: number, 
 /**
- * (skill group, stars 1..=3) of its white skill sparks
+ * its white skill sparks
  */
-sparks?: Array<[number, number]>, 
+sparks?: Array<Spark>, 
 /**
  * race indices (data.json `races`) of the single-race G1s it won
  */
 wins?: Array<number>, 
 /**
- * (aptitude factor group, stars) of its pink sparks: 11 turf, 12 dirt, 21-24 front runner .. end closer, 31-34
- * sprint .. long; reported (inheritance chance per aptitude), not part of the odds
+ * its pink sparks: reported (inheritance chance per aptitude), and they raise her children's grades (their
+ * schedules); not part of the skill odds
  */
-pinks?: Array<[number, number]>, };
+pinks?: Array<Pink>, };
 
 /**
  * A recorded parent of a veteran.
  */
-export type AncestorRecord = { chara: number, sparks: Array<[number, number]>, wins: Array<number>, pinks: Array<[number, number]>, };
+export type AncestorRecord = { chara: number, sparks: Array<Spark>, wins: Array<number>, pinks: Array<Pink>, };
+
+/**
+ * One of a uma's ten aptitudes, as the game's aptitude factor group codes it (master.mdb `succession_factor`,
+ * factor_type 2: a pink spark's factor_id is the group x 100 + its stars). Declared in code order, so the derived
+ * order is the codes'.
+ */
+export enum Aptitude { "Turf" = 11, "Dirt" = 12, "FrontRunner" = 21, "PaceChaser" = 22, "LateSurger" = 23, "EndCloser" = 24, "Sprint" = 31, "Mile" = 32, "Medium" = 33, "Long" = 34 }
 
 /**
  * Her starting grades, by `kind`: known (one outcome), or one per outcome of a veteran among her legacies whose result
@@ -57,15 +64,16 @@ export type AncestorRecord = { chara: number, sparks: Array<[number, number]>, w
 export type AptitudeStart = { "kind": "known" } & PinkOutcomeReport | { "kind": "outcomes", outcomes: Array<WeightedPinkOutcome>, };
 
 /**
- * Her aptitude grades (data.json `apt` order) and her veteran's pink spark.
+ * Her aptitude grades and her veteran's pink spark.
  */
 export type Aptitudes = { 
 /**
  * her grades before any pink spark fires
  */
-base: [Grade, Grade, Grade, Grade, Grade, Grade, Grade, Grade, Grade, Grade], 
+base: Grades, 
 /**
- * the chance of each pink type on her veteran
+ * the chance of each pink on her veteran, an entry per aptitude in the solver's order (`Aptitude::ORDER`: the
+ * page's roll draws from them in it)
  */
 pink_gen: Array<PinkTypeChance>, 
 /**
@@ -390,9 +398,9 @@ aff: number,
  */
 stars: Array<number>, 
 /**
- * her pink sparks: [group, stars]
+ * her pink sparks
  */
-pinks: Array<[number, number]>, };
+pinks: Array<Pink>, };
 
 /**
  * One target of a career.
@@ -666,6 +674,11 @@ routes_dropped: number, score_plain: number, scoring_complete: boolean,
 classes: Array<OutcomeClassReport>, };
 
 /**
+ * A race's distance class, data.json's `race_cat`, and the place of its grade in `Grades::distance`.
+ */
+export enum Distance { "Short" = 0, "Mile" = 1, "Medium" = 2, "Long" = 3 }
+
+/**
  * What the answer rests on.
  */
 export type ExactSummary = { 
@@ -745,6 +758,12 @@ export type Goal = "first" | "looped";
  * An aptitude grade, data.json's `apt` codes and the replies' (`Aptitudes`): G = 1 .. S = 8.
  */
 export enum Grade { "G" = 1, "F" = 2, "E" = 3, "D" = 4, "C" = 5, "B" = 6, "A" = 7, "S" = 8 }
+
+/**
+ * A uma's grade at each aptitude (data.json's `apt` and `outfit_apt`, a reply's `Aptitudes`), each kind's grades at
+ * their codes' places: `distance[Distance]`, `surface[Surface]`, `style[Style]`.
+ */
+export type Grades = { distance: [Grade, Grade, Grade, Grade], surface: [Grade, Grade], style: [Grade, Grade, Grade, Grade], };
 
 /**
  * The greedy audit at a pick change: the exact career search's pick against the surrogate's, with audit rows.
@@ -853,7 +872,7 @@ export type Key = string;
 /**
  * A veteran as a job sends her: her record (character, sparks, G1 wins, pinks) and her recorded parents.
  */
-export type Legacy = { chara: number, borrowed?: boolean, sparks?: Array<[number, number]>, wins?: Array<number>, pinks?: Array<[number, number]>, 
+export type Legacy = { chara: number, borrowed?: boolean, sparks?: Array<Spark>, wins?: Array<number>, pinks?: Array<Pink>, 
 /**
  * its own parents (the new trainee's grandparents), at most two; empty when unknown
  */
@@ -868,7 +887,7 @@ export type LegacyKind = "parent" | "grandparent";
  * A veteran as a job records her (`legacies`): what the simulator's pool holds at a run's end, and what it sends its
  * in-process jobs (a copy: the pool changes as the path goes on).
  */
-export type LegacyRecord = { chara: number, borrowed: boolean, sparks: Array<[number, number]>, wins: Array<number>, pinks: Array<[number, number]>, parents: Array<AncestorRecord>, };
+export type LegacyRecord = { chara: number, borrowed: boolean, sparks: Array<Spark>, wins: Array<number>, pinks: Array<Pink>, parents: Array<AncestorRecord>, };
 
 /**
  * One legacy slot of a career.
@@ -1147,14 +1166,20 @@ export type PickChange = { t: number, pick: string, trainee: string, p: number, 
 export type PickRule = "card" | "slots";
 
 /**
- * A legacy pink that can fire: its group and aptitude, its chance, the legacy slot and its stars.
+ * A pink (aptitude) spark: the aptitude it raises and its stars, 1 to 3 as the game's (master.mdb `succession_factor`'s
+ * rarity); other stars do not parse, nor does an aptitude outside `Aptitude`. Ordered by aptitude code, then stars.
  */
-export type PinkFireReport = { group: number, apt: number, p: number, slot: number, stars: number, };
+export type Pink = { aptitude: Aptitude, stars: number, };
+
+/**
+ * A legacy pink that can fire: its aptitude, its chance, the legacy slot and its stars.
+ */
+export type PinkFireReport = { aptitude: Aptitude, p: number, slot: number, stars: number, };
 
 /**
  * A pink (aptitude) spark the legacies carry.
  */
-export type PinkInheritance = { group: number, 
+export type PinkInheritance = { aptitude: Aptitude, 
 /**
  * the chance at least one of the two inheritance events passes it on
  */
@@ -1167,12 +1192,12 @@ carriers: number, };
 /**
  * A start's grades and the legacy pinks that can fire at an April inspiration.
  */
-export type PinkOutcomeReport = { start: [Grade, Grade, Grade, Grade, Grade, Grade, Grade, Grade, Grade, Grade], fire: Array<PinkFireReport>, };
+export type PinkOutcomeReport = { start: Grades, fire: Array<PinkFireReport>, };
 
 /**
  * A pink type's chance on her veteran.
  */
-export type PinkTypeChance = { group: number, p: number, };
+export type PinkTypeChance = { aptitude: Aptitude, p: number, };
 
 /**
  * The page's next career: its options by score, its pick, and today's cheapest route to a fully looped parent.
@@ -2021,6 +2046,11 @@ inherit: number,
 outfit: number, };
 
 /**
+ * A white (skill) spark on a record: its skill group and stars.
+ */
+export type Spark = { group: number, stars: number, };
+
+/**
  * What a store restored (`state_in`; a store it refuses is a refusal, which the page drops): the kept plans, proofs'
  * keys, main searches, roll states and step caps.
  */
@@ -2144,6 +2174,12 @@ v: number, bests: Array<StoredBests>, seen: Array<StoredSeen>, solve: Array<Stor
  * class flags by class content key (`ClassFlags::bits`), keys ascending
  */
 flags: Array<[Key, number]>, rolls: Array<StoredRoll>, caps: Array<StoredCaps>, };
+
+/**
+ * A race's surface, data.json's `race_ground` (the exporter's numbering, not the game's 1 turf, 2 dirt), and the place
+ * of its grade in `Grades::surface`.
+ */
+export enum Surface { "Turf" = 0, "Dirt" = 1 }
 
 /**
  * A surrogate audit, by `kind`: at a greedy pick change, the exact career search's pick against the surrogate's with

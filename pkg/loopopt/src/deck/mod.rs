@@ -47,8 +47,8 @@ use std::collections::HashMap;
 pub(crate) struct ChoiceEvent {
     pub(crate) card: u32,
     pub(crate) link: u8,
-    /// [choice][outcome] -> the skills that outcome names: (skill group, 1 white | 2 gold)
-    pub(crate) choices: Vec<Vec<Vec<(u32, u8)>>>,
+    /// [choice][outcome] -> the skills that outcome names
+    pub(crate) choices: Vec<Vec<Vec<crate::skills::Reward>>>,
 }
 #[derive(Deserialize, Clone)]
 pub(crate) struct Card {

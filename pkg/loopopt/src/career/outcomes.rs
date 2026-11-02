@@ -6,10 +6,10 @@ use crate::career::reply::{
     AptitudeStart, Aptitudes, CareerReport, CareerSlot, CareerTarget, CareerTrainee, PinkFireReport, PinkInheritance,
     PinkOutcomeReport, PinkTypeChance, ScenarioBuy, SourcedBuy, TargetBuy, WeightedPinkOutcome,
 };
-use crate::career::schedule::{ExpectedRecord, PinkOutcome, ScheduleOutfits, apt_pink, pink_p};
+use crate::career::schedule::{ExpectedRecord, PinkOutcome, ScheduleOutfits, pink_p};
 use crate::career::search::Found;
-use crate::career::{Ancestor, CareerSetup, DeckSearchMemo, Legacy, Lineage, SearchState};
-use crate::codes::Grade;
+use crate::career::{Ancestor, CareerSetup, DeckSearchMemo, Legacy, Lineage, SearchState, Spark};
+use crate::codes::{Aptitude, Grades};
 use crate::deck::joint::exact::{JointScratch, joint_eval_in, joint_prep};
 use crate::deck::joint::{JointExt, JointOptions};
 use crate::deck::sources::TargetSources;
@@ -53,7 +53,7 @@ fn named_outfits<'option>(
     uma: &crate::data::Uma,
     option: &'option OutfitOption,
     default_coverage: &[u8],
-    schedule_grades: &[&[u8]],
+    schedule_grades: &[Option<&Grades>],
 ) -> Vec<&'option (u32, String)> {
     if option.coverage == default_coverage && uma.outfit_aptitudes.is_empty() {
         return vec![];
@@ -109,7 +109,7 @@ impl CareerSetup<'_> {
             .then(|| self.plan_schedule(pool, lineage, ScheduleOutfits::DeckOption(outfit)));
         let schedule_outfit = planned.as_ref().map_or(option_grades[0], |planned| planned.outfit);
         // the grades tied for her best schedule, the schedule outfit's first
-        let tied_grades: Vec<&[u8]> = planned.as_ref().map_or_else(
+        let tied_grades: Vec<Option<&Grades>> = planned.as_ref().map_or_else(
             || vec![schedule_outfit.aptitudes],
             |planned| planned.tied.iter().map(|grades| grades.aptitudes).collect(),
         );
@@ -202,24 +202,23 @@ impl CareerSetup<'_> {
             .collect();
         let display_deck = self.space.pdeck(&found.deck, &[trainee_id]);
         // pink sparks: per aptitude the chance at least one of the two inheritance rolls passes it on (1/3/5% per star)
-        let mut pink_groups: Vec<u32> =
-            legacy_slots.iter().flat_map(|slot| slot.pinks.iter().map(|spark| spark.0)).collect();
-        pink_groups.sort_unstable();
-        pink_groups.dedup();
-        let pinks = pink_groups
+        // (in code order; a pink's stars are 1..=3: `Pink`)
+        let mut pink_aptitudes: Vec<Aptitude> =
+            legacy_slots.iter().flat_map(|slot| slot.pinks.iter().map(|pink| pink.aptitude)).collect();
+        pink_aptitudes.sort_unstable();
+        pink_aptitudes.dedup();
+        let pinks = pink_aptitudes
             .iter()
-            .map(|&group| {
+            .map(|&aptitude| {
                 let (mut miss, mut n) = (1.0f64, 0);
                 for slot in &legacy_slots {
-                    if let Some(stars) =
-                        slot.pinks.iter().filter(|spark| spark.0 == group).map(|spark| spark.1.min(3)).max()
-                        && stars > 0
-                    {
+                    let stars = slot.pinks.iter().filter(|pink| pink.aptitude == aptitude).map(|pink| pink.stars).max();
+                    if let Some(stars) = stars {
                         n += 1;
                         miss *= 1.0 - pink_p(stars, aff_factor(slot.relation_points, slot.race));
                     }
                 }
-                PinkInheritance { group, q: 1.0 - miss * miss, carriers: n }
+                PinkInheritance { aptitude, q: 1.0 - miss * miss, carriers: n }
             })
             .collect();
         // her aptitudes in the schedule's outfit and her veteran's pink spark (MODEL.md): base and start grades (data.json
@@ -236,13 +235,12 @@ impl CareerSetup<'_> {
         let aptitudes = pink_career.map(|pink| {
             let pink_gen = Self::pink_gen(pink);
             let outcome_report = |outcome: &PinkOutcome| PinkOutcomeReport {
-                start: outcome.start.map(Grade::of),
+                start: outcome.start,
                 fire: outcome
                     .fire
                     .iter()
                     .map(|spark| PinkFireReport {
-                        group: apt_pink(spark.aptitude),
-                        apt: spark.aptitude,
+                        aptitude: spark.aptitude,
                         p: spark.chance,
                         slot: spark.slot,
                         stars: spark.stars,
@@ -261,8 +259,12 @@ impl CareerSetup<'_> {
                 }
             };
             Aptitudes {
-                base: pink.base.map(Grade::of),
-                pink_gen: (0..10).map(|k| PinkTypeChance { group: apt_pink(k), p: pink_gen[k] }).collect(),
+                base: pink.base,
+                pink_gen: Aptitude::ORDER
+                    .iter()
+                    .zip(pink_gen)
+                    .map(|(&aptitude, p)| PinkTypeChance { aptitude, p })
+                    .collect(),
                 start,
             }
         });
@@ -419,7 +421,7 @@ impl CareerSetup<'_> {
         Legacy {
             character_id: self.data.umas[trainee].id,
             borrowed: false,
-            sparks: self.skill_job.targets.iter().map(|target| (target.group, 2)).collect(),
+            sparks: self.skill_job.targets.iter().map(|target| Spark { group: target.group, stars: 2 }).collect(),
             wins: vec![],
             pinks: vec![],
             parents: vec![Ancestor::of_legacy(&legacies[first_parent]), Ancestor::of_legacy(&legacies[second_parent])],
@@ -470,13 +472,13 @@ mod tests {
         let haru_urara = uma_of(1052);
         let new_year = OutfitOption { coverage: vec![0], outfits: vec![(105_202, "[New Year ♪ New Urara!]".into())] };
         let grades = haru_urara.aptitudes_of(105_202);
-        assert_ne!(grades, haru_urara.aptitudes.as_slice());
+        assert_ne!(grades, haru_urara.aptitudes.as_ref(), "her own grades");
         let named: Vec<u32> = named_outfits(haru_urara, &new_year, &[0], &[grades]).iter().map(|card| card.0).collect();
         assert_eq!(named, [105_202]);
         // an uma whose outfits share grades, covering nothing: any outfit
         let oguri_cap = uma_of(1006);
         assert!(oguri_cap.outfit_aptitudes.is_empty());
         let any = OutfitOption { coverage: vec![0], outfits: vec![(100_601, "[Starlight Beat]".into())] };
-        assert!(named_outfits(oguri_cap, &any, &[0], &[&oguri_cap.aptitudes]).is_empty());
+        assert!(named_outfits(oguri_cap, &any, &[0], &[oguri_cap.aptitudes.as_ref()]).is_empty(), "any outfit");
     }
 }

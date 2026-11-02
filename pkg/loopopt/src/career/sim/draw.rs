@@ -3,7 +3,7 @@
 
 use crate::career::sim::play::PathState;
 use crate::career::sim::{Cur, Sim};
-use crate::career::{Ancestor, Legacy, Lineage};
+use crate::career::{Ancestor, Legacy, Lineage, Spark};
 
 // ---- random numbers ----
 const fn fmix(mut hash: u32) -> u32 {
@@ -90,7 +90,7 @@ impl Sim<'_, '_> {
                 continue;
             }
             let stars = crate::skills::star_draw(self.star_mix, keys.uniform(career_index, STREAM_STAR, i));
-            sparks.push((target.group, stars));
+            sparks.push(Spark { group: target.group, stars });
         }
         let wins: Vec<usize> = career
             .record
@@ -124,7 +124,8 @@ impl Sim<'_, '_> {
 #[cfg(test)]
 mod tests {
     use crate::career::CareerSetup;
-    use crate::career::schedule::{PinkCareer, PinkFire, PinkOutcome, apt_pink, draw_pink};
+    use crate::career::schedule::{PinkCareer, PinkFire, PinkOutcome, draw_pink};
+    use crate::codes::{Aptitude, Grades};
 
     #[test]
     /// the random numbers are pinned: changing them would change every recorded run
@@ -139,15 +140,21 @@ mod tests {
     /// chances the page's suite pins its own draw against): over 200,000 keyed draws of a career with grades at B and C
     /// that her legacies' pinks can lift, each aptitude's share is within 5 standard errors, and the stars are 20/70/10.
     fn sim_pink_draw_matches_pink_gen() {
-        let fire = |aptitude: usize, chance: f64, slot: usize| PinkFire { aptitude, chance, slot, stars: 2 };
+        let fire = |aptitude: Aptitude, chance: f64, slot: usize| PinkFire { aptitude, chance, slot, stars: 2 };
         // (codes 1..8 = G..S: two aptitudes at A, two at B and one at C that the fires can lift)
-        let start = [7, 6, 5, 1, 7, 6, 1, 1, 1, 1];
+        let start = Grades::of_codes([7, 6, 5, 1, 7, 6, 1, 1, 1, 1]);
         let pink_career = PinkCareer {
             base: start,
             outcomes: vec![PinkOutcome {
                 chance: 1.0,
                 start,
-                fire: vec![fire(1, 0.3, 0), fire(1, 0.2, 1), fire(2, 0.4, 2), fire(2, 0.5, 3), fire(5, 0.1, 4)],
+                fire: vec![
+                    fire(Aptitude::Mile, 0.3, 0),
+                    fire(Aptitude::Mile, 0.2, 1),
+                    fire(Aptitude::Medium, 0.4, 2),
+                    fire(Aptitude::Medium, 0.5, 3),
+                    fire(Aptitude::Dirt, 0.1, 4),
+                ],
             }],
         };
         let exact = CareerSetup::pink_gen(&pink_career);
@@ -159,10 +166,9 @@ mod tests {
                 item += 1;
                 super::u01(&[9, draw, item - 1])
             };
-            if let Some((group, stars)) = draw_pink(&pink_career, uniform) {
-                let aptitude = (0..10).find(|&k| apt_pink(k) == group).unwrap();
-                counts[aptitude] += 1;
-                star_counts[stars as usize] += 1;
+            if let Some(pink) = draw_pink(&pink_career, uniform) {
+                counts[pink.aptitude.index()] += 1;
+                star_counts[usize::from(pink.stars)] += 1;
             }
         }
         for aptitude in 0..10 {

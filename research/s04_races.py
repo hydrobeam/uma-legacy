@@ -80,8 +80,12 @@ GRADE: dict[int, str] = {
     8: "A",
 }  # aptitude codes; S costs what A does
 COST_L: dict[str, int] = {"A": 0, "B": 10, "C": 20, "D": 30, "E": 40, "F": 60, "G": 90}  # COST by grade letter
-PINK_DIST: tuple[int, ...] = (31, 32, 33, 34)  # pink factor groups (factor id // 100) by distance category
-PINK_SURF: dict[int, int] = {1: 11, 2: 12}  # ... by ground (1 turf, 2 dirt)
+# card_rarity_data's columns of the aptitudes a race reads: the distances in `race_cat` order, the surfaces in
+# `race_ground` order (`mdb_race_grades`)
+RACE_APTITUDES = (
+    "proper_distance_short, proper_distance_mile, proper_distance_middle, proper_distance_long, "
+    "proper_ground_turf, proper_ground_dirt"
+)
 APRIL: dict[str, int] = {"2": 30, "3": 54}  # inspiration years -> first turn index they count for
 BPB: tuple[tuple[int, str], ...] = ((110, "110"), (100, "100"), (90, "90"), (80, "80"), (-99, "<=70"))  # bp buckets
 PB: tuple[tuple[float, str], ...] = (
@@ -163,13 +167,21 @@ def bp_of(distance_grade: int, surface_grade: int) -> int:
     return max(-20, 110 - COST[distance_grade] - COST[surface_grade])
 
 
+def race_grades(grades: dict[str, list[int]]) -> dict[str, list[int]]:
+    """her grades at the aptitudes a race reads, her distances' and her surfaces' (the solver's `Grades`: data.json's
+    `apt`), indexed by `race_cat` and `race_ground`"""
+    return {"distance": grades["distance"], "surface": grades["surface"]}
+
+
 def lineage_pinks(r: Run) -> collections.Counter[int]:
-    """pink group -> stars summed over the six legacies"""
+    """pink group -> stars summed over the six legacies (the pinks of the aptitudes a race reads)"""
+    apt = common.aptitudes()
+    race_codes = set(apt.of_distance.values()) | set(apt.of_surface.values())
     out: collections.Counter[int] = collections.Counter()
     for p in r.get("parents") or []:
         for a in [p, *list(p.get("gps") or [])]:
             for f, _ in (a or {}).get("factors") or []:
-                if f < 10000 and f // 100 in PINK_DIST + tuple(PINK_SURF.values()):
+                if f < 10000 and f // 100 in race_codes:
                     out[f // 100] += f % 100
     return out
 
@@ -199,18 +211,20 @@ OUTFIT_SOURCE: dict[str, str] = {
 }
 
 
-def outfit_aptitudes(outfits: set[int]) -> dict[int, list[int]]:
-    """outfit -> its six aptitude codes (short, mile, middle, long, turf, dirt) from master.mdb's card_rarity_data
-    (lowest rarity row), for the outfits it has; empty without master.mdb. data.json keys aptitudes by character (one
-    outfit's), so a character's other outfits can differ"""
+def mdb_race_grades(row: tuple[int, ...]) -> dict[str, list[int]]:
+    """`race_grades` of card_rarity_data's six columns (short, mile, middle, long, turf, dirt; `RACE_APTITUDES`)"""
+    return {"distance": list(row[0:4]), "surface": list(row[4:6])}
+
+
+def outfit_aptitudes(outfits: set[int]) -> dict[int, dict[str, list[int]]]:
+    """outfit -> its race grades (`race_grades`) from master.mdb's card_rarity_data (lowest rarity row), for the
+    outfits it has; empty without master.mdb. data.json keys aptitudes by character (one outfit's), so a character's
+    other outfits can differ"""
     if not common.have_mdb():
         return {}
     db = common.mdb()
-    q = (
-        "select proper_distance_short, proper_distance_mile, proper_distance_middle, proper_distance_long, "
-        "proper_ground_turf, proper_ground_dirt from card_rarity_data where card_id = ? order by rarity limit 1"
-    )
-    return {o: list(row) for o in outfits if (row := db.execute(q, (o,)).fetchone())}
+    q = f"select {RACE_APTITUDES} from card_rarity_data where card_id = ? order by rarity limit 1"
+    return {o: mdb_race_grades(row) for o in outfits if (row := db.execute(q, (o,)).fetchone())}
 
 
 def attempts(R: list[Run]) -> AttemptSet:
@@ -220,6 +234,7 @@ def attempts(R: list[Run]) -> AttemptSet:
     U = {u["id"]: u for u in d["umas"]}
     idx = {n: i for i, n in enumerate(d["race_names"])}
     pen = d["pen"]
+    apt = common.aptitudes()
     own_apt = outfit_aptitudes({r["outfit"] for r in R})
     found = AttemptSet([], collections.Counter(), collections.Counter(), collections.Counter())
     out, skip, unk, source = found
@@ -258,19 +273,19 @@ def attempts(R: list[Run]) -> AttemptSet:
                 skip["race not offered to her at that turn"] += 1
                 continue
             cat, gr = d["race_cat"][ri], d["race_ground"][ri]
-            gd, gs = PINK_DIST[cat], PINK_SURF[gr]
-            grades = (cat, 4 if gr == 1 else 5)  # the race's distance and surface, as aptitude indices
-            base_apt: list[int] = own_apt[r["outfit"]] if r["outfit"] in own_apt else u["apt"]
+            gd, gs = apt.of_distance[cat], apt.of_surface[gr]  # the pink codes of the race's distance and surface
+            base_apt = own_apt[r["outfit"]] if r["outfit"] in own_apt else race_grades(u["apt"])
             source[
-                "data.json" if r["outfit"] not in own_apt else "same" if base_apt[:6] == u["apt"][:6] else "own"
+                "data.json" if r["outfit"] not in own_apt else "same" if base_apt == race_grades(u["apt"]) else "own"
             ] += 1
-            bp = bp_of(base_apt[grades[0]], base_apt[grades[1]])  # data.json's op["bp"] where the outfit's equal it
+            base_grades = (base_apt["distance"][cat], base_apt["surface"][gr])
+            bp = bp_of(*base_grades)  # data.json's op["bp"] where the outfit's equal it
             adj: list[int] = []
             early: list[int] = []
-            for k, g in zip(grades, (gd, gs)):
-                adj.append(raised_grade(base_apt[k], pk[g], fired[g], t))
+            for base_grade, g in zip(base_grades, (gd, gs)):
+                adj.append(raised_grade(base_grade, pk[g], fired[g], t))
                 early.append(
-                    raised_grade(base_apt[k], pk[g], fired[g], t, lead=6)
+                    raised_grade(base_grade, pk[g], fired[g], t, lead=6)
                 )  # the year's proc from its first turn
             bpa = bp_of(adj[0], adj[1])
             out.append(
@@ -1133,12 +1148,13 @@ def detail_outfits(A: list[Attempt]) -> None:
     if not common.have_mdb():
         return
     db = common.mdb()
-    U = {u["id"]: u["apt"][:6] for u in common.gjson("data.json")["umas"]}
-    q = (
-        "select proper_distance_short, proper_distance_mile, proper_distance_middle, proper_distance_long, "
-        "proper_ground_turf, proper_ground_dirt from card_rarity_data where card_id = ? order by rarity limit 1"
-    )
-    diff = {o for o in {a["outfit"] for a in A} if (row := db.execute(q, (o,)).fetchone()) and list(row) != U[o // 100]}
+    U = {u["id"]: race_grades(u["apt"]) for u in common.gjson("data.json")["umas"]}
+    q = f"select {RACE_APTITUDES} from card_rarity_data where card_id = ? order by rarity limit 1"
+    diff = {
+        o
+        for o in {a["outfit"] for a in A}
+        if (row := db.execute(q, (o,)).fetchone()) and mdb_race_grades(row) != U[o // 100]
+    }
     print(
         f"attempts by outfits whose aptitudes differ from data.json (first outfit): "
         f"{sum(a['outfit'] in diff for a in A):,} ({len(diff)} outfits: {sorted(diff)}); scored here with their own, "

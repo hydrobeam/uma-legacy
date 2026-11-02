@@ -121,9 +121,9 @@ def chain_ends(skills_by_name, card_events):
 # Phase 1: the era's exports, and GameTora's page names for the links (support cards: url_name, e.g.
 # 30067-the-thrones-assemblage; characters: the slug of /characters/<outfit id>-<slug>)
 def check_race_tracks(career, era):
-    """Each G1's distance (0-3, sprint to long) and ground (1 turf, 2 dirt), one of each per race: the career page reads
-    them as these codes (webapp/src/data.ts `tracksOf`, which fails the page's data load on any other), so one out of
-    range, or lists of the wrong length, stops the export here, naming it."""
+    """Each G1's distance (0-3, sprint to long) and ground (0 turf, 1 dirt), one of each per race: the career page reads
+    them as the solver's `Distance` and `Surface` (webapp/src/data.ts `tracksOf`, which fails the page's data load on any
+    other), so one out of range, or lists of the wrong length, stops the export here, naming it."""
     races, distances, grounds = career["races"], career.get("race_cat"), career.get("race_ground")
     where = f"pkg/loopopt/data/{era}/data.json"
     if not isinstance(distances, list) or not isinstance(grounds, list):
@@ -132,8 +132,8 @@ def check_race_tracks(career, era):
         raise SystemExit(f"{where}: {len(races)} races, {len(distances)} distances, {len(grounds)} grounds")
     code_in = lambda value, codes: type(value) is int and value in codes  # (a bool or a float is no code)
     for name, distance, ground in zip(races, distances, grounds, strict=True):
-        if not (code_in(distance, range(4)) and code_in(ground, (1, 2))):
-            raise SystemExit(f"{where}: {name}'s distance {distance!r} (0-3) or ground {ground!r} (1-2) is not one")
+        if not (code_in(distance, range(4)) and code_in(ground, range(2))):
+            raise SystemExit(f"{where}: {name}'s distance {distance!r} (0-3) or ground {ground!r} (0-1) is not one")
 
 
 def main():
@@ -246,7 +246,7 @@ def main():
         "blues": career_tables.get("blues", {}),
         "uniques": career_tables.get("uniques", {}),
         "races": data["race_names"],
-        "race_cat": data["race_cat"],  # each race's distance (0-3 sprint to long) and ground (1 turf, 2 dirt)
+        "race_cat": data["race_cat"],  # each race's distance (0-3 sprint to long) and ground (0 turf, 1 dirt)
         "race_ground": data["race_ground"],
         "race_turns": race_turns,
         "mobs": career_tables.get("mobs", []),  # every mob; the page's build keeps the ones with a portrait

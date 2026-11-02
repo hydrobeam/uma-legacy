@@ -6,8 +6,7 @@
 import { useState } from 'preact/hooks';
 import { gameData } from '../data.ts';
 import type { Card } from '../data.ts';
-import { GRADE_LETTER } from '../grades.ts';
-import type { Grade as GradeCode } from '../grades.ts';
+import { Grade } from '../gen/solver.ts';
 import { KIND_ABBR, RARITY_CLASS, RUN_CYCLE_MS, initials, runnerSrc, skillIconSrc, srcFor } from '../images.ts';
 import { cx, tv } from 'tailwind-variants/lite';
 import type { VariantProps } from 'tailwind-variants/lite';
@@ -205,9 +204,9 @@ export function ScenLogo({
 // a grade's box: an aptitude row's (smaller on a phone) or the win table's column head
 const GRADE_BOX = { row: 'h-5.75 w-5 max-sm:h-4.25 max-sm:w-3.5', head: 'h-5 w-4.25' } as const;
 /** a grade letter (code 1..8 = G..S): the game's sprite, or the letter in the game's brown; data-grade is its letter */
-export function Grade({ g, size = 'row' }: { g: GradeCode; size?: keyof typeof GRADE_BOX }) {
+export function GradeBadge({ g, size = 'row' }: { g: Grade; size?: keyof typeof GRADE_BOX }) {
   const src = srcFor('ui', `grade_${g - 1}`),
-    letter = GRADE_LETTER[g];
+    letter = Grade[g];
   return src ? (
     <img
       class={cx('inline-block shrink-0 object-contain', GRADE_BOX[size])}

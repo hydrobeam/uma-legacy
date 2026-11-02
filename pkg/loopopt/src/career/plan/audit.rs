@@ -10,7 +10,7 @@ use crate::career::plan::score::{CareerScore, KeptScoring, score_career};
 use crate::career::plan::search::{capped, legal_pair};
 use crate::career::search::{Found, SearchRequest};
 use crate::career::sim::Sim;
-use crate::career::{Ancestor, Legacy, Lineage};
+use crate::career::{Ancestor, Legacy, Lineage, Spark};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -117,7 +117,7 @@ pub(crate) fn audit_lifts(
                 borrowed: false,
                 sparks: (0..target_groups.len())
                     .filter(|&target| stars[target] > 0)
-                    .map(|target| (target_groups[target], stars[target]))
+                    .map(|target| Spark { group: target_groups[target], stars: stars[target] })
                     .collect(),
                 wins: vec![],
                 pinks: vec![],

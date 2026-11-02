@@ -136,15 +136,19 @@ function take(
   a: { items: readonly UmamoeListing[]; total: number; at: number },
   q: { min: number; factors: readonly (readonly number[])[] },
 ): void {
-  const listed = a.items.map(parseListing);
+  const read = a.items.map(parseListing),
+    listed = read.map(({ veteran }) => veteran),
+    unknownPinks = read.reduce((count, { unknownPinks }) => count + unknownPinks, 0);
   order.clear();
   for (const [i, v] of listed.entries()) order.set(v.id, i);
-  const n = a.items.length;
+  const n = a.items.length,
+    // (a pink of an aptitude the solver doesn't know is left out of her record: umadump.ts)
+    leftOut = unknownPinks ? `, ${unknownPinks} unknown pink${unknownPinks === 1 ? '' : 's'} left out` : '';
   batch(() => {
     pageNow().setListings(listed);
     statusPatch({
-      text: `${n} veterans found, searched ${ago(a.at)}`,
-      shownText: `${n} veterans found, searched ${ago(a.at)}`,
+      text: `${n} veterans found, searched ${ago(a.at)}${leftOut}`,
+      shownText: `${n} veterans found, searched ${ago(a.at)}${leftOut}`,
       short: `${n} veterans`,
       shownShort: `${n} veterans`,
       min: q.min,

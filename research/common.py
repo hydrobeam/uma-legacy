@@ -155,6 +155,26 @@ def solver_constants() -> dict[str, Any]:
     return json.loads(subprocess.run([SOLVER, "constants"], capture_output=True, text=True, check=True).stdout)
 
 
+class Aptitudes(NamedTuple):
+    """the solver's aptitude codes (`loopopt constants` `aptitude_kinds`; codes.rs `Aptitude`, the game's pink factor
+    groups): every code, and the aptitude a race of each distance class (`race_cat`) and each surface (`race_ground`)
+    reads"""
+
+    codes: set[int]
+    of_distance: dict[int, int]
+    of_surface: dict[int, int]
+
+
+@functools.cache
+def aptitudes() -> Aptitudes:
+    """the aptitude codes as the solver has them (`solver_constants`)"""
+    kinds: dict[str, dict[str, Any]] = solver_constants()["aptitude_kinds"]
+    of_kind = lambda kind: {k[kind]: int(code) for code, k in kinds.items() if k["kind"] == kind}
+    return Aptitudes(
+        codes={int(code) for code in kinds}, of_distance=of_kind("distance"), of_surface=of_kind("surface")
+    )
+
+
 def have_mdb() -> bool:
     return os.path.exists(MDB)
 
@@ -1150,7 +1170,6 @@ SCENARIO_KEY: dict[int, str] = {1: "ura", 2: "unity", 3: "gc", 4: "trackblazer"}
 # (character, skill group, 1 white / 2 gold): Yamanin Zephyr's Slipstream, Tokai Teio's Head-On (as the planner page
 # sends them)
 EXTRA: list[list[int]] = [[1078, 20165, 1], [1003, 20190, 1]]
-PINK: set[int] = {11, 12, 21, 22, 23, 24, 31, 32, 33, 34}  # pink spark factor ids // 100 (track, distance, style)
 # the most targets one --wide job carries. The exact scoring of a job's deck grows exponentially with its targets: at
 # 24 some jobs ran for over half an hour (a 2 s limit dropped them, a different number on every run); at 12 the
 # slowest of those take a tenth of a second. q does not depend on the split; deck odds do (targets share a deck's
@@ -1383,10 +1402,11 @@ class Model:
 
     @staticmethod
     def pinks(factors: Iterable[Sequence[int]]) -> list[list[int]]:
-        """an ancestor's pink sparks: [factor id // 100, stars]"""
+        """an ancestor's pink sparks: [aptitude code (factor id // 100), stars]"""
+        codes = aptitudes().codes
         out: dict[int, int] = {}
         for f, _ in factors:
-            if f < 10000 and f // 100 in PINK:
+            if f < 10000 and f // 100 in codes:
                 out[f // 100] = max(out.get(f // 100, 0), f % 100)
         return sorted([g, s] for g, s in out.items())
 
@@ -1494,7 +1514,12 @@ def legacy_tree(r: Run, M: Model, wins: RaceWins) -> list[dict[str, Any]]:
     """the job's two legacies, each with its two recorded parents, sparks and laid-out race wins"""
 
     def ancestor(a: dict[str, Any], won: list[int]) -> dict[str, Any]:
-        return {"chara": a["chara"], "sparks": M.sparks(a["factors"]), "pinks": M.pinks(a["factors"]), "wins": won}
+        return {
+            "chara": a["chara"],
+            "sparks": [{"group": g, "stars": s} for g, s in M.sparks(a["factors"])],
+            "pinks": [{"aptitude": g, "stars": s} for g, s in M.pinks(a["factors"])],
+            "wins": won,
+        }
 
     parents = r["parents"]
     legs: list[dict[str, Any]] = []

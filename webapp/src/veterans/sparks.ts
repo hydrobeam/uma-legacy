@@ -3,7 +3,10 @@
 import { signal } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import { careerTables, gameData } from '../data.ts';
-import { gradeAt } from '../grades.ts';
+import { gradeOf, isAptitude } from '../grades.ts';
+import { Grade } from '../gen/solver.ts';
+import type { Aptitude } from '../gen/solver.ts';
+import { SOLVER } from '../gen/constants.ts';
 import { pinkName, blueName, uniqueName } from './names.ts';
 import type { NodeRecord, NodeRef } from './store.ts';
 
@@ -37,18 +40,19 @@ export const KIND: Record<Colour, SparkKind> = {
   },
 };
 // the aptitudes a pink can come from: those she ends at A or S (a pink is drawn from them only): her end-of-career
-// grades when known (the veteran analysis), else her uma's base grades; the pink she has always stays a choice
-const APT_OF: Record<number, number> = { 31: 0, 32: 1, 33: 2, 34: 3, 11: 4, 12: 5, 21: 6, 22: 7, 23: 8, 24: 9 };
-function pinkChoices(nd: NodeRecord): number[] {
+// grades when known (the veteran analysis), else her uma's base grades; the pink she has always stays a choice. Every
+// choice is an aptitude the solver knows, in code order (turf, dirt, the styles, the distances).
+const BY_CODE: readonly Aptitude[] = Object.keys(SOLVER.aptitude_kinds)
+  .map(Number)
+  .filter(isAptitude)
+  .sort((a, b) => a - b);
+function pinkChoices(nd: NodeRecord): Aptitude[] {
   const grades = nd.apt || gameData().umas.find((u) => u.id === nd.chara)?.apt;
-  const all = Object.keys(careerTables().pinks).map(Number),
-    have = Object.keys(nd.pinks || {}).map(Number);
-  // (a pink of an aptitude the page doesn't map is no choice, unless she has it)
-  const endsAtA = (g: number) => {
-    const k = APT_OF[g];
-    return k !== undefined && !!grades && gradeAt(grades, k) >= 7;
-  };
-  return grades ? all.filter((g) => endsAtA(g) || have.includes(g)) : all;
+  const have = Object.keys(nd.pinks || {})
+    .map(Number)
+    .filter(isAptitude);
+  if (!grades) return [...BY_CODE];
+  return BY_CODE.filter((aptitude) => gradeOf(grades, aptitude) >= Grade.A || have.includes(aptitude));
 }
 // her spark of one kind, as [group (an object key: a string), stars], or undefined (none)
 export const currentSpark = (nd: NodeRecord, kind: Colour): [string, number] | undefined =>

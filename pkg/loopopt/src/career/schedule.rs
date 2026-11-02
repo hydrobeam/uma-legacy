@@ -1,9 +1,10 @@
 //! Aptitude sparks and career race schedules.
 use crate::career::inherit::aff_factor;
-use crate::career::pool::{Pool, RaceWin};
+use crate::career::pool::{Pool, RaceWin, pink_word};
 use crate::career::reply::CareerScheduleRow;
-use crate::career::{CareerSetup, Lineage};
+use crate::career::{CareerSetup, Lineage, Pink};
 use crate::chart::{ScheduleCell, ScheduleRow, chart_race_name, when};
+use crate::codes::{Aptitude, Grade, Grades, Kind};
 use crate::data::{Choice, Data, NT, OptRaw, RepeatedRace, Sched, Uma, scored_position};
 use crate::loop_planner::schedules::FILL_EPS;
 use crate::uma::UmaIndex;
@@ -25,22 +26,21 @@ pub(crate) fn pink_p(stars: u8, affinity_factor: f64) -> f64 {
 /// bound, 2 below the second, else 3 (20/70/10, MODEL.md)
 const PINK_STAR_BOUNDS: [f64; 2] = [0.2, 0.9];
 
-/// A legacy's pink spark over a career: her aptitude (data.json `apt` order), the chance it fires at one April
-/// inspiration, the legacy slot, stars
+/// A legacy's pink spark over a career: the aptitude it raises, the chance it fires at one April inspiration, the
+/// legacy slot, stars
 #[derive(Clone)]
 pub(crate) struct PinkFire {
-    pub(crate) aptitude: usize,
+    pub(crate) aptitude: Aptitude,
     pub(crate) chance: f64,
     pub(crate) slot: usize,
     pub(crate) stars: u8,
 }
 
-/// A pink spark a veteran before her result is known may carry (`CareerSetup::veteran`): its aptitude factor group,
-/// stars and chance. She carries at most one of them, none with the rest.
+/// A pink spark a veteran before her result is known may carry (`CareerSetup::veteran`), and its chance. She carries
+/// at most one of them, none with the rest.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct PinkChance {
-    pub(crate) group: u32,
-    pub(crate) stars: u8,
+    pub(crate) pink: Pink,
     pub(crate) chance: f64,
 }
 
@@ -48,54 +48,34 @@ pub(crate) struct PinkChance {
 /// start's pinks, and the sparks that may fire at the April inspirations, in slot order.
 pub(crate) struct PinkOutcome {
     pub(crate) chance: f64,
-    pub(crate) start: [u8; 10],
+    pub(crate) start: Grades,
     pub(crate) fire: Vec<PinkFire>,
 }
 
-/// The trainee's aptitude codes (her outfit's) and the outcomes of her legacies' pink sparks: one, at chance 1, when
+/// The trainee's grades (her outfit's) and the outcomes of her legacies' pink sparks: one, at chance 1, when
 /// every legacy's pinks are on record; with a veteran before her result is known among the six (`Slot::pink_chances`),
 /// one per combination of the pinks such veterans may carry, at its chance. Every number below is exact over that
 /// mixture: the race table and `pink_gen` are linear in each outcome's.
 pub(crate) struct PinkCareer {
-    pub(crate) base: [u8; 10],
+    pub(crate) base: Grades,
     pub(crate) outcomes: Vec<PinkOutcome>,
 }
 
 impl PinkCareer {
     /// Whether her distance and surface grades are `aptitudes`' at every turn, in every outcome (the race table reads
-    /// only those six: no spark fires on one, and the start grades are `aptitudes`')
-    fn keeps_grades(&self, aptitudes: &[u8]) -> bool {
-        aptitudes.len() >= 6
-            && self.outcomes.iter().all(|outcome| {
-                outcome.start[..6] == aptitudes[..6] && outcome.fire.iter().all(|spark| spark.aptitude >= 6)
+    /// only those: no spark fires on one, and the start grades are `aptitudes`'); false without aptitude data
+    fn keeps_grades(&self, aptitudes: Option<&Grades>) -> bool {
+        aptitudes.is_some_and(|aptitudes| {
+            self.outcomes.iter().all(|outcome| {
+                outcome.start.same_race_grades(aptitudes)
+                    && outcome.fire.iter().all(|spark| matches!(spark.aptitude.kind(), Kind::Style { .. }))
             })
+        })
     }
 }
 
 /// The April inspirations (0-based turns: Classic and Senior early April); a race on that turn already counts them
 const INSP_TURNS: [usize; 2] = [30, 54];
-
-/// aptitude index (data.json `apt` order) of a pink factor group: 31-34 short..long, 11 turf, 12 dirt, 21-24 front
-/// runner..end closer
-const fn pink_apt(group: u32) -> Option<usize> {
-    match group {
-        31..=34 => Some((group - 31) as usize),
-        11 => Some(4),
-        12 => Some(5),
-        21..=24 => Some((group - 21) as usize + 6),
-        _ => None,
-    }
-}
-
-/// the pink factor group of aptitude k (inverse of `pink_apt`)
-pub(crate) const fn apt_pink(k: usize) -> u32 {
-    match k {
-        0..=3 => 31 + k as u32,
-        4 => 11,
-        5 => 12,
-        _ => 21 + (k as u32 - 6),
-    }
-}
 
 /// distribution of the number of successes over independent `chances` (Poisson binomial)
 fn pbinom(chances: &[f64]) -> Vec<f64> {
@@ -124,7 +104,7 @@ fn conv(first: &[f64], second: &[f64]) -> Vec<f64> {
 
 /// The grade increase of a career start whose six legacies carry `stars` pink stars of one aptitude summed: 1/2/3/4
 /// grades at 1/4/7/10 stars (MODEL.md)
-const fn start_increase(stars: u32) -> u8 {
+const fn start_increase(stars: u32) -> usize {
     match stars {
         0 => 0,
         1..=3 => 1,
@@ -134,16 +114,23 @@ const fn start_increase(stars: u32) -> u8 {
     }
 }
 
-/// The chance her veteran's pink is each aptitude (data.json `apt` order) in one outcome of her legacies' pinks
+/// The chance her veteran's pink is each aptitude (in `Aptitude::ORDER`) in one outcome of her legacies' pinks
 /// (`CareerSetup::pink_gen`)
 fn outcome_pink_gen(outcome: &PinkOutcome) -> [f64; 10] {
-    let q: Vec<f64> = (0..10)
-        .map(|k| {
+    // per aptitude, the chance she ends it at A or better: her start grade raised by its firings at both inspirations
+    let q: Vec<f64> = Aptitude::ORDER
+        .iter()
+        .map(|&aptitude| {
             let fire_chances: Vec<f64> =
-                outcome.fire.iter().filter(|spark| spark.aptitude == k).map(|spark| spark.chance).collect();
+                outcome.fire.iter().filter(|spark| spark.aptitude == aptitude).map(|spark| spark.chance).collect();
             let one = pbinom(&fire_chances);
             let two = conv(&one, &one);
-            two.iter().enumerate().filter(|(i, _)| outcome.start[k] as usize + i >= 7).map(|entry| entry.1).sum::<f64>()
+            let start = outcome.start.get(aptitude);
+            two.iter()
+                .enumerate()
+                .filter(|&(firings, _)| start.raise(firings) >= Grade::A)
+                .map(|entry| entry.1)
+                .sum::<f64>()
         })
         .collect();
     let mut spark_chances = [0.0f64; 10];
@@ -156,13 +143,13 @@ fn outcome_pink_gen(outcome: &PinkOutcome) -> [f64; 10] {
     spark_chances
 }
 
-/// Her veteran's pink spark, (factor group, stars), drawn as the page's roll draws it (`webapp/src/pink.ts`,
+/// Her veteran's pink spark, drawn as the page's roll draws it (`webapp/src/pink.ts`,
 /// `drawPink`) from successive numbers of `uniform` (each in [0, 1)), in its order: each spark's firing at the Classic
 /// then the Senior April inspiration, in `fire` order; then the aptitude, uniform over those she ends at A or S (no
 /// more numbers when there is none: no pink); then her stars (`PINK_STAR_BOUNDS`). With several outcomes (a veteran
 /// before her result is known among her legacies; the page never rolls one) one number first draws the outcome by its
 /// chance.
-pub(crate) fn draw_pink(pink_career: &PinkCareer, mut uniform: impl FnMut() -> f64) -> Option<(u32, u8)> {
+pub(crate) fn draw_pink(pink_career: &PinkCareer, mut uniform: impl FnMut() -> f64) -> Option<Pink> {
     let outcome = match pink_career.outcomes.as_slice() {
         [only] => only,
         outcomes => {
@@ -181,11 +168,12 @@ pub(crate) fn draw_pink(pink_career: &PinkCareer, mut uniform: impl FnMut() -> f
     for _ in INSP_TURNS {
         for spark in &outcome.fire {
             if uniform() < spark.chance {
-                grades[spark.aptitude] = (grades[spark.aptitude] + 1).min(8);
+                grades.set(spark.aptitude, grades.get(spark.aptitude).raise(1));
             }
         }
     }
-    let at_least_a: Vec<usize> = (0..10).filter(|&k| grades[k] >= 7).collect();
+    let at_least_a: Vec<Aptitude> =
+        Aptitude::ORDER.into_iter().filter(|&aptitude| grades.get(aptitude) >= Grade::A).collect();
     if at_least_a.is_empty() {
         return None;
     }
@@ -198,37 +186,39 @@ pub(crate) fn draw_pink(pink_career: &PinkCareer, mut uniform: impl FnMut() -> f
     } else {
         3
     };
-    Some((apt_pink(aptitude), stars))
+    Some(Pink { aptitude, stars })
 }
 
 /// One aptitude's persistent grades after the Classic and Senior inspirations.
 struct GradeHistory {
-    classic: u8,
-    senior: u8,
+    classic: Grade,
+    senior: Grade,
     mass: f64,
 }
 
 struct AptitudeGrades {
     /// Before either inspiration, after Classic, after Senior.
-    marginals: [Vec<(u8, f64)>; 3],
+    marginals: [Vec<(Grade, f64)>; 3],
     histories: Vec<GradeHistory>,
 }
 
-/// Per aptitude, the grade distribution of one outcome of her pinks after 0, 1 and 2 inspirations, and its histories
+/// Per aptitude (in `Aptitude::ORDER`), the grade distribution of one outcome of her pinks after 0, 1 and 2
+/// inspirations, and its histories
 fn grade_distributions(outcome: &PinkOutcome) -> Vec<AptitudeGrades> {
-    (0..10)
-        .map(|k| {
+    Aptitude::ORDER
+        .iter()
+        .map(|&aptitude| {
             let fire_chances: Vec<f64> =
-                outcome.fire.iter().filter(|spark| spark.aptitude == k).map(|spark| spark.chance).collect();
+                outcome.fire.iter().filter(|spark| spark.aptitude == aptitude).map(|spark| spark.chance).collect();
             let one = pbinom(&fire_chances);
             let two = conv(&one, &one);
-            let grade_distribution = |start: u8, success_distribution: &[f64]| {
-                let mut distribution: Vec<(u8, f64)> = vec![];
-                for (i, &weight) in success_distribution.iter().enumerate() {
+            let grade_distribution = |start: Grade, success_distribution: &[f64]| {
+                let mut distribution: Vec<(Grade, f64)> = vec![];
+                for (firings, &weight) in success_distribution.iter().enumerate() {
                     if weight <= 0.0 {
                         continue;
                     }
-                    let grade = (start as usize + i).min(8) as u8;
+                    let grade = start.raise(firings);
                     if let Some(entry) = distribution.iter_mut().find(|entry| entry.0 == grade) {
                         entry.1 += weight;
                     } else {
@@ -237,7 +227,7 @@ fn grade_distributions(outcome: &PinkOutcome) -> Vec<AptitudeGrades> {
                 }
                 distribution
             };
-            let start = outcome.start[k];
+            let start = outcome.start.get(aptitude);
             let classic_grades = grade_distribution(start, &one);
             let mut histories = vec![];
             for &(classic, classic_mass) in &classic_grades {
@@ -259,24 +249,30 @@ struct OutcomeGrades {
     aptitudes: Vec<AptitudeGrades>,
 }
 
-/// The aptitudes a race reads (data.json `apt` order): its distance's and its surface's
+/// The aptitudes a race reads: its distance's and its surface's
 #[derive(Clone, Copy)]
 struct RaceAptitudes {
-    distance: usize,
-    surface: usize,
+    distance: Aptitude,
+    surface: Aptitude,
 }
 
 impl RaceAptitudes {
     fn of(data: &Data, race: usize) -> Self {
-        Self { distance: data.race_distance[race].aptitude(), surface: data.race_surface[race].aptitude() }
+        Self { distance: data.race_distance[race].into(), surface: data.race_surface[race].into() }
     }
 }
 
-/// The table's aptitude basis of a distance grade and a surface grade (codes 1..8 = G..S): 110 less each one's cost
-/// (S/A 0, B 10, C 20, D 30, E 40, F 60, G 90), floored at -20 as the table is (any basis <= 0 wins nothing)
-fn grade_basis(distance_grade: u8, surface_grade: u8) -> i32 {
-    let cost = |grade: u8| -> i32 { [90, 90, 60, 40, 30, 20, 10, 0, 0][grade as usize] };
-    (110 - cost(distance_grade) - cost(surface_grade)).max(-20)
+impl OutcomeGrades {
+    /// The grade distributions of `aptitude` (`grade_distributions`)
+    fn of(&self, aptitude: Aptitude) -> &AptitudeGrades {
+        &self.aptitudes[aptitude.index()]
+    }
+}
+
+/// The table's aptitude basis of a distance grade and a surface grade: 110 less each one's cost (`Grade::cost`), floored
+/// at -20 as the table is (any basis <= 0 wins nothing)
+fn grade_basis(distance_grade: Grade, surface_grade: Grade) -> i32 {
+    (110 - distance_grade.cost() - surface_grade.cost()).max(-20)
 }
 
 /// A cell's aptitude basis in career mode: `LOW_BASIS_COST` points less where the table's basis is at most
@@ -314,7 +310,7 @@ fn inspirations_by(turn: usize) -> usize {
 }
 
 /// A grade history's grade after `inspirations` April inspirations (0: `start`, the career start's)
-const fn grade_after(history: &GradeHistory, start: u8, inspirations: usize) -> u8 {
+const fn grade_after(history: &GradeHistory, start: Grade, inspirations: usize) -> Grade {
     match inspirations {
         0 => start,
         1 => history.classic,
@@ -337,7 +333,7 @@ fn both_wins(
     let mut both_wins = [[0.0; 7]; 7];
     for outcome in outcomes {
         let (distance_grades, surface_grades) =
-            (&outcome.aptitudes[race_aptitudes.distance], &outcome.aptitudes[race_aptitudes.surface]);
+            (outcome.of(race_aptitudes.distance), outcome.of(race_aptitudes.surface));
         let (distance_start, surface_start) = (distance_grades.marginals[0][0].0, surface_grades.marginals[0][0].0);
         for distance in &distance_grades.histories {
             for surface in &surface_grades.histories {
@@ -389,7 +385,7 @@ struct ExpectedBases {
 fn career_uma(data: &Data, pink_career: Option<&PinkCareer>, trainee: UmaIndex) -> Option<CareerUma> {
     let uma = &data.umas[trainee];
     let has_race_aptitudes = data.race_distance.len() >= data.race_count && data.race_surface.len() >= data.race_count;
-    let changed_grades = pink_career.filter(|pink| has_race_aptitudes && !pink.keeps_grades(&uma.aptitudes));
+    let changed_grades = pink_career.filter(|pink| has_race_aptitudes && !pink.keeps_grades(uma.aptitudes.as_ref()));
     let has_low_basis = LOW_BASIS_COST != 0
         && uma.race_options.iter().flatten().any(|option| option.race >= 0 && option.win_rate_basis <= LOW_BASIS_MAX);
     if changed_grades.is_none() && !has_low_basis {
@@ -419,8 +415,8 @@ fn career_uma(data: &Data, pink_career: Option<&PinkCareer>, trainee: UmaIndex) 
                 let race_aptitudes = RaceAptitudes::of(data, option.race as usize);
                 for outcome in &outcomes {
                     let (distances, surfaces) = (
-                        &outcome.aptitudes[race_aptitudes.distance].marginals[inspirations],
-                        &outcome.aptitudes[race_aptitudes.surface].marginals[inspirations],
+                        &outcome.of(race_aptitudes.distance).marginals[inspirations],
+                        &outcome.of(race_aptitudes.surface).marginals[inspirations],
                     );
                     for &(distance_grade, distance_weight) in distances {
                         for &(surface_grade, surface_weight) in surfaces {
@@ -454,8 +450,8 @@ fn career_uma(data: &Data, pink_career: Option<&PinkCareer>, trainee: UmaIndex) 
             let race = classic.race as usize;
             let race_aptitudes = RaceAptitudes::of(data, race);
             let certain = outcomes.len() == 1
-                && outcomes[0].aptitudes[race_aptitudes.distance].histories.len() == 1
-                && outcomes[0].aptitudes[race_aptitudes.surface].histories.len() == 1;
+                && outcomes[0].of(race_aptitudes.distance).histories.len() == 1
+                && outcomes[0].of(race_aptitudes.surface).histories.len() == 1;
             if certain {
                 continue;
             }
@@ -481,11 +477,11 @@ pub(crate) enum ScheduleOutfits {
     Card(u32),
 }
 
-/// One outfit a career may run, as her schedule reads it: its card id and aptitude codes.
+/// One outfit a career may run, as her schedule reads it: its card id and grades (None: data.json has none).
 #[derive(Clone, Copy)]
 pub(crate) struct OutfitGrades<'data> {
     pub(crate) card: u32,
-    pub(crate) aptitudes: &'data [u8],
+    pub(crate) aptitudes: Option<&'data Grades>,
 }
 
 /// What a career's schedule and aptitudes leave her veteran before her result is known (`Evaluator::wins`,
@@ -627,15 +623,16 @@ impl<'data> CareerSetup<'data> {
         let mut outfit_key = vec![];
         for OutfitGrades { card, aptitudes } in self.outfit_grades(lineage.trainee, outfits) {
             outfit_key.push(card);
-            outfit_key.extend(aptitudes.iter().map(|&code| u32::from(code)));
+            outfit_key
+                .extend(aptitudes.iter().flat_map(|grades| grades.in_order()).map(|grade| u32::from(grade as u8)));
             outfit_key.push(u32::MAX);
         }
         let mut pinks = vec![];
         for slot in self.slots(pool, lineage) {
             pinks.push(aff_factor(slot.relation_points, slot.race).to_bits());
-            pinks.extend(slot.pinks.iter().map(|&(group, stars)| (u64::from(group) << 8) | u64::from(stars)));
-            for pink in slot.pink_chances.iter() {
-                pinks.extend([(u64::from(pink.group) << 8) | u64::from(pink.stars), pink.chance.to_bits()]);
+            pinks.extend(slot.pinks.iter().map(|&pink| pink_word(pink)));
+            for possible in slot.pink_chances.iter() {
+                pinks.extend([pink_word(possible.pink), possible.chance.to_bits()]);
             }
             pinks.push(SEPARATOR);
         }
@@ -654,12 +651,8 @@ impl CareerSetup<'_> {
     /// at 1/4/7/10 stars, at most to A; at each April inspiration (Classic, Senior) every legacy's pink spark fires with
     /// base 1/3/5% by stars x (1 + that legacy's affinity / 100), each firing +1 grade, at most S. A veteran before
     /// her result is known adds her possible pinks as outcomes (`PinkCareer`). None when data.json has no aptitudes.
-    pub(crate) fn pink_career(&self, pool: &Pool, lineage: Lineage, aptitudes: &[u8]) -> Option<PinkCareer> {
-        if aptitudes.len() < 10 {
-            return None;
-        }
-        let mut base = [0u8; 10];
-        base.copy_from_slice(&aptitudes[..10]);
+    pub(crate) fn pink_career(&self, pool: &Pool, lineage: Lineage, aptitudes: Option<&Grades>) -> Option<PinkCareer> {
+        let base = *aptitudes?;
         // per outcome: its chance, its pink stars per aptitude, its sparks, and per veteran before her result is known
         // (by the first slot she fills) the pink she carries in it (an index into her `pink_chances`; None: none)
         struct Partial {
@@ -672,16 +665,16 @@ impl CareerSetup<'_> {
         let slots = self.slots(pool, lineage);
         for (slot_index, slot) in slots.iter().enumerate() {
             let affinity_factor = aff_factor(slot.relation_points, slot.race);
-            let spark_of = |group: u32, stars: u8| -> Option<PinkFire> {
-                let (aptitude, stars) = (pink_apt(group)?, stars.min(3));
-                if stars == 0 {
-                    return None;
-                }
-                Some(PinkFire { aptitude, chance: pink_p(stars, affinity_factor), slot: slot_index, stars })
+            // (a pink's stars are 1..=3: `Pink`)
+            let spark_of = |pink: Pink| PinkFire {
+                aptitude: pink.aptitude,
+                chance: pink_p(pink.stars, affinity_factor),
+                slot: slot_index,
+                stars: pink.stars,
             };
-            for spark in slot.pinks.iter().filter_map(|&(group, stars)| spark_of(group, stars)) {
+            for spark in slot.pinks.iter().map(|&pink| spark_of(pink)) {
                 for partial in &mut partials {
-                    partial.stars[spark.aptitude] += u32::from(spark.stars);
+                    partial.stars[spark.aptitude.index()] += u32::from(spark.stars);
                     partial.fire.push(spark.clone());
                 }
             }
@@ -701,31 +694,30 @@ impl CareerSetup<'_> {
             if let Some(first_slot) = same_veteran {
                 for partial in &mut partials {
                     let drawn = partial.drawn.iter().find(|(slot, _)| *slot == first_slot).and_then(|(_, pink)| *pink);
-                    let Some(spark) = drawn.and_then(|pink| {
-                        let pink = slot.pink_chances[pink];
-                        spark_of(pink.group, pink.stars)
-                    }) else {
-                        continue;
-                    };
-                    partial.stars[spark.aptitude] += u32::from(spark.stars);
+                    let Some(pink_index) = drawn else { continue };
+                    let spark = spark_of(slot.pink_chances[pink_index].pink);
+                    partial.stars[spark.aptitude.index()] += u32::from(spark.stars);
                     partial.fire.push(spark);
                 }
                 continue;
             }
             // her possible pinks: each outcome so far, without one (the rest of her chance) and with each
-            let without_pink = 1.0 - slot.pink_chances.iter().map(|pink| pink.chance).sum::<f64>();
+            let without_pink = 1.0 - slot.pink_chances.iter().map(|possible| possible.chance).sum::<f64>();
             let mut expanded = vec![];
             for partial in partials {
-                for (pink_index, pink) in slot.pink_chances.iter().enumerate() {
-                    let Some(spark) = spark_of(pink.group, pink.stars).filter(|_| pink.chance > 0.0) else { continue };
+                for (pink_index, possible) in slot.pink_chances.iter().enumerate() {
+                    if !(possible.chance > 0.0) {
+                        continue;
+                    }
+                    let spark = spark_of(possible.pink);
                     // (each outcome owns its sparks and draws: the copies are the point)
                     let mut with_pink = Partial {
-                        chance: partial.chance * pink.chance,
+                        chance: partial.chance * possible.chance,
                         stars: partial.stars,
                         fire: partial.fire.clone(),
                         drawn: partial.drawn.clone(),
                     };
-                    with_pink.stars[spark.aptitude] += u32::from(spark.stars);
+                    with_pink.stars[spark.aptitude.index()] += u32::from(spark.stars);
                     with_pink.fire.push(spark);
                     with_pink.drawn.push((slot_index, Some(pink_index)));
                     expanded.push(with_pink);
@@ -741,10 +733,12 @@ impl CareerSetup<'_> {
         let outcomes = partials
             .into_iter()
             .map(|Partial { chance, stars, fire, .. }| {
+                // (a start raises a grade below A, to A at most)
                 let mut start = base;
-                for k in 0..10 {
-                    if base[k] < 7 {
-                        start[k] = (base[k] + start_increase(stars[k])).min(7);
+                for aptitude in Aptitude::ORDER {
+                    let grade = base.get(aptitude);
+                    if grade < Grade::A {
+                        start.set(aptitude, grade.raise(start_increase(stars[aptitude.index()])).min(Grade::A));
                     }
                 }
                 PinkOutcome { chance, start, fire }
@@ -753,7 +747,7 @@ impl CareerSetup<'_> {
         Some(PinkCareer { base, outcomes })
     }
     /// The chance of each pink spark of her veteran (MODEL.md): one, its aptitude uniform over those she ends at A or S
-    /// (stars 20/70/10: `pink_chances`): per aptitude (data.json `apt` order) P(it is the one); exact, the aptitudes'
+    /// (stars 20/70/10: `pink_chances`): per aptitude (in `Aptitude::ORDER`) P(it is the one); exact, the aptitudes'
     /// inspirations independent within an outcome of her legacies' pinks, summed over those outcomes. The rest: no
     /// aptitude at A or S.
     pub(crate) fn pink_gen(pink_career: &PinkCareer) -> [f64; 10] {
@@ -772,10 +766,10 @@ impl CareerSetup<'_> {
         let star_shares = [PINK_STAR_BOUNDS[0], PINK_STAR_BOUNDS[1] - PINK_STAR_BOUNDS[0], 1.0 - PINK_STAR_BOUNDS[1]];
         let pink_gen = Self::pink_gen(pink_career);
         let mut chances = vec![];
-        for (k, &aptitude_chance) in pink_gen.iter().enumerate() {
+        for (aptitude, &aptitude_chance) in Aptitude::ORDER.into_iter().zip(&pink_gen) {
             for (stars, &share) in (1u8..=3).zip(&star_shares) {
                 if aptitude_chance * share > 0.0 {
-                    chances.push(PinkChance { group: apt_pink(k), stars, chance: aptitude_chance * share });
+                    chances.push(PinkChance { pink: Pink { aptitude, stars }, chance: aptitude_chance * share });
                 }
             }
         }
@@ -789,7 +783,7 @@ impl CareerSetup<'_> {
         lineage: Lineage,
         outfit: u32,
         uniform: impl FnMut() -> f64,
-    ) -> Vec<(u32, u8)> {
+    ) -> Vec<Pink> {
         let aptitudes = self.data.umas[lineage.trainee].aptitudes_of(outfit);
         self.pink_career(pool, lineage, aptitudes)
             .and_then(|pink_career| draw_pink(&pink_career, uniform))
@@ -897,19 +891,25 @@ mod tests {
     use super::{
         LOW_BASIS_COST, LOW_BASIS_MAX, PinkCareer, PinkFire, PinkOutcome, best_outfits, career_uma, draw_pink,
     };
-    use crate::career::CareerSetup;
+    use crate::career::{CareerSetup, Pink};
+    use crate::codes::{Aptitude, Grades};
     use crate::data::{Choice, Data, NT, Sched, load_str};
     use crate::uma::UmaIndex;
     use serde_json::json;
 
-    const COST: [i32; 9] = [90, 90, 60, 40, 30, 20, 10, 0, 0];
     const PENALTY: [i32; 6] = [0, 0, 5, 20, 30, 50];
 
-    /// Forced lead-in races set each attempt's streak; a second Senior option competes with the repeat.
+    /// The table's basis on `grades` of the synthetic races: short turf (`repeat_data`)
+    fn short_turf_basis(grades: &Grades) -> i32 {
+        110 - grades.get(Aptitude::Sprint).cost() - grades.get(Aptitude::Turf).cost()
+    }
+
+    /// Forced lead-in races set each attempt's streak; a second Senior option competes with the repeat. `aptitudes`:
+    /// her grade codes, as data.json writes them.
     fn repeat_data(classic_turn: usize, streaks: [usize; 2], goals: [bool; 2], aptitudes: [u8; 10]) -> Data {
         let mut turns = vec![vec![]; NT];
         let mut forced = vec![];
-        let basis = 110 - COST[aptitudes[0] as usize] - COST[aptitudes[4] as usize];
+        let basis = short_turf_basis(&Grades::of_codes(aptitudes));
         for (year, turn) in [classic_turn, classic_turn + 24].into_iter().enumerate() {
             for lead_in in turn + 1 - streaks[year]..turn {
                 turns[lead_in].push(json!({"prog": 0, "race": -1, "bp": 0}));
@@ -921,9 +921,9 @@ mod tests {
         turns[classic_turn + 24].push(json!({"prog": 2, "race": 1, "bp": 110}));
         load_str(
             &json!({
-                "race_names": ["Repeat", "Alternative"], "race_cat": [0, 1], "race_ground": [1, 2],
+                "race_names": ["Repeat", "Alternative"], "race_cat": [0, 1], "race_ground": [0, 1],
                 "relations": [], "pen": PENALTY,
-                "umas": [{"id": 1, "name": "Synthetic", "apt": aptitudes, "turns": turns, "goals": forced}]
+                "umas": [{"id": 1, "name": "Synthetic", "apt": Grades::of_codes(aptitudes), "turns": turns, "goals": forced}]
             })
             .to_string(),
         )
@@ -937,8 +937,9 @@ mod tests {
         schedule
     }
 
-    /// A lineage's pinks with one outcome, at chance 1
+    /// A lineage's pinks with one outcome, at chance 1, on grade codes `start`
     fn recorded(start: [u8; 10], fire: Vec<PinkFire>) -> PinkCareer {
+        let start = Grades::of_codes(start);
         PinkCareer { base: start, outcomes: vec![PinkOutcome { chance: 1.0, start, fire }] }
     }
 
@@ -959,7 +960,7 @@ mod tests {
                             let fires = firings & (1 << (inspiration * outcome.fire.len() + index)) != 0;
                             if fires {
                                 mass *= spark.chance;
-                                grades[spark.aptitude] = (grades[spark.aptitude] + 1).min(8);
+                                grades.set(spark.aptitude, grades.get(spark.aptitude).raise(1));
                             } else {
                                 mass *= 1.0 - spark.chance;
                             }
@@ -967,7 +968,7 @@ mod tests {
                         inspiration += 1;
                     }
                     let position = if goals[year] { streaks[year].saturating_sub(1).max(1) } else { streaks[year] };
-                    let table_basis = 110 - COST[grades[0] as usize] - COST[grades[4] as usize];
+                    let table_basis = short_turf_basis(&grades);
                     let basis = if table_basis <= LOW_BASIS_MAX { table_basis - LOW_BASIS_COST } else { table_basis };
                     let chance = f64::from((basis - PENALTY[position - 1]).clamp(0, 100)) / 100.0;
                     miss *= 1.0 - chance;
@@ -1021,7 +1022,7 @@ mod tests {
             let mut start = [7; 10];
             start[0] = distance;
             start[4] = surface;
-            let fire = [(0, 0.17), (0, 0.29), (4, 0.23)]
+            let fire = [(Aptitude::Sprint, 0.17), (Aptitude::Sprint, 0.29), (Aptitude::Turf, 0.23)]
                 .into_iter()
                 .enumerate()
                 .map(|(slot, (aptitude, chance))| PinkFire { aptitude, chance, slot, stars: 3 })
@@ -1037,18 +1038,21 @@ mod tests {
         let mut data_grades = [7; 10];
         data_grades[0] = 4;
         data_grades[4] = 5;
-        let recorded_spark = PinkFire { aptitude: 4, chance: 0.2, slot: 0, stars: 2 };
+        let recorded_spark = PinkFire { aptitude: Aptitude::Turf, chance: 0.2, slot: 0, stars: 2 };
         let mut raised = data_grades;
         raised[0] = 5;
         let pink = PinkCareer {
-            base: data_grades,
+            base: Grades::of_codes(data_grades),
             outcomes: vec![
                 PinkOutcome {
                     chance: 0.3,
-                    start: raised,
-                    fire: vec![recorded_spark.clone(), PinkFire { aptitude: 0, chance: 0.25, slot: 1, stars: 3 }],
+                    start: Grades::of_codes(raised),
+                    fire: vec![
+                        recorded_spark.clone(),
+                        PinkFire { aptitude: Aptitude::Sprint, chance: 0.25, slot: 1, stars: 3 },
+                    ],
                 },
-                PinkOutcome { chance: 0.7, start: data_grades, fire: vec![recorded_spark] },
+                PinkOutcome { chance: 0.7, start: Grades::of_codes(data_grades), fire: vec![recorded_spark] },
             ],
         };
         for classic_turn in [29, 35] {
@@ -1060,7 +1064,7 @@ mod tests {
     fn pink_correlation_changes_the_best_schedule() {
         let mut start = [7; 10];
         start[0] = 4;
-        let pink = recorded(start, vec![PinkFire { aptitude: 0, chance: 0.2, slot: 0, stars: 3 }]);
+        let pink = recorded(start, vec![PinkFire { aptitude: Aptitude::Sprint, chance: 0.2, slot: 0, stars: 3 }]);
         let data = repeat_data(35, [1, 1], [false, false], start);
         let adjusted = career_uma(&data, Some(&pink), UmaIndex(0)).unwrap();
         let exact = enumerated_win(&pink, 35, [1, 1], [false, false]);
@@ -1132,8 +1136,10 @@ mod tests {
             })
             .unwrap();
         let first_chance = |card: u32| {
-            let grades: [u8; 10] = data.umas[vodka].aptitudes_of(card).try_into().unwrap();
-            let career = career_uma(&data, Some(&recorded(grades, vec![])), vodka).unwrap();
+            let grades = *data.umas[vodka].aptitudes_of(card).unwrap();
+            let pink =
+                PinkCareer { base: grades, outcomes: vec![PinkOutcome { chance: 1.0, start: grades, fire: vec![] }] };
+            let career = career_uma(&data, Some(&pink), vodka).unwrap();
             career.uma.choices[turn][option + 1].win_chances[1]
         };
         assert_eq!(first_chance(100_802), f64::from(70 - LOW_BASIS_COST) / 100.0);
@@ -1172,15 +1178,19 @@ mod tests {
         let mut start = [7; 10];
         start[0] = 6;
         let fire = vec![
-            PinkFire { aptitude: 0, chance: 0.5, slot: 0, stars: 3 },
-            PinkFire { aptitude: 0, chance: 0.5, slot: 1, stars: 1 },
+            PinkFire { aptitude: Aptitude::Sprint, chance: 0.5, slot: 0, stars: 3 },
+            PinkFire { aptitude: Aptitude::Sprint, chance: 0.5, slot: 1, stars: 1 },
         ];
         let pink = recorded(start, fire);
         let mut numbers = [0.4, 0.9, 0.9, 0.9, 0.05, 0.5].into_iter();
-        assert_eq!(draw_pink(&pink, || numbers.next().unwrap()), Some((31, 2)));
+        assert_eq!(
+            draw_pink(&pink, || numbers.next().unwrap()),
+            Some(Pink { aptitude: Aptitude::Sprint, stars: 2 }),
+            "sprint, 2 stars"
+        );
         assert!(numbers.next().is_none(), "four firing numbers, one aptitude, one stars");
         // no grade at A or S: no pink, after the firing numbers only
-        let pink = recorded([6; 10], vec![PinkFire { aptitude: 0, chance: 0.5, slot: 0, stars: 3 }]);
+        let pink = recorded([6; 10], vec![PinkFire { aptitude: Aptitude::Sprint, chance: 0.5, slot: 0, stars: 3 }]);
         let mut numbers = [0.9, 0.9].into_iter();
         assert_eq!(draw_pink(&pink, || numbers.next().unwrap()), None);
         assert!(numbers.next().is_none());
@@ -1190,15 +1200,15 @@ mod tests {
     fn pink_chances_split_pink_gen_by_stars() {
         let mut start = [6; 10];
         start[1] = 7;
-        let pink = recorded(start, vec![PinkFire { aptitude: 2, chance: 0.4, slot: 0, stars: 3 }]);
+        let pink = recorded(start, vec![PinkFire { aptitude: Aptitude::Medium, chance: 0.4, slot: 0, stars: 3 }]);
         let pink_gen = CareerSetup::pink_gen(&pink);
         let chances = CareerSetup::pink_chances(&pink);
         let total: f64 = chances.iter().map(|pink| pink.chance).sum();
         assert!((total - pink_gen.iter().sum::<f64>()).abs() < 1e-15);
         // mile at A for sure, middle at A with chance 1 - .6^2 = .64: mile is hers with .36 + .64 / 2
         assert!((pink_gen[1] - 0.68).abs() < 1e-12, "{pink_gen:?}");
-        let mile: Vec<_> = chances.iter().filter(|pink| pink.group == 32).collect();
-        assert_eq!(mile.iter().map(|pink| pink.stars).collect::<Vec<_>>(), [1, 2, 3]);
+        let mile: Vec<_> = chances.iter().filter(|possible| possible.pink.aptitude == Aptitude::Mile).collect();
+        assert_eq!(mile.iter().map(|possible| possible.pink.stars).collect::<Vec<_>>(), [1, 2, 3]);
         assert!((mile[1].chance - 0.68 * 0.7).abs() < 1e-12);
     }
 }

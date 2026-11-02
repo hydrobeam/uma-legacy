@@ -2,10 +2,11 @@
 //! certificates, a plan's roll or check from the worker's kept state, the simulator's report, the kept state out and
 //! back in, a job's answer with the roll it carried, or a refusal. The page's types are generated from these
 //! (`crate::ts_gen`): a union the page narrows by `kind`. A reply owns what it holds: it outlives the job's search.
+use crate::career::Pink;
 use crate::career::plan::report::{CheckReply, PlanReply, RollReply};
 use crate::career::search::{Assumes, Unproven};
 use crate::chart::ScheduleRow;
-use crate::codes::Grade;
+use crate::codes::{Aptitude, Grades};
 use crate::deck::pdeck::ResultDeck;
 use crate::loop_planner::output::{OutfitLabel, TargetCover};
 use crate::refusal::Refusal;
@@ -225,8 +226,8 @@ pub(crate) struct CareerSlot {
     pub(crate) aff: f64,
     /// her spark's stars per target, in the job's order
     pub(crate) stars: std::rc::Rc<Vec<u8>>,
-    /// her pink sparks: [group, stars]
-    pub(crate) pinks: std::rc::Rc<Vec<(u32, u8)>>,
+    /// her pink sparks
+    pub(crate) pinks: std::rc::Rc<Vec<Pink>>,
 }
 
 /// One target of a career.
@@ -286,19 +287,20 @@ pub(crate) struct ScenarioBuy {
 /// A pink (aptitude) spark the legacies carry.
 #[derive(Clone, Serialize, TS)]
 pub(crate) struct PinkInheritance {
-    pub(crate) group: u32,
+    pub(crate) aptitude: Aptitude,
     /// the chance at least one of the two inheritance events passes it on
     pub(crate) q: f64,
     /// legacies carrying it
     pub(crate) carriers: usize,
 }
 
-/// Her aptitude grades (data.json `apt` order) and her veteran's pink spark.
+/// Her aptitude grades and her veteran's pink spark.
 #[derive(Clone, Serialize, TS)]
 pub(crate) struct Aptitudes {
     /// her grades before any pink spark fires
-    pub(crate) base: [Grade; 10],
-    /// the chance of each pink type on her veteran
+    pub(crate) base: Grades,
+    /// the chance of each pink on her veteran, an entry per aptitude in the solver's order (`Aptitude::ORDER`: the
+    /// page's roll draws from them in it)
     pub(crate) pink_gen: Vec<PinkTypeChance>,
     /// where her grades start
     pub(crate) start: AptitudeStart,
@@ -319,7 +321,7 @@ pub(crate) enum AptitudeStart {
 /// A start's grades and the legacy pinks that can fire at an April inspiration.
 #[derive(Clone, Serialize, TS)]
 pub(crate) struct PinkOutcomeReport {
-    pub(crate) start: [Grade; 10],
+    pub(crate) start: Grades,
     pub(crate) fire: Vec<PinkFireReport>,
 }
 
@@ -330,11 +332,10 @@ pub(crate) struct WeightedPinkOutcome {
     pub(crate) outcome: PinkOutcomeReport,
 }
 
-/// A legacy pink that can fire: its group and aptitude, its chance, the legacy slot and its stars.
+/// A legacy pink that can fire: its aptitude, its chance, the legacy slot and its stars.
 #[derive(Clone, Serialize, TS)]
 pub(crate) struct PinkFireReport {
-    pub(crate) group: u32,
-    pub(crate) apt: usize,
+    pub(crate) aptitude: Aptitude,
     pub(crate) p: f64,
     pub(crate) slot: usize,
     pub(crate) stars: u8,
@@ -343,7 +344,7 @@ pub(crate) struct PinkFireReport {
 /// A pink type's chance on her veteran.
 #[derive(Clone, Serialize, TS)]
 pub(crate) struct PinkTypeChance {
-    pub(crate) group: u32,
+    pub(crate) aptitude: Aptitude,
     pub(crate) p: f64,
 }
 

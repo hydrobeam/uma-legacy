@@ -5,6 +5,7 @@ import type { Era } from '../eras.ts';
 import { ERA } from '../saved.ts';
 import { vets, places, importVets, isVeteran, asVeteran, addVets } from '../veterans/store.ts';
 import { umaName } from '../veterans/names.ts';
+import { unknownPinksIn, unknownPinksSaid } from '../veterans/records.ts';
 import { parseExport, parseTree } from '../umadump.ts';
 import { orNull } from '../must.ts';
 import { Blocked } from './job.ts';
@@ -99,27 +100,30 @@ export function importText(text: string): boolean {
       true,
     );
     setVTab('own');
+    const unknownPinks = own.veterans.reduce((count: number, v) => count + unknownPinksIn(v), 0);
     sayVets(
-      `Imported ${own.veterans.length} veteran${own.veterans.length === 1 ? '' : 's'} from an export of this page.`,
+      `Imported ${own.veterans.length} veteran${own.veterans.length === 1 ? '' : 's'} from an export of this page.${unknownPinksSaid(unknownPinks)}`,
     );
     return true;
   }
   const tree = parseTree(text);
   if (tree) {
-    const [head] = tree;
+    const [head] = tree.veterans;
     if (!head) {
       sayVets('No veteran in that uma.moe tree.');
       return false;
     }
-    addVets(tree);
-    const first = vets.value.findIndex((v) => v.id === head.id) + 1;
+    addVets(tree.veterans);
+    const first = vets.value.findIndex((v) => v.id === head.id) + 1,
+      count = tree.veterans.length;
     sayVets(
-      `Added ${tree.map((v) => umaName(v.chara)).join(', ')} from an uma.moe tree, with her parents, as #${first}${tree.length > 1 ? `-#${first + tree.length - 1}` : ''} (marked yours: switch to Borrowed if she is a friend's).`,
+      `Added ${tree.veterans.map((v) => umaName(v.chara)).join(', ')} from an uma.moe tree, with her parents, as #${first}${count > 1 ? `-#${first + count - 1}` : ''} (marked yours: switch to Borrowed if she is a friend's).${unknownPinksSaid(tree.unknownPinks)}`,
     );
     return true;
   }
   try {
-    const r = importVets(parseExport(text)),
+    const read = parseExport(text),
+      r = importVets(read.veterans),
       counted = (k: number, word: string) => `${k} ${word}${k === 1 ? '' : 's'}`,
       said: string[] = [];
     if (r.added || r.updated)
@@ -131,7 +135,7 @@ export function importText(text: string): boolean {
         `${said.length ? 'r' : 'R'}eplaced the borrow list with ${counted(r.borrowed, 'borrowed veteran')}${r.dropped ? ` (it had ${r.dropped})` : ''}`,
       );
     setVTab(r.added || r.updated ? 'own' : 'bor');
-    sayVets(`${said.join('; ')}.`);
+    sayVets(`${said.join('; ')}.${unknownPinksSaid(read.unknownPinks)}`);
     return true;
   } catch (e) {
     // (parseExport throws an Error with the page's message)

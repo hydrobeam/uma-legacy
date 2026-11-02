@@ -55,15 +55,37 @@ pub(crate) fn land_dw(coverage: u8, white_hint_chances: f64, gold_hint_chances: 
     gold_hint_chances * GEN_GOLD + (1.0 - gold_hint_chances) * white
 }
 
+/// A skill a hint or an event names: its skill group and its level (1 white, 2 gold). The data files and the jobs write
+/// it as a `[group, level]` pair.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(from = "(u32, u8)", into = "(u32, u8)")]
+pub(crate) struct Reward {
+    pub(crate) group: u32,
+    pub(crate) level: u8,
+}
+
+impl From<(u32, u8)> for Reward {
+    fn from((group, level): (u32, u8)) -> Self {
+        Self { group, level }
+    }
+}
+
+impl From<Reward> for (u32, u8) {
+    fn from(Reward { group, level }: Reward) -> Self {
+        (group, level)
+    }
+}
+
+/// One of a uma's outfits in web_skills.json: its card id, name and the skills its own hints name.
 #[derive(Deserialize, Clone)]
-pub(crate) struct CardRaw(pub u32, pub String, pub Vec<(u32, u8)>);
+pub(crate) struct CardRaw(pub u32, pub String, pub Vec<Reward>);
 #[derive(Deserialize)]
 pub(crate) struct SkillsRaw {
     pub cards: std::collections::HashMap<String, Vec<CardRaw>>,
     pub skills: Vec<(u32, String, Option<String>)>,
-    /// every skill name an event reward can carry -> (group, 1 white / 2 gold): the catalog's names plus a group's
-    /// other whites (the ○ beside a catalog ◎)
-    pub names: std::collections::HashMap<String, (u32, u8)>,
+    /// every skill name an event reward can carry -> its reward: the catalog's names plus a group's other whites (the
+    /// ○ beside a catalog ◎)
+    pub names: std::collections::HashMap<String, Reward>,
 }
 
 #[derive(Serialize, Deserialize, Clone, ts_rs::TS)]
@@ -356,8 +378,8 @@ impl<'data> Model<'data> {
                         let mut level = card
                             .2
                             .iter()
-                            .filter(|(candidate_group, _)| *candidate_group == group)
-                            .map(|(_, hint_level)| *hint_level)
+                            .filter(|reward| reward.group == group)
+                            .map(|reward| reward.level)
                             .max()
                             .unwrap_or(0);
                         for (character, candidate_group, hint_level) in &job.extra {

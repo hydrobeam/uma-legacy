@@ -1,18 +1,18 @@
 //! Veteran pools and legal parent pairs.
 use crate::career::schedule::PinkChance;
-use crate::career::{Ancestor, CareerSetup, Legacy};
+use crate::career::{Ancestor, CareerSetup, Legacy, Pink, Spark};
 use crate::uma::UmaIndex;
 /// What `CareerSetup::who` reads of a legacy or of one of her recorded parents.
 struct VeteranTraits<'veteran> {
     character_id: u32,
-    /// (skill group, stars) of her white sparks.
-    sparks: &'veteran [(u32, u8)],
+    /// Her white sparks.
+    sparks: &'veteran [Spark],
     /// Races (data.json `races`) of the single-race G1s she won; read when `win_chances` is empty.
     wins: &'veteran [usize],
     /// A veteran before her result is known: her win chance per race index (empty: `wins` are certain).
     win_chances: &'veteran [f64],
-    /// (aptitude factor group, stars) of her pink sparks.
-    pinks: &'veteran [(u32, u8)],
+    /// Her pink sparks.
+    pinks: &'veteran [Pink],
     /// A veteran before her result is known: the pinks she may carry, one at most (empty: `pinks` are hers).
     pink_chances: &'veteran [PinkChance],
     /// The star mix her sparks are drawn from (None: fixed stars).
@@ -58,8 +58,8 @@ pub(crate) struct Who {
     pub(crate) wins: Vec<RaceWin>,
     /// Stars (0..=3) of her spark of each job target, in job-target order.
     pub(crate) stars: std::rc::Rc<Vec<u8>>,
-    /// (aptitude factor group, stars) of her pink sparks.
-    pub(crate) pinks: std::rc::Rc<Vec<(u32, u8)>>,
+    /// Her pink sparks.
+    pub(crate) pinks: std::rc::Rc<Vec<Pink>>,
     /// A veteran before her result is known: the pinks she may carry, one at most (empty: `pinks` are hers).
     pub(crate) pink_chances: std::rc::Rc<Vec<PinkChance>>,
     /// The star mix her sparks are drawn from (a veteran before her result is known); None: `stars` are fixed.
@@ -271,14 +271,15 @@ fn who_words(who: &Who) -> Vec<u64> {
     words.push(who.wins.len() as u64);
     words.extend(who.wins.iter().flat_map(|win| [win.race as u64, win.chance.to_bits()]));
     words.push(who.pinks.len() as u64);
-    words.extend(who.pinks.iter().map(|&(group, stars)| (u64::from(group) << 8) | u64::from(stars)));
+    words.extend(who.pinks.iter().map(|&pink| pink_word(pink)));
     words.push(who.pink_chances.len() as u64);
-    words.extend(
-        who.pink_chances
-            .iter()
-            .flat_map(|pink| [(u64::from(pink.group) << 8) | u64::from(pink.stars), pink.chance.to_bits()]),
-    );
+    words.extend(who.pink_chances.iter().flat_map(|possible| [pink_word(possible.pink), possible.chance.to_bits()]));
     words
+}
+
+/// A pink spark as one content word: its aptitude's code, then its stars in the low byte.
+pub(crate) fn pink_word(pink: Pink) -> u64 {
+    (u64::from(pink.aptitude as u8) << 8) | u64::from(pink.stars)
 }
 
 /// G1s two legacies both won (expected count when a win is a chance)
@@ -303,17 +304,16 @@ impl CareerSetup<'_> {
     pub(crate) fn uma_index(&self, character_id: u32) -> Option<UmaIndex> {
         self.data.umas.iter().position(|uma| uma.id == character_id).map(UmaIndex)
     }
-    /// Stars (0..=3) of the best white spark of each job target among `sparks` ((skill group, stars) pairs), in
-    /// job-target order.
-    fn job_target_stars(&self, sparks: &[(u32, u8)]) -> Vec<u8> {
+    /// Stars (0..=3) of the best white spark of each job target among `sparks`, in job-target order.
+    fn job_target_stars(&self, sparks: &[Spark]) -> Vec<u8> {
         self.skill_job
             .targets
             .iter()
             .map(|target| {
                 sparks
                     .iter()
-                    .filter(|&&(group, _)| group == target.group)
-                    .map(|&(_, stars)| stars.min(3))
+                    .filter(|spark| spark.group == target.group)
+                    .map(|spark| spark.stars.min(3))
                     .max()
                     .unwrap_or(0)
             })

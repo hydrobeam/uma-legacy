@@ -85,7 +85,7 @@
 use crate::career::evaluator::{Cur, Evaluator};
 /// the page's next career (`next` on a career job)
 use crate::career::sim::play::PathState;
-use crate::career::{CareerJob, Env, JobInputs, Legacy, Lineage};
+use crate::career::{Ancestor, CareerJob, Env, JobInputs, Legacy, Lineage};
 use crate::data::Data;
 use crate::deck::CardsRaw;
 use crate::request::CareerRequest;
@@ -308,20 +308,18 @@ pub(crate) struct Sim<'env, 'data> {
     record_audits: bool,
     audits: Vec<report::SurrogateAudit>,
 }
-fn canon(character_id: u32, sparks: &[(u32, u8)], pinks: &[(u32, u8)], wins: &[usize]) -> String {
-    let (mut sparks, mut pinks, mut wins) = (sparks.to_vec(), pinks.to_vec(), wins.to_vec());
+/// a recorded parent as a key's text: her character, then her sparks, pinks and wins sorted (a key compared for
+/// equality only: `family`)
+fn canon(parent: &Ancestor) -> String {
+    let (mut sparks, mut pinks, mut wins) = (parent.sparks.clone(), parent.pinks.clone(), parent.wins.clone());
     sparks.sort_unstable();
     pinks.sort_unstable();
     wins.sort_unstable();
-    format!("{character_id}|{sparks:?}|{pinks:?}|{wins:?}")
+    format!("{}|{sparks:?}|{pinks:?}|{wins:?}", parent.character_id)
 }
 /// a veteran's family: the character and her two parents as recorded
 fn family(legacy: &Legacy) -> String {
-    let mut parents: Vec<String> = legacy
-        .parents
-        .iter()
-        .map(|parent| canon(parent.character_id, &parent.sparks, &parent.pinks, &parent.wins))
-        .collect();
+    let mut parents: Vec<String> = legacy.parents.iter().map(canon).collect();
     parents.sort();
     format!("{}#{}", legacy.character_id, parents.join("#"))
 }

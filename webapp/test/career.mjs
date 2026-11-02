@@ -38,16 +38,16 @@ function pinkPin() {
   for (const [f, r] of referenceCareers()) {
     const ap = r.aptitudes;
     if (ap?.start.kind !== 'known' || !ap.start.fire.length) continue;
-    const drawn = new Map(); // pink group -> draws that gave it
+    const drawn = new Map(); // pink aptitude -> draws that gave it
     for (let i = 0; i < N; i++) {
       const g = Object.keys(drawPink(ap, rnd).pinks)[0];
       if (g !== undefined) drawn.set(+g, (drawn.get(+g) || 0) + 1);
     }
-    for (const { group, p } of ap.pink_gen) {
-      const fr = (drawn.get(group) || 0) / N,
+    for (const { aptitude, p } of ap.pink_gen) {
+      const fr = (drawn.get(aptitude) || 0) / N,
         sd = Math.sqrt((p * (1 - p)) / N);
       aptitudes++;
-      if (Math.abs(fr - p) > Math.max(5 * sd, 1e-3)) bad ||= `${f} group ${group}: drawn ${fr} vs ${p}`;
+      if (Math.abs(fr - p) > Math.max(5 * sd, 1e-3)) bad ||= `${f} aptitude ${aptitude}: drawn ${fr} vs ${p}`;
       if (sd > 0) worst = Math.max(worst, Math.abs(fr - p) / sd);
     }
   }

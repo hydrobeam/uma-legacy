@@ -1,7 +1,7 @@
 //! Race and schedule records, relation and ceiling tables, and the win-probability model.
 //! Schedule search belongs to `schedule`; loop optimization belongs to `loop_planner::schedules`.
 use crate::Fx;
-use crate::codes::{Distance, Grade, Surface};
+use crate::codes::{Distance, Grades, Surface};
 use crate::uma::{UmaIndex, UmaPairTable, UmaTable};
 use serde::{Deserialize, Serialize};
 
@@ -28,14 +28,14 @@ struct UmaRaw {
     name: String,
     turns: Vec<Vec<OptRaw>>,
     goals: Vec<Vec<(usize, usize)>>,
-    /// aptitude codes 1..8 = G..S: short, mile, middle, long, turf, dirt, front runner, pace chaser, late surger, end closer
+    /// her grades (none: no aptitude data, as in older files)
     #[serde(default)]
     #[serde(rename = "apt")]
-    aptitudes: Vec<Grade>,
-    /// (outfit card id, its aptitude codes) of each outfit whose own aptitudes differ from `apt` (the first outfit's)
+    aptitudes: Option<Grades>,
+    /// (outfit card id, its grades) of each outfit whose own grades differ from `apt` (the first outfit's)
     #[serde(default)]
     #[serde(rename = "outfit_apt")]
-    outfit_aptitudes: Vec<(u32, Vec<Grade>)>,
+    outfit_aptitudes: Vec<(u32, Grades)>,
 }
 #[derive(Deserialize)]
 pub(crate) struct DataRaw {
@@ -55,17 +55,13 @@ pub(crate) struct DataRaw {
     #[serde(default)]
     #[serde(rename = "pb")]
     pair_ceiling_table: Option<PbRaw>,
-    /// per race: distance class (0 short .. 3 long) and surface (1 turf, 2 dirt)
+    /// per race: distance class and surface (`Distance`, `Surface`)
     #[serde(default)]
     #[serde(rename = "race_cat")]
     race_distance: Vec<Distance>,
     #[serde(default)]
     #[serde(rename = "race_ground")]
     race_surface: Vec<Surface>,
-}
-/// Grades as the codes the schedule's arithmetic reads (G = 1 .. S = 8).
-fn grade_codes(grades: &[Grade]) -> Vec<u8> {
-    grades.iter().map(|&grade| grade as u8).collect()
 }
 /// pair[a][b] / tri[a][b][c]: summed points of the relation groups holding every one of the (distinct) umas.
 pub(crate) fn rel_tables(
@@ -126,10 +122,10 @@ pub(crate) struct Uma {
     /// Per turn: the allowed choice codes when nothing is forced, rest first then options in index order, and their
     /// count.
     pub(crate) choice_codes: Vec<([u8; 6], usize)>,
-    /// Aptitude codes (`UmaRaw`, her first outfit's: the grades `race_options`' bp are from); empty in older data.
-    pub(crate) aptitudes: Vec<u8>,
-    /// (outfit card id, aptitude codes) of each outfit whose own aptitudes differ from `aptitudes`.
-    pub(crate) outfit_aptitudes: Vec<(u32, Vec<u8>)>,
+    /// Her grades (`UmaRaw`, her first outfit's: the grades `race_options`' bp are from); None in older data.
+    pub(crate) aptitudes: Option<Grades>,
+    /// (outfit card id, grades) of each outfit whose own grades differ from `aptitudes`.
+    pub(crate) outfit_aptitudes: Vec<(u32, Grades)>,
 }
 
 /// Precomputed per-choice data for dp_exact: race (-1 = none), win chance per streak position k (same values as
@@ -430,14 +426,16 @@ impl Uma {
             choices,
             repeated_races: vec![],
             choice_codes,
-            aptitudes: grade_codes(&raw.aptitudes),
-            outfit_aptitudes: raw.outfit_aptitudes.iter().map(|(card, grades)| (*card, grade_codes(grades))).collect(),
+            aptitudes: raw.aptitudes,
+            outfit_aptitudes: raw.outfit_aptitudes,
         }
     }
 
-    /// The aptitude codes of her outfit `card` (her first outfit's, `aptitudes`, unless it has its own).
-    pub(crate) fn aptitudes_of(&self, card: u32) -> &[u8] {
-        self.outfit_aptitudes.iter().find(|(own_card, _)| *own_card == card).map_or(&self.aptitudes, |(_, own)| own)
+    /// The grades of her outfit `card` (her first outfit's, `aptitudes`, unless it has its own; None without aptitude
+    /// data).
+    pub(crate) fn aptitudes_of(&self, card: u32) -> Option<&Grades> {
+        let own = self.outfit_aptitudes.iter().find(|(own_card, _)| *own_card == card);
+        own.map(|(_, grades)| grades).or(self.aptitudes.as_ref())
     }
 
     /// Whether `schedule` is legal for her: every option exists, every single-turn goal is raced and every multi-turn

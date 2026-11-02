@@ -3,10 +3,11 @@
 // the community table (`tableCost`, `tableChance`).
 import { RACEIDS } from './data.ts';
 import { srcFor } from './images.ts';
-import { GRADE_LETTER, gradeAt } from './grades.ts';
-import type { Grade } from './grades.ts';
+import { Distance, Grade, Surface } from './gen/solver.ts';
+import type { Grades } from './gen/solver.ts';
+import { SOLVER } from './gen/constants.ts';
 import { assert, must } from './must.ts';
-import type { Distance, RaceTrack } from './data.ts';
+import type { RaceTrack } from './data.ts';
 import type { ScheduleCell, ScheduleRow } from './solver.ts';
 import type { DeepReadonly } from './store.ts';
 
@@ -55,7 +56,7 @@ export function cellAt(row: DeepReadonly<ScheduleRow>, k: number): DeepReadonly<
 export const shownP = (cell: ScheduleCell): number => cell.tbl ?? cell.p;
 // the community table (110, minus each aptitude's cost, minus the k-th race in a row's penalty, at most 100): what the
 // career page shows, and the Win table panel
-const GRADE_COST: Record<Grade, number> = { 1: 90, 2: 60, 3: 40, 4: 30, 5: 20, 6: 10, 7: 0, 8: 0 };
+
 /** a race's place in a row of races (1 = the first); the table counts the sixth and later alike */
 export type RowPlace = 1 | 2 | 3 | 4 | 5 | 6;
 export const ROW_PLACES: readonly RowPlace[] = [1, 2, 3, 4, 5, 6];
@@ -68,14 +69,20 @@ const rowPlace = (row: number): RowPlace => {
   assert(isRowPlace(place), 'a race in a row is the first or a later one');
   return place;
 };
-const DISTANCE: Record<Distance, string> = { 0: 'Sprint', 1: 'Mile', 2: 'Medium', 3: 'Long' };
+const DISTANCE: Record<Distance, string> = {
+  [Distance.Short]: 'Sprint',
+  [Distance.Mile]: 'Mile',
+  [Distance.Medium]: 'Medium',
+  [Distance.Long]: 'Long',
+};
+const SURFACE: Record<Surface, string> = { [Surface.Turf]: 'Turf', [Surface.Dirt]: 'Dirt' };
 /** her grades' cost for a race on `track` (data.ts `RaceTrack`), on her aptitude grades (grades.ts) */
-export function tableCost(apt: readonly number[], track: RaceTrack): { cost: number; grades: string } {
-  const d = gradeAt(apt, track.cat),
-    s = gradeAt(apt, track.ground === 1 ? 4 : 5);
+export function tableCost(apt: DeepReadonly<Grades>, track: RaceTrack): { cost: number; grades: string } {
+  const d = apt.distance[track.cat],
+    s = apt.surface[track.ground];
   return {
-    cost: GRADE_COST[d] + GRADE_COST[s],
-    grades: `${DISTANCE[track.cat]} ${GRADE_LETTER[d]}, ${track.ground === 1 ? 'Turf' : 'Dirt'} ${GRADE_LETTER[s]}`,
+    cost: SOLVER.grade_cost[d] + SOLVER.grade_cost[s],
+    grades: `${DISTANCE[track.cat]} ${Grade[d]}, ${SURFACE[track.ground]} ${Grade[s]}`,
   };
 }
 export const tableChance = (cost: number, row: number): number =>
@@ -84,23 +91,23 @@ export const tableChance = (cost: number, row: number): number =>
 // with each grade, then each grade with G; drawn in the game's grade letters), a row per races in a row, each cell 110
 // minus the pair's cost and the row's penalty as the table prints it (not capped at 100)
 export const TABLE_PAIRS: readonly (readonly [Grade, Grade])[] = [
-  [7, 7],
-  [7, 6],
-  [7, 5],
-  [7, 4],
-  [7, 3],
-  [7, 2],
-  [7, 1],
-  [6, 1],
-  [5, 1],
-  [4, 1],
-  [3, 1],
-  [2, 1],
-  [1, 1],
+  [Grade.A, Grade.A],
+  [Grade.A, Grade.B],
+  [Grade.A, Grade.C],
+  [Grade.A, Grade.D],
+  [Grade.A, Grade.E],
+  [Grade.A, Grade.F],
+  [Grade.A, Grade.G],
+  [Grade.B, Grade.G],
+  [Grade.C, Grade.G],
+  [Grade.D, Grade.G],
+  [Grade.E, Grade.G],
+  [Grade.F, Grade.G],
+  [Grade.G, Grade.G],
 ];
 /** the table's figure for a pair of grades and the k-th race in a row */
 export const tableFigure = ([a, b]: readonly [Grade, Grade], k: RowPlace): number =>
-  Math.max(0, 110 - GRADE_COST[a] - GRADE_COST[b] - ROW_PEN[k]);
+  Math.max(0, 110 - SOLVER.grade_cost[a] - SOLVER.grade_cost[b] - ROW_PEN[k]);
 // why a race isn't a sure win, a line each: the career page's community-table figure (110 minus her grades' cost, minus
 // the k-th race in a row's), then the planner's; elsewhere 110 minus the aptitude cost (distance and surface grades),
 // minus the career planner's low-aptitude cost, minus the penalty for the k-th race in a row (a goal race pays the

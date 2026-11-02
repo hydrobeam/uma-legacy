@@ -8,7 +8,7 @@ import type { ReadonlySignal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 import { YEARS, ROW_PLACES, TABLE_PAIRS, cellAt, shownP, slotOf, tableFigure, turnLabel, why } from '../agenda.ts';
-import { GRADE_LETTER } from '../grades.ts';
+import { Grade } from '../gen/solver.ts';
 import type { ScheduleCell, ScheduleRow } from '../solver.ts';
 import { pickOutfit } from '../roster.ts';
 import { must } from '../must.ts';
@@ -17,7 +17,7 @@ import { AgendaGrid, AgendaSlot, RACE_BOX, RaceFace, WhenBar } from './Agenda.ts
 import { Dialog, DialogHead, DialogPanel } from './Dialog.tsx';
 import { SegmentedControl } from './SegmentedControl.tsx';
 import { RenderGuard } from './RenderGuard.tsx';
-import { Grade, UmaAv } from './Images.tsx';
+import { GradeBadge, UmaAv } from './Images.tsx';
 import { Button } from './Button.tsx';
 import { cx } from 'tailwind-variants/lite';
 
@@ -250,9 +250,9 @@ function WinTable({ hidden }: { hidden: boolean }) {
                 <br />/ Consecutive Races
               </th>
               {TABLE_PAIRS.map(([a, b]) => (
-                <th key={`${a}${b}`} class={WT_HEAD} scope="col" title={`${GRADE_LETTER[a]} and ${GRADE_LETTER[b]}`}>
-                  <Grade g={a} size="head" />
-                  <Grade g={b} size="head" />
+                <th key={`${a}${b}`} class={WT_HEAD} scope="col" title={`${Grade[a]} and ${Grade[b]}`}>
+                  <GradeBadge g={a} size="head" />
+                  <GradeBadge g={b} size="head" />
                 </th>
               ))}
             </tr>

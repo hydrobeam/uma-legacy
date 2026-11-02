@@ -10,7 +10,7 @@ use crate::career::plan::step::{LiftRead, MAX_ROUTES, NO_SLOT, Route, ShadowRout
 use crate::career::pool::Pool;
 use crate::career::schedule::ScheduleOutfits;
 use crate::career::sim::Sim;
-use crate::career::{Legacy, Lineage};
+use crate::career::{Legacy, Lineage, Spark};
 
 /// What `routes` reads of the scored career beyond the scoring's context.
 pub(super) struct RouteInputs<'route> {
@@ -342,7 +342,14 @@ impl RouteSet {
 /// its ceiling, bound C's odds at every outcome: C's odds only rise with her stars); her slots take the outcome's
 fn her_at_most(simulator: &Sim, her: &Legacy) -> Legacy {
     Legacy {
-        sparks: simulator.env.setup.skill_job.targets.iter().map(|target| (target.group, 3)).collect(),
+        sparks: simulator
+            .env
+            .setup
+            .skill_job
+            .targets
+            .iter()
+            .map(|target| Spark { group: target.group, stars: 3 })
+            .collect(),
         mix: None,
         ..her.clone()
     }
