@@ -17,7 +17,7 @@ share_cache() {
   [ "$main" != "$R" ] || return 0
   for dir in cache game webapp/img; do
     if [ ! -e "$R/$dir" ] && [ -d "$main/$dir" ]; then
-      ln -s "$main/$dir" "$R/$dir"
+      ln -sn "$main/$dir" "$R/$dir"
       echo "$dir: this worktree uses the main checkout's ($main/$dir)"
     fi
   done
