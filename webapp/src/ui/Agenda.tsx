@@ -11,7 +11,7 @@ import type { ComponentChildren, Ref, VNode } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { MONTHS, YEARS, bannerSrc, shownP, slotLabel, turnName, why } from '../model/agenda.ts';
 import type { WinInfo } from '../model/agenda.ts';
-import type { ScheduleCell } from '../solver.ts';
+import type { ScheduleCell } from '../solver/solver.ts';
 import { must } from '../must.ts';
 import { Button } from './Button.tsx';
 import { popover } from './Popover.tsx';

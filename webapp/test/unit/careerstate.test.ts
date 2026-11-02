@@ -43,7 +43,7 @@ import type { DeepReadonly } from '../../src/state/store.ts';
 import { must } from '../../src/must.ts';
 import { careerJob, careerReport, careerSearch, checkReport, pairSearch, planOption, planReport } from './reports.ts';
 
-vi.mock('#page-data', () => import('./fakepage.ts')); // run.ts reads the solver's fingerprints from it (engine.ts stateKey)
+vi.mock('#page-data', () => import('./fakepage.ts')); // run.ts reads the solver's fingerprints from it (solver/engine.ts stateKey)
 
 const PLACES = '{"trainee":null,"parents":[null,null]}';
 const career = (name: string) =>

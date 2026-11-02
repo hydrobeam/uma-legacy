@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import { initSync, Solver } from './src/gen/loopopt.js';
 const DATA = '../pkg/loopopt/data/global/';
-// the solver through its glue (src/worker.ts): no progress to show, the example is computed offline
+// the solver through its glue (src/solver/worker.ts): no progress to show, the example is computed offline
 globalThis.solverProgress = () => {
   // nothing to show
 };

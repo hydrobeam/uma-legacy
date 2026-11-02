@@ -13,7 +13,7 @@ import { ERA } from '../state/saved.ts';
 import { readJson, update } from '../state/storage.ts';
 import type { Backing } from '../state/storage.ts';
 import type { SettingsView } from '../state/settings.ts';
-import type { SolverAnswer, SolverRefusal } from '../solver.ts';
+import type { SolverAnswer, SolverRefusal } from '../solver/solver.ts';
 import { blockedStatus, buildJob, doneText, jobKey } from './job.ts';
 import type { Built, DeckJob, JobTarget } from './job.ts';
 import type * as LoopState from './state.ts';
@@ -26,11 +26,11 @@ export const PAUSE_MS = 550;
 export type Timer = number;
 export type DeckAnswer = SolverAnswer<LoopReport>;
 export interface LoopDeps {
-  /** the engine (engine.ts `run`): the job's answer; `interim` gets its fast first pass. A job killed while it runs never
+  /** the engine (solver/engine.ts `run`): the job's answer; `interim` gets its fast first pass. A job killed while it runs never
    *  answers; one killed while it waits for the worker to start rejects (`superseded`), so a caught error may be stale */
   run: (job: DeckJob, interim: (answer: DeckAnswer) => void) => Promise<DeckAnswer>;
   /** kill the worker (the job it runs never answers; one waiting for its start rejects) and start a fresh one
-   *  (engine.ts `restartEngine`) */
+   *  (solver/engine.ts `restartEngine`) */
   restart: () => void;
   /** the clock (ms) */
   now: () => number;

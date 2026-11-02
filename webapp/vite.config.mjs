@@ -1,6 +1,6 @@
 // The site in dist/ (./build.sh page): index.html (the career planner, the front page), loop.html (the loop planner)
 // and about.html, from the pages here; their scripts (src/career/main.tsx, src/loop/main.tsx and the solver's worker,
-// src/worker.ts), the stylesheets (src/styles/app.css, the planner pages', and about.css, /about's: Tailwind's
+// src/solver/worker.ts), the stylesheets (src/styles/app.css, the planner pages', and about.css, /about's: Tailwind's
 // utilities and the theme, the fonts), the solver (loopopt.opt.wasm), the page data (vite/pagedata.mjs), the game's
 // images (vite/images.mjs) and /about's math font (vite/mathfont.mjs). Every file in assets/ carries a fingerprint of
 // its content in its name, so it is served with a one-year immutable cache and an update gets new names; the pages keep

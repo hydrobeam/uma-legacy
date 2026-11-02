@@ -96,7 +96,7 @@ function seedRandom() {
   };
 }
 
-/** A page stores the worker's kept work 100 ms after a plan (engine.ts engineSaveState), and a new worker restores it
+/** A page stores the worker's kept work 100 ms after a plan (solver/engine.ts engineSaveState), and a new worker restores it
  * before its first job (`state_in`), so whether a reload comes before or after that save decides the next worker's
  * jobs. This waits for that save: until no `state_out` is open and no foreground job ended in the last 300 ms, unless
  * a foreground job is under way. Call it before a reload. */

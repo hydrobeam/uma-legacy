@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom
-// The page's side of the solver's worker (src/engine.ts) on a stand-in Worker the test answers: a job that fails inside
-// the worker (a wasm trap) answers as a refusal saying so, the worker goes, and the next job starts a fresh one; a
-// job's answer reaches only its own caller; the kept work stored after a plan is what a worker started after a kill (a
-// roll that stops an exact comparison) restores before its first job. npx vitest run (in webapp)
+// The page's side of the solver's worker (src/solver/engine.ts) on a stand-in Worker the test answers: a job that fails
+// inside the worker (a wasm trap) answers as a refusal saying so, the worker goes, and the next job starts a fresh one;
+// a job's answer reaches only its own caller; the kept work stored after a plan is what a worker started after a kill
+// (a roll that stops an exact comparison) restores before its first job. npx vitest run (in webapp)
 import { afterEach, expect, test, vi } from 'vitest';
-import { engineSaveState, enginePersist, restartEngine, run } from '../../src/engine.ts';
+import { engineSaveState, enginePersist, restartEngine, run } from '../../src/solver/engine.ts';
 import { loadData } from '../../src/model/data.ts';
 import type { Request } from '../../src/gen/solver.ts';
-import type { FromWorker, StateOutReply, ToWorker } from '../../src/solver.ts';
+import type { FromWorker, StateOutReply, ToWorker } from '../../src/solver/solver.ts';
 import { flush } from './fakes.ts';
 
 vi.mock('#page-data', () => import('./fakepage.ts'));

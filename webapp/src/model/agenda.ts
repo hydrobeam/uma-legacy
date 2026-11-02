@@ -8,7 +8,7 @@ import type { Grades } from '../gen/solver.ts';
 import { SOLVER } from '../gen/constants.ts';
 import { assert, must } from '../must.ts';
 import type { RaceTrack } from './data.ts';
-import type { ScheduleCell, ScheduleRow } from '../solver.ts';
+import type { ScheduleCell, ScheduleRow } from '../solver/solver.ts';
 import type { DeepReadonly } from '../state/store.ts';
 
 /** A race in her schedule, for the G1 wins editor: its turn and its schedule cell with the win odds; `parent`: a parent

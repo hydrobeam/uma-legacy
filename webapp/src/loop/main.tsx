@@ -19,7 +19,7 @@ import { beginSearch, headline, interim, loopDrawn, loopRun, loopView, resultsSt
 import { createRun } from './run.ts';
 import { RunAct, RunNote, noteShown, noteTitle, pillText } from './RunNote.tsx';
 import { RenderGuard, sayRenderErrors } from '../ui/RenderGuard.tsx';
-import { restartEngine, run, warmEngine } from '../engine.ts';
+import { restartEngine, run, warmEngine } from '../solver/engine.ts';
 import { initScenario } from '../state/scenario.ts';
 import { Results, ResultsCount, drawResult } from './Results.tsx';
 import { AffinityDialog } from './Affinity.tsx';

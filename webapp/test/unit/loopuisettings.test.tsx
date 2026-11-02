@@ -154,7 +154,8 @@ test('a banner ahead of its start is left out of the page and its search; once t
     umas: umas.filter((u) => u.outfits.length && u.outfits.every((o) => o.rel > newest - 60)).map((u) => u.id),
   };
   expect(later.outfits.length + later.cards.length).toBeGreaterThan(0);
-  // what every job leaves out (engine.ts `gate` adds it to each job sent: the browser flow loopui.spec.ts checks a job)
+  // what every job leaves out (solver/engine.ts `gate` adds it to each job sent: the browser flow loopui.spec.ts checks
+  // a job)
   expect(before.later).toEqual(later);
   expect(after.later).toEqual({ umas: [], outfits: [], cards: [] });
   expect(after.tiles - before.tiles).toBe(later.outfits.length);

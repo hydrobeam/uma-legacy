@@ -6,7 +6,7 @@
 import { batch, computed } from '@preact/signals';
 import { careerTables } from '../model/data.ts';
 import { settings } from '../state/settings.ts';
-import { run as engineRun } from '../engine.ts';
+import { run as engineRun } from '../solver/engine.ts';
 import { goldGiven } from '../model/job.ts';
 import { srcFor } from '../model/images.ts';
 import { APTITUDES } from '../model/grades.ts';
@@ -24,7 +24,7 @@ import { openPool } from './view/poolState.ts';
 import { Blocked, buildJob, isFull, placesKey, umasNotOwned } from './job.ts';
 import { searchIn } from './reply.ts';
 import type { CareerAnswer, CareerJob, CareerReport, CareerTrainee, OptionRow, PoolActs } from './job.ts';
-import type { PlanProgress, SolverAnswer } from '../solver.ts';
+import type { PlanProgress, SolverAnswer } from '../solver/solver.ts';
 import type * as Gen from '../gen/solver.ts';
 import type { LineageNode, Sparks, Veteran, VetRecord } from '../veterans/store.ts';
 import type { DeepReadonly } from '../state/store.ts';

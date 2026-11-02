@@ -42,7 +42,7 @@ import { loadData } from '../model/data.ts';
 import CAREER from '#career-data';
 import { jobSetup, settings } from '../state/settings.ts';
 import { on } from '../state/store.ts';
-import { restartEngine, engineBusy, enginePersist, engineSaveState, nextKill } from '../engine.ts';
+import { restartEngine, engineBusy, enginePersist, engineSaveState, nextKill } from '../solver/engine.ts';
 import { answerLoad, answerSave } from '../state/statestore.ts';
 import { goldGiven } from '../model/job.ts';
 import { initScenario } from '../state/scenario.ts';

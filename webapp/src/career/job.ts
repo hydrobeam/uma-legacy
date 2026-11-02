@@ -2,12 +2,12 @@
 // passes the stores' as they stand), the Use this choice it carries, the parent rules, and the solver's career job and
 // reports, typed here. A model module: it reads no store (.dependency-cruiser.mjs checks it).
 import { gameData } from '../model/data.ts';
-import { stateKey } from '../engine.ts';
+import { stateKey } from '../solver/engine.ts';
 import { deckPart, isOwned, skillsPart } from '../model/job.ts';
 import { starsOf, umaName } from '../veterans/names.ts';
 import { lacks, lacksSaid } from '../veterans/complete.ts';
 import { assert, must } from '../must.ts';
-import type { SolverAnswer } from '../solver.ts';
+import type { SolverAnswer } from '../solver/solver.ts';
 import type * as Gen from '../gen/solver.ts';
 import type { SettingsView } from '../state/settings.ts';
 import type { ChosenCareer, LineageNode, PlacesRecord, VetRecord } from '../veterans/store.ts';
@@ -226,9 +226,9 @@ export function buildJob(from: JobFrom, acts: PoolActs): CareerJob {
 // on its pair before it is shown; listed with the plan's `builder_careers` above 1, its default 1, which the page keeps:
 // none by default) or the pair search's recommendation (`pair_search`). It is sent only while it applies
 // (`chosenApplies`): its places, the setup it was chosen on (`chosenSetup`: the job's settings, its targets and cards
-// among them, its two parents' records and the solver's and data's fingerprints, engine.ts `stateKey`) and its parents'
-// places in the veteran list (the id names them by index) all as they were. One saved before a reload that no longer
-// applies is dropped, and the search's status says so (career/current.ts `dropStaleChosen`)
+// among them, its two parents' records and the solver's and data's fingerprints, solver/engine.ts `stateKey`) and its
+// parents' places in the veteran list (the id names them by index) all as they were. One saved before a reload that no
+// longer applies is dropped, and the search's status says so (career/current.ts `dropStaleChosen`)
 export const chosenSetup = (job: DeepReadonly<CareerJob>): string =>
   JSON.stringify({
     engine: stateKey(),

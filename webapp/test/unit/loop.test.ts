@@ -31,7 +31,7 @@ import { fakeClock, flush, memory } from './fakes.ts';
 import { must } from '../../src/must.ts';
 import type { Backing } from '../../src/state/storage.ts';
 import type { SettingsView } from '../../src/state/settings.ts';
-import type { SolverRefusal } from '../../src/solver.ts';
+import type { SolverRefusal } from '../../src/solver/solver.ts';
 import type { DeckJob } from '../../src/loop/job.ts';
 import type { DeckAnswer, LoopDeps } from '../../src/loop/run.ts';
 import type { DrawnReport, LoopReport, LoopResult } from '../../src/loop/types.ts';
@@ -228,7 +228,7 @@ test("an edit during a search kills it, and the old search's late answers change
 
 test("a job rejected when its worker is killed during the start ('superseded') changes nothing: the newer search keeps the page", async () => {
   const p = page();
-  const old = await searching(p); // waiting for the worker to start, say (engine.ts rejects it when that start is killed)
+  const old = await searching(p); // waiting for the worker to start, say (solver/engine.ts rejects it when that start is killed)
   p.loop.scheduleSearch(); // an edit kills it
   p.clock.advance(PAUSE_MS);
   await flush();

@@ -32,7 +32,7 @@ const planMade = (m: Answer): PlanReport | null => {
 
 /** what the comparison needs of the page, built once by the entry (career/main.tsx) */
 export interface ComparisonDeps {
-  /** the solver (career/job.ts `runJob`, engine.ts) */
+  /** the solver (career/job.ts `runJob`, solver/engine.ts) */
   engine: {
     run: (job: CareerJob) => Promise<CareerAnswer>;
     /** kill the worker (a job in flight then never answers) and start a fresh one */

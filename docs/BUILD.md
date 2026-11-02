@@ -241,7 +241,7 @@ with a portrait in `webapp/img/`. It writes:
 - favicons, `og.png`, `_headers` (the host caches the pages 5 minutes, `assets/` a year), `_redirects` (`/loop` to `/`)
   and `robots.txt`, from `webapp/public/` as they are, and the fonts' licences in `licenses/`.
 
-The solver runs as WebAssembly in a Web Worker (`src/worker.ts`, built by Vite to `assets/worker-<hash>.js`; its messages both ways are typed in `src/solver.ts`). Saved settings are one versioned object,
+The solver runs as WebAssembly in a Web Worker (`src/solver/worker.ts`, built by Vite to `assets/worker-<hash>.js`; its messages both ways are typed in `src/solver/solver.ts`). Saved settings are one versioned object,
 `localStorage['llp:settings']`, read and written in `saved.ts`. The settings are a store (`settings.ts`, on
 @preact/signals): one record in a signal, handed out read-only; named setters copy it on write, save it, then assign
 it. Each page's entry reacts to a change of setup with one effect (`store.ts` `on`, the only place an effect is made);

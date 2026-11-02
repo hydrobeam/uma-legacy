@@ -1,14 +1,14 @@
 // The career page's run machine (src/career/run.ts `createRun`) on the real answer store (career/state.ts) with a fake
 // engine (each job a promise the test settles; a restart rejects a job still waiting on the engine's start and leaves
-// one in flight unanswered, as engine.ts does), a fake clock and timers, and fakes of the page's parts. Staleness: late
-// replies of older runs are dropped, a check's own writes keep it running while a new plan stops it, the timers end
-// with the run, the comparison goes stale with every new run, and the last visit's answer is drawn after a reload.
-// npx vitest run (in webapp)
+// one in flight unanswered, as solver/engine.ts does), a fake clock and timers, and fakes of the page's parts.
+// Staleness: late replies of older runs are dropped, a check's own writes keep it running while a new plan stops it,
+// the timers end with the run, the comparison goes stale with every new run, and the last visit's answer is drawn after
+// a reload. npx vitest run (in webapp)
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
 import { PAUSE_MS, type RunDeps, createRun } from '../../src/career/run.ts';
 import { jobKey, planKey } from '../../src/career/keys.ts';
-import { stateKey } from '../../src/engine.ts';
+import { stateKey } from '../../src/solver/engine.ts';
 import * as store from '../../src/career/state.ts';
 import type { AnswerView } from '../../src/career/state.ts';
 import * as analysisStore from '../../src/career/analysis/state.ts';
@@ -16,13 +16,13 @@ import { Comparison, type ComparisonDeps } from '../../src/career/analysis/compa
 import { Blocked } from '../../src/career/job.ts';
 import type { CareerAnswer, CareerJob, CareerReply, CareerReport, PlanCheck } from '../../src/career/job.ts';
 import type { PairSearch } from '../../src/gen/solver.ts';
-import type { PlanProgress, SolverRefusal } from '../../src/solver.ts';
+import type { PlanProgress, SolverRefusal } from '../../src/solver/solver.ts';
 import type { DeepReadonly } from '../../src/state/store.ts';
 import { must } from '../../src/must.ts';
 import { fakeClock, flush } from './fakes.ts';
 import { careerJob, careerReport, careerSearch, checkReport, pairSearch, planOption, planReport } from './reports.ts';
 
-vi.mock('#page-data', () => import('./fakepage.ts')); // run.ts reads the solver's fingerprints from it (engine.ts stateKey)
+vi.mock('#page-data', () => import('./fakepage.ts')); // run.ts reads the solver's fingerprints from it (solver/engine.ts stateKey)
 
 const { answer, answerCareer, runView } = store;
 

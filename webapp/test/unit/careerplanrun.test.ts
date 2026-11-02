@@ -10,13 +10,13 @@ import * as analysisStore from '../../src/career/analysis/state.ts';
 import { createComparison } from '../../src/career/analysis/compare.ts';
 import { draft } from '../../src/veterans/store.ts';
 import type { CareerAnswer, CareerJob } from '../../src/career/job.ts';
-import type { PlanProgress } from '../../src/solver.ts';
+import type { PlanProgress } from '../../src/solver/solver.ts';
 import type { DeepReadonly } from '../../src/state/store.ts';
 import { career, careerJob, loadVets, option, plan, search, showPlan, completeVet } from './careerplans.ts';
 import { lineageNode } from './reports.ts';
 import { fakeClock, flush } from './fakes.ts';
 
-vi.mock('#page-data', () => import('./fakepage.ts')); // run.ts reads the solver's fingerprints from it (engine.ts stateKey)
+vi.mock('#page-data', () => import('./fakepage.ts')); // run.ts reads the solver's fingerprints from it (solver/engine.ts stateKey)
 
 /** a job the fake engine was sent, held until the test answers it */
 interface Sent {

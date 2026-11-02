@@ -1,10 +1,10 @@
 // The veteran analysis' comparison (src/career/analysis/compare.ts `createComparison`) on the real analysis store
 // (career/analysis/state.ts) with a fake engine (each job a promise the test settles; a restart leaves a job in flight
-// unanswered, as engine.ts does), a fake clock, and a fake answer on show. What the store's one record goes through
-// is read by an effect (`writes`): every late reply of a stale chain writes nothing, the 0.8 s timers start nothing
-// after a stop, each phase is one write, the run machine's hooks and a comparison never interleave their writes, the
-// same career keeps her draft (F6), quick and exact share one baseline (F5), and Compare keeps a plan only for a refit.
-// npx vitest run (in webapp)
+// unanswered, as solver/engine.ts does), a fake clock, and a fake answer on show. What the store's one record goes
+// through is read by an effect (`writes`): every late reply of a stale chain writes nothing, the 0.8 s timers start
+// nothing after a stop, each phase is one write, the run machine's hooks and a comparison never interleave their
+// writes, the same career keeps her draft (F6), quick and exact share one baseline (F5), and Compare keeps a plan only
+// for a refit. npx vitest run (in webapp)
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
 import { effect, signal } from '@preact/signals';
@@ -13,7 +13,7 @@ import * as store from '../../src/career/analysis/state.ts';
 import type { AnswerView } from '../../src/career/state.ts';
 import type { CareerAnswer, CareerJob, CareerReply } from '../../src/career/job.ts';
 import { Aptitude, type Grades, type Route } from '../../src/gen/solver.ts';
-import type { SolverRefusal } from '../../src/solver.ts';
+import type { SolverRefusal } from '../../src/solver/solver.ts';
 import type { JobLegacy } from '../../src/veterans/records.ts';
 import * as vs from '../../src/veterans/store.ts';
 import { on } from '../../src/state/store.ts';
@@ -21,7 +21,7 @@ import { must } from '../../src/must.ts';
 import { fakeClock, flush, memory } from './fakes.ts';
 import { careerJob, careerReport, careerSearch, planOption, planReport } from './reports.ts';
 
-vi.mock('#page-data', () => import('./fakepage.ts')); // run.ts reads the solver's fingerprints from it (engine.ts stateKey)
+vi.mock('#page-data', () => import('./fakepage.ts')); // run.ts reads the solver's fingerprints from it (solver/engine.ts stateKey)
 
 // the veterans store on a Map (Add writes into it)
 vs.initVets({ storage: () => memory(), hidden: () => true, afterFrame: (f) => f() });

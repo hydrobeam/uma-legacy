@@ -19,7 +19,7 @@ import {
   why,
 } from '../model/agenda.ts';
 import { Grade } from '../gen/solver.ts';
-import type { ScheduleCell, ScheduleRow } from '../solver.ts';
+import type { ScheduleCell, ScheduleRow } from '../solver/solver.ts';
 import { pickOutfit } from '../state/roster.ts';
 import { must } from '../must.ts';
 import type { DeepReadonly } from '../state/store.ts';

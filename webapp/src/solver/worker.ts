@@ -3,8 +3,8 @@
 // (`initSync`), a `Solver` made from the era's data, and each job's JSON text passed to `call`, which answers its
 // reply's.
 // Typed against the protocol in solver.ts, with the worker's own globals (tsconfig.worker.json).
-import { initSync, Solver } from './gen/loopopt.js';
-import { must } from './must.ts';
+import { initSync, Solver } from '../gen/loopopt.js';
+import { must } from '../must.ts';
 import type { FromWorker, SolverReply, ToWorker } from './solver.ts';
 
 // solver: the era's solver (null until init); runId: the job in the solver now (its progress reports name it; the
