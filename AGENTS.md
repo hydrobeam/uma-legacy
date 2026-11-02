@@ -23,8 +23,10 @@ evidence), `docs/RESEARCH.md` (the maths), `research/README.md` (the scripts beh
 - **Results are pinned.** A change to the solver (`pkg/loopopt/src`, its data or `research/results.json`) runs
   `./build.sh valq TAG` while iterating and on each commit (about 2.5 CPU-min), and `./build.sh val TAG` before a
   change that can move results lands (about 7 CPU-min; `docs/BUILD.md`, *Tests*); a career-planner change also runs
-  `./build.sh mono` (10-20 CPU-min, in the background). A tie the solver breaks another way fails both until its
-  reference is re-taken. When results move on purpose:
+  `./build.sh mono` (10-20 CPU-min, in the background). A change the type checker fully explains (a rename, a type in
+  place of a bare number, moved code; no change to arithmetic, control flow or data) runs the unit tests and clippy per
+  commit and one `./build.sh valq TAG` at the merge; a change to arithmetic, control flow or data follows the procedure
+  above. A tie the solver breaks another way fails both until its reference is re-taken. When results move on purpose:
   - the new outputs replace `val/ref__*` / `val/refpu__*` (or `val/plan/ref__*`) in the same commit;
   - `val/joint_check.py TAG` (part of `val`), an independent recomputation of the odds, agrees within 1e-3;
   - the `plan_roll` fixture (`pkg/loopopt/tests/fixtures/plan_roll.json`) is re-taken from the solver's own rolls
