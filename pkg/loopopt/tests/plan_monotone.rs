@@ -18,7 +18,7 @@
 //! Its power, measured: with the given fit ignored (the pool's own refit leaking into the fixed-fit path,
 //! `combine.rs` `plan_continuations`), 64 random cases failed at the 27th and shrank to three near-empty veterans, an
 //! empty added one, three targets and one card, V 436.49 -> 437.23. With nothing planted, seed 2 finds a rise of its
-//! own (`known_rise_when_a_veteran_outside_the_trio_is_added`, ignored until it is explained), so the cases' seed is
+//! own (`known_rise_when_a_veteran_outside_the_trio_is_added`, a C priced on a stale deck, ignored), so the cases' seed is
 //! fixed (SEED) and passes; `PROPTEST_RNG_SEED` and `PROPTEST_CASES` draw others. About half the cases have a V to
 //! compare (a pool with no trio has none).
 mod common;
@@ -232,11 +232,17 @@ fn unknown_parent<const N: usize>(sparks: [(usize, u64); N]) -> Parent {
 /// Pasa veteran with neither target and a Taiki Shuttle one with both; adding an Air Groove veteran with no sparks
 /// raises V 92.98 -> 99.95 under the plan's fit (97.69 refitted), the same at 3, 8, 16 and 64 fresh lineages and with
 /// both jobs in one process (the page's Compare). Both plans take the same trio (Taiki Shuttle real, Special Week
-/// fresh on [0, 1], El Condor Pasa as C, every search proven, the fit all zeros), and C's careers rise 35.27 -> 42.24:
-/// C's cost moves with a veteran who is neither of her parents. Run with `--ignored`; it fails until that is fixed or
-/// documented as an exception.
+/// fresh on [0, 1], El Condor Pasa as C, every search proven, the fit all zeros), and C's careers rise 35.27 -> 42.24.
+/// Why (traced 2026-11-01): C's odds are `val`'s, the best of her cached decks on C's lineage, with no deck search
+/// where she has one (the refresh margin, 1e9). Without Air Groove, El Condor Pasa has no legal pair, so her first deck
+/// search is on C's own lineage and finds its best deck (a borrowed card and five filler, P(all) 0.02835); with her, El
+/// Condor Pasa's career on Taiki Shuttle and Air Groove is searched first, and its deck (another borrowed card) is the
+/// one cached: 0.02367 on C's lineage, the same lineage to the bit. With C searched on her own lineage V is 92.98 with
+/// Air Groove too. The rise needs a near-empty collection: with p10's 243 owned cards these pools give V 14.08 both
+/// ways, and the property's other failing seeds (3 of seeds 2 to 15, owning 1, 7 and 5 cards) rise with their own cards
+/// only. Run with `--ignored`; it fails until C is priced on her own lineage.
 #[test]
-#[ignore = "a known rise: C's cost moves with a veteran who is not her parent (reported, not yet explained)"]
+#[ignore = "a known rise: C priced on a deck cached for another of her lineages (a near-empty collection)"]
 fn known_rise_when_a_veteran_outside_the_trio_is_added() {
     let case = Case {
         targets: vec![0, 6],
