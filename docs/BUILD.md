@@ -13,9 +13,32 @@ A fresh clone needs two commands:
 
 The first `./build.sh` installs what it needs: rustup fetches the pinned Rust toolchain, `npm ci` the npm packages
 into `webapp/node_modules`, uv the Python environment into `.venv/`. With the game files in `game/` (below) it
-extracts the art too; without them it says so and the page shows initials. To check a change, `./build.sh testq`
-(the browser suite's fast tier; it installs its browsers the first time) and `./build.sh valq TAG` (the validation
-jobs against their reference outputs).
+extracts the art too; without them it says so and the page shows initials. To check a change, `./build.sh check`
+(below).
+
+### Working on a change
+
+| Situation | Run |
+|---|---|
+| a new worktree or clone | `./build.sh setup` (links the main checkout's `cache/`, takes the wasm and the checks binary from their input-keyed caches, `npm ci` only when the lockfile changed; never compiles) |
+| while editing | `./build.sh check edit` (about 10 s: the changed files' types, related node tests, clippy and unit tests if Rust changed) |
+| handing a piece of work back | `./build.sh check` (the `handback` tier: every linter of each changed area, the Rust tests, `valq` if the solver or `val/` changed, the browser fast tier if the page changed) |
+| before a merge to main | `./build.sh check merge` (adds wasm clippy, full `val`, `research` if its inputs changed, the full browser suite, the real-wasm `worker` flow, `mono` after a planner change) |
+
+A check that already passed on the same inputs is skipped (`cache/passed/`). A page-only change never compiles Rust.
+
+**Pinned files.** These are generated and committed. A check fails, naming the command, when one is stale:
+
+| File | Changes when | Re-take with |
+|---|---|---|
+| `webapp/src/gen/*.ts` (types and constants) | a Rust type or exported constant changes | `BLESS=1 cargo test --profile checks --lib ts_gen` (in `pkg/loopopt`) |
+| `webapp/test/fixtures/solver/*` (the browser flows' canned solver replies) | the solver's answer to a scenario's job changes | `./build.sh fixtures` |
+| `pkg/loopopt/tests/fixtures/plan_roll.json` | the planner's rolls move on purpose | `BLESS=1 cargo test --profile checks --test it plan_roll::rolls_equal` |
+| `pkg/loopopt/tests/count.txt`, `webapp/test/unit/count.txt`, `webapp/test/browser/count-*.txt` (test counts) | tests are added or removed | `TESTS_BLESS=1` with the run that counts them (`./build.sh native`, the node tests, the browser flows); the commit says why when the count drops |
+| `val/ref__*`, `val/refpu__*`, `val/plan/ref__*`, `val/sim/` (validation references) | results move on purpose | AGENTS.md, *Results are pinned* (the new outputs replace the references in the same commit, with joint_check and plan_roll re-taken) |
+| `research/results.json`, `docs/RESEARCH.md` | research's inputs change | `./build.sh research` (each section recomputes only on its own inputs) |
+
+Read the diff of every re-taken file before committing: a pin taken without reading it is no check at all.
 
 A fresh clone builds the page from the tracked data files and passes the solver tests, validation and the browser
 suite. Without game art the page shows initials in place of pictures and a spinner in place of the runner, and the

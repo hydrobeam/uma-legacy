@@ -9,6 +9,8 @@ evidence), `docs/RESEARCH.md` (the maths), `research/README.md` (the scripts beh
 `docs/PERF.md` (speed work).
 
 - **Python** runs in the uv environment: `uv run script.py`; add dependencies with `uv add`.
+- **Checks and pinned files:** `docs/BUILD.md`, *Quick start*: which `./build.sh check` tier to run when, and how each
+  generated, committed file (types, solver fixtures, plan_roll, test counts, references) is re-taken.
 - **Lint:** `./build.sh lint` passes before a commit; the pre-commit hook checks the staged Rust, Python and page JS
   (formatting and lints).
 - **Code clarity:** follow `docs/BUILD.md`, *Code clarity*, in every language. Lint passing is not a readability review.
