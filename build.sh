@@ -51,6 +51,7 @@ STEPS=(
   "runners|||each uma's running mini model as a sprite strip into webapp/img/run (webapp/chibi/chibi.py)"
   "lint|||every formatter and linter, warnings denied: Rust, shell, Python, the page's JS; the generated TypeScript current (Rust only when its inputs differ from main's)"
   "check|[TIER]||the checks a change needs, by what differs from main: edit, handback (the default), merge or full (docs/BUILD.md, Tests)"
+  "setup|||a worktree ready: the main checkout's cache/, the page's packages when its lockfile changed, the wasm and the checks' binary when built before from these inputs (nothing compiled)"
   "hooks|||use the tracked git hooks (.githooks: the pre-commit check); once per clone"
   "browsers|||Playwright's Chromium and Firefox at the pinned revisions into cache/ms-playwright"
   "test|||the page, then the browser suite on it (Chromium, and Firefox on the @both groups): releases"
@@ -152,12 +153,29 @@ step_native() {
   cargo_test
   mark_passed native
 }
-# The release binary (fat LTO, as the wasm): pb and research build it first, so they never run a binary left from
+# The release binary (fat LTO, as the wasm): pb builds it first, so it never runs a binary left from
 # before a change (cargo's own check makes this a no-op on an unchanged tree).
 build_solver() { (cd "$C" && quiet cargo build --release); }
 # The checks' binary (CHECK_BIN): val, valq, mono and lint build it first, for the same reason. Its outputs equal the
-# release binary's to the byte (docs/BUILD.md, *Tests*), and it builds in a third of the time.
-build_checked() { (cd "$C" && quiet cargo build --profile checks); }
+# release binary's to the byte (docs/BUILD.md, *Tests*). One built from these exact inputs, by this tree or another
+# worktree, is copied from cache/bin/KEY instead: a worktree that changed no Rust runs no cargo for it.
+build_checked() {
+  take_checked && return 0
+  (cd "$C" && quiet cargo build --profile checks)
+  mkdir -p "$(checked_cache)"
+  cp "$CHECK_BIN" "$(checked_cache)/loopopt"
+}
+checked_cache() { echo "$R/cache/bin/$(inputs_key solver checks)"; }
+take_checked() {   # the cached binary of these inputs into CHECK_BIN, if there is one
+  local built
+  built="$(checked_cache)/loopopt"
+  [ -x "$built" ] || return 1
+  if ! cmp -s "$built" "$CHECK_BIN"; then
+    mkdir -p "$(dirname "$CHECK_BIN")"
+    cp "$built" "$CHECK_BIN"
+    echo "checks' binary: built before from these inputs (${built#"$R"/}), copied"
+  fi
+}
 # clippy as lint runs it (lints chosen in pkg/loopopt/Cargo.toml): quiet unless it finds something
 clippy_all() {
   cargo clippy --quiet --all-targets -- -D warnings \
@@ -188,18 +206,30 @@ step_wasm() {
   npm_deps
   # an optimised wasm and its glue built from these exact inputs, by this tree or another worktree, are copied, not
   # built again (cache/wasm/KEY: about 4 minutes of fat-LTO build and wasm-opt saved per worktree)
-  local built
-  built="$R/cache/wasm/$(inputs_key solver "${WASM_OPT_FLAGS[@]}")"
-  if [ -f "$built/loopopt.opt.wasm" ]; then
-    cp "$built/loopopt.opt.wasm" "$W/loopopt.opt.wasm"
-    cp "$built/loopopt.js" "$built/loopopt.d.ts" "$W/src/gen/"
-    echo "wasm: built before from these inputs (${built#"$R"/}), copied"
-  else
+  if ! take_wasm; then
     build_wasm
-    mkdir -p "$built"
-    cp "$W/loopopt.opt.wasm" "$BINDGEN/loopopt.js" "$BINDGEN/loopopt.d.ts" "$built/"
+    mkdir -p "$(wasm_cache)"
+    cp "$W/loopopt.opt.wasm" "$BINDGEN/loopopt.js" "$BINDGEN/loopopt.d.ts" "$(wasm_cache)/"
   fi
   (cd "$W" && node example.mjs)
+}
+wasm_cache() { echo "$R/cache/wasm/$(inputs_key solver "${WASM_OPT_FLAGS[@]}")"; }
+take_wasm() {   # the cached wasm and glue of these inputs into webapp/, if there are some
+  local built
+  built=$(wasm_cache)
+  [ -f "$built/loopopt.opt.wasm" ] || return 1
+  cp "$built/loopopt.opt.wasm" "$W/loopopt.opt.wasm"
+  cp "$built/loopopt.js" "$built/loopopt.d.ts" "$W/src/gen/"
+  echo "wasm: built before from these inputs (${built#"$R"/}), copied"
+}
+# setup: what a fresh worktree needs before any step, from what is already built: the shared cache/ (linked at every
+# start), the page's packages (npm ci only when the lockfile differs from the installed one), and the wasm and the
+# checks' binary where these inputs were built before. Nothing is compiled or downloaded beyond npm's own cache; the
+# steps call the same pieces themselves, so setup is only a head start, and running it again does nothing.
+step_setup() {
+  npm_deps
+  take_wasm || echo "wasm: not built yet from these inputs (./build.sh wasm builds it)"
+  take_checked || echo "checks' binary: not built yet from these inputs (any step that runs it builds it)"
 }
 build_wasm() {
   wasm_bindgen_cli
@@ -327,16 +357,26 @@ step_val() {
   if ! val_checks "$tag" "${quick[@]}"; then return 1; fi
   mark_passed val "$mode"
 }
-val_checks() {   # val_checks TAG [--quick]
-  local tag=$1 quick=("${@:2}") rc=0
+# val_checks TAG [--quick]: the deck and career jobs (runval), the simulator's (simval) and the planner's (planval, its
+# plan jobs and proxy runs in one queue) start at once, each longest first, so the slowest job (p16_t10) starts at
+# the beginning instead of after the others; their logs (pkg/loopopt/target/val-logs/) print in that order after
+VAL_LOGS="$C/target/val-logs"
+val_checks() {
+  local tag=$1 quick=("${@:2}") rc=0 decks sims plans
   build_checked
-  "${PY[@]}" "$R/val/runval.py" "$CHECK_BIN" "$tag" "${quick[@]}" || return 1
+  mkdir -p "$VAL_LOGS"
+  "${PY[@]}" "$R/val/runval.py" "$CHECK_BIN" "$tag" "${quick[@]}" >"$VAL_LOGS/decks" 2>&1 & decks=$!
+  "${PY[@]}" "$R/val/simval.py" "$CHECK_BIN" "$tag" >"$VAL_LOGS/sims" 2>&1 & sims=$!
+  "${PY[@]}" "$R/val/planval.py" "$CHECK_BIN" "$tag" "${quick[@]}" >"$VAL_LOGS/plans" 2>&1 & plans=$!
+  wait "$sims" || rc=1
+  wait "$plans" || rc=1
+  if ! wait "$decks"; then cat "$VAL_LOGS/decks"; return 1; fi
+  cat "$VAL_LOGS/decks"
   "${PY[@]}" "$R/val/cmp2.py" "$tag" ref || rc=1
   "${PY[@]}" "$R/val/cmp2.py" "${tag}pu" refpu || rc=1
   "${PY[@]}" "$R/val/same.py" "$tag" || rc=1
   [ ${#quick[@]} -gt 0 ] || "${PY[@]}" "$R/val/joint_check.py" "$tag" || rc=1
-  "${PY[@]}" "$R/val/simval.py" "$CHECK_BIN" "$tag" || rc=1
-  "${PY[@]}" "$R/val/planval.py" "$CHECK_BIN" "$tag" "${quick[@]}" || rc=1
+  cat "$VAL_LOGS/sims" "$VAL_LOGS/plans"
   "${PY[@]}" "$R/val/same.py" "$tag" --plan || rc=1
   return "$rc"
 }
@@ -351,7 +391,7 @@ step_mono() {
 step_research() {
   local py=(uv run --quiet --project "$R" --group research python)
   need_cargo; check research
-  build_solver   # section 13 runs the release binary (research/common.py SOLVER)
+  build_checked   # sections 6, 10 and 13 run the checks' binary (research/common.py SOLVER)
   "${py[@]}" "$R/research/run_all.py" "$@"
   "${py[@]}" "$R/research/render.py"
 }
@@ -363,11 +403,15 @@ npm_deps() {
   need_node; check npm
   npm_ci "$W"
 }
-# npm ci in DIR when it has no install or its lockfile is newer than what npm last installed there
-# (node_modules/.package-lock.json), so a pulled dependency change is never run against a stale node_modules
+# npm ci in DIR when its lockfile's contents differ from the ones last installed there (node_modules/.lock-sha256),
+# so a pulled dependency change is never run against a stale node_modules and an unchanged one never reinstalls;
+# npm's shared cache supplies the packages (--prefer-offline)
 npm_ci() {   # npm_ci DIR
-  [ -e "$1/node_modules/.package-lock.json" ] && [ ! "$1/package-lock.json" -nt "$1/node_modules/.package-lock.json" ] \
-    || (cd "$1" && npm ci --silent --prefer-offline)
+  local lock
+  lock=$(sha256sum "$1/package-lock.json" | cut -d' ' -f1)
+  [ "$(cat "$1/node_modules/.lock-sha256" 2>/dev/null)" = "$lock" ] && return 0
+  (cd "$1" && npm ci --silent --prefer-offline)
+  echo "$lock" >"$1/node_modules/.lock-sha256"
 }
 # Vite (webapp/vite.config.mjs)
 step_page() {

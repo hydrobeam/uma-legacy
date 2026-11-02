@@ -91,7 +91,8 @@ game art are never committed.
 
 **Worktrees** (`git worktree add`): `build.sh` links a new worktree's `cache/` to the main checkout's on first use, so
 Playwright's browsers, the recorded solver replies, GameTora's files, wasm-bindgen and the TLS certificate are
-downloaded or recorded once for every worktree (`prune-replies` from any of them prunes the shared store). `npm ci`
+downloaded or recorded once for every worktree (`prune-replies` from any of them prunes the shared store). `./build.sh
+setup` makes a new worktree ready without compiling (*Tests*). `npm ci`
 fills each worktree's own `node_modules` from npm's shared cache (`--prefer-offline`; about a minute): a symlinked
 `node_modules` is emptied for every tree by the next `npm ci` in any of them. Rust builds per worktree: the crate's
 dependencies are 7 s of a build, and the crate itself, nearly all of it, differs by tree, so a shared compile cache
@@ -334,8 +335,15 @@ A test that stops running fails `native`: it counts the tests run (passed, faile
 saying why in its message when it removes any. Nothing runs twice on the same inputs: `native`, `val`, `valq` and `mono` record a pass under the key of their inputs
 (`cache/passed/NAME-KEY`: the SHA-256 of the files they read, tracked and untracked, and `build.sh`), shared by every
 worktree, and on the same key say so and return; a page-only change never runs them. `lint` runs Rust's linters only
-when a Rust input differs from main's. The wasm is shared the same way (`cache/wasm/KEY`): a worktree whose solver
-inputs were built before copies it instead of four minutes of fat-LTO build and `wasm-opt`.
+when a Rust input differs from main's. The wasm and the checks' binary are kept the same way (`cache/wasm/KEY`,
+`cache/bin/KEY`): a worktree whose solver inputs were built before copies them instead of compiling, so one that
+changed no Rust runs no cargo for val, valq, mono or research. `./build.sh setup` brings a new worktree to ready from
+these caches (the shared `cache/`, `npm ci` only when `webapp/package-lock.json` differs from the installed one, the
+wasm and the binary when built before) and compiles nothing; the steps call the same pieces themselves.
+
+`val` and `valq` start their three solver phases at once (the deck and career jobs, the simulator's, and the
+planner's plan jobs with their proxy runs in one queue), each longest first by the reference times and at the CPU
+count less two, so the slowest job (`p16_t10`) starts at the beginning; the comparisons follow.
 
 **Profiles.** Every test, `val`, `valq`, `mono` and lint's generated-types and section-8 tests build in
 `[profile.checks]`, with `debug-assertions` and `overflow-checks` on (release hides both from the tests); the wasm and
