@@ -44,7 +44,6 @@
 !/webapp/example.mjs
 !/webapp/example.json
 !/webapp/nodebench.mjs
-!/webapp/playwright.config.mjs
 !/webapp/images.py
 !/webapp/icons.py
 !/webapp/icons.mjs
@@ -61,6 +60,8 @@
 !/webapp/biome.json
 !/webapp/tsconfig.json
 !/webapp/tsconfig.worker.json
+!/webapp/tsconfig.test.json
+!/webapp/playwright.config.ts
 !/val/
 /val/*
 !/val/runval.py

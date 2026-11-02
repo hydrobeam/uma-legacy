@@ -135,8 +135,8 @@ const run = createRun({
   },
   clock: {
     now: () => performance.now(),
-    setTimer: (f, ms) => setTimeout(f, ms),
-    every: (f, ms) => setInterval(f, ms),
+    setTimer: (f, ms) => window.setTimeout(f, ms),
+    every: (f, ms) => window.setInterval(f, ms),
     clearTimer: (id) => clearTimeout(id),
   },
   store: answerStore,

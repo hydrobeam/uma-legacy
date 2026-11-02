@@ -11,6 +11,8 @@
       "chibi/*.mjs",
       "test/**/*.mjs",
       "test/**/*.ts",
+      "test/**/*.tsx",
+      "playwright.config.ts",
       "!src/gen/loopopt.js",
       "!src/gen/loopopt.d.ts"
     ]

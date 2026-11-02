@@ -50,13 +50,24 @@ const shared = {
 };
 // the node tests (test/unit; ./build.sh lint, the pre-commit hook): the page's modules as the build compiles them, none
 // of the build's plugins (its page data is each test's own, by vi.mock of '#page-data'); a test file that draws views
-// asks for happy-dom's document (`@vitest-environment happy-dom`), at a desktop's size
+// asks for happy-dom's document (`@vitest-environment happy-dom`), at a desktop's size, and draws with
+// @testing-library/preact's render, whose trees test/unit/setup.ts unmounts after each test
 const test = {
-  include: ['test/unit/*.test.mjs'],
+  include: ['test/unit/*.test.{ts,tsx}'],
+  setupFiles: ['test/unit/setup.ts'],
   environmentOptions: { happyDOM: { width: 1440, height: 900 } },
   testTimeout: 60_000,
   maxWorkers: 2, // at most two test files at once: the laptop's thermal limit, as the browser suite's two workers
 };
+
+// the solver the page ships (./build.sh wasm), or, in a tree that has not built it (a page-only change), an empty
+// module, vite/stub.wasm: the page's browser flows replay recorded replies and never run the solver (test/browser),
+// and ./build.sh deploy builds the solver first, so a stub never ships
+function solverWasm() {
+  if (fs.existsSync(path.join(HERE, 'loopopt.opt.wasm'))) return '/loopopt.opt.wasm';
+  console.log('page: no loopopt.opt.wasm (./build.sh wasm): this build carries an empty solver, for the browser flows');
+  return '/vite/stub.wasm';
+}
 
 export default defineConfig(({ mode }) => (mode === 'test' ? { ...shared, plugins: [pageDataIds()], test } : site()));
 
@@ -97,7 +108,7 @@ function site() {
       images(catalog, IMG, path.join(HERE, 'src', 'styles', 'app.css')),
       // the utilities and the theme (src/styles/), compiled into each page's stylesheet
       tailwindcss(),
-      pageData({ catalog, imgDir: IMG, wasm: '/loopopt.opt.wasm', solverPages: ['index.html', 'loop.html'] }),
+      pageData({ catalog, imgDir: IMG, wasm: solverWasm(), solverPages: ['index.html', 'loop.html'] }),
       mathFont('about.html'),
       // `vite preview` (./build.sh serve, the browser suite) over HTTP/2 with TLS, as the host serves the site:
       // browsers speak HTTP/2 only over TLS, and over HTTP/1.1 a page's requests queue for six connections. The

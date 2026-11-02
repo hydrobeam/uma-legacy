@@ -1,6 +1,6 @@
 """Deletes the recorded solver replies of every solver and data but the current ones (./build.sh prune-replies).
 
-cache/solver-replies/ holds one directory per solver and data (webapp/test/replaystore.mjs). The argument is the
+cache/solver-replies/ holds one directory per solver and data (webapp/test/browser/store.ts). The argument is the
 current one's path, which is kept; every other directory there is removed, file by file, and named. Only what a
 recording writes is removed: a directory holding anything else, a symbolic link or any path outside
 cache/solver-replies/ is refused and left as it is.
@@ -15,8 +15,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 ROOT = REPO / "cache" / "solver-replies"
-# the SHA-256 prefixes of the wasm, both engines and the worker script (replaystore.mjs); or, from before, the
-# fingerprints in the asset names of the wasm and both engines: Vite's (8 characters, base64url) or build.py's (hex)
+# the SHA-256 prefixes of the solver's sources and both engines (browser/store.ts); or, from before, those of the wasm,
+# both engines and the worker script, or the fingerprints in the asset names of the wasm and both engines: Vite's
+# (8 characters, base64url) or build.py's (hex)
 STORE_DIR = re.compile(r"[0-9a-f]{16}(-[0-9a-f]{16}){3}|[\w-]{8}-[\w-]{8}-[\w-]{8}|[0-9a-f]+-[0-9a-f]+-[0-9a-f]+")
 REPLY_FILE = re.compile(r"[0-9a-f]{64}\.json(\.\d+\.part)?|\.recorded-(quick|full)")
 
