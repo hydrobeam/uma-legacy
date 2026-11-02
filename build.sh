@@ -152,7 +152,7 @@ step_native() {
   cargo_test
   mark_passed native
 }
-# The release binary (fat LTO, as the wasm): pb and research build it first, so they never run a binary left from
+# The release binary (fat LTO, as the wasm): pb builds it first, so it never runs a binary left from
 # before a change (cargo's own check makes this a no-op on an unchanged tree).
 build_solver() { (cd "$C" && quiet cargo build --release); }
 # The checks' binary (CHECK_BIN): val, valq, mono and lint build it first, for the same reason. Its outputs equal the
@@ -391,7 +391,7 @@ step_mono() {
 step_research() {
   local py=(uv run --quiet --project "$R" --group research python)
   need_cargo; check research
-  build_solver   # sections 6, 10 and 13 run the release binary (research/common.py SOLVER)
+  build_checked   # sections 6, 10 and 13 run the checks' binary (research/common.py SOLVER)
   "${py[@]}" "$R/research/run_all.py" "$@"
   "${py[@]}" "$R/research/render.py"
 }
