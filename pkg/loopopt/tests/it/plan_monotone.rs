@@ -12,8 +12,8 @@
 //! that runs out of its work cap gives its incumbent, not its best: a plan reporting one (`umas_unproven`) is outside
 //! the property and its case is rejected (every compared plan reported none in a 64-case run while sizing this test).
 //! mono adds the pool's last veteran and rolled veterans of the pick (parents copied from the pool); this draws the
-//! added veteran on her own, a wider space that holds those shapes only by chance. mono also reports the refit, which
-//! may move V either way; this checks the fixed fit alone, as mono's gate does.
+//! added veteran on her own, a wider space that holds those shapes only by chance. mono with --refit also reports the
+//! refit, which may move V either way; this checks the fixed fit alone, as mono's gate does.
 //!
 //! Its power, measured: with the given fit ignored (the pool's own refit leaking into the fixed-fit path,
 //! `combine.rs` `plan_continuations`), 64 random cases failed at the 27th and shrank to three near-empty veterans, an
