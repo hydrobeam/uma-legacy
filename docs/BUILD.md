@@ -37,7 +37,6 @@ Everything a build reads lives inside the repository folder, apart from the tool
 | Where | What | Used by |
 |---|---|---|
 | `pkg/loopopt/Cargo.toml` | `serde`, `serde_json` | the solver |
-| `pkg/loopopt/Cargo.toml` | `postcard` (MIT or Apache-2.0), `base64` (MIT or Apache-2.0): the worker's kept state as the page stores it, the kept types in postcard's binary serde (every f64 its 8 bytes, infinities included) as base64 text (`career/state.rs`) | the solver |
 | `pkg/loopopt/Cargo.toml` | `ts-rs` (pinned exactly; MIT): derives the TypeScript type of every report and job struct, so the page's types are generated from the solver's (*Generated types*); its derives are dead code in the wasm (none of the declarations' text is in it) | `types`, `lint` |
 | `pkg/loopopt/Cargo.toml` | `clap` (pinned exactly, its derive API; MIT or Apache-2.0): the native `loopopt` command line's arguments, subcommands and errors; a native-only dependency, not in the wasm | `native`, `val`, `pb` |
 | `pkg/loopopt/Cargo.toml` | `wasm-bindgen` (pinned exactly; MIT or Apache-2.0): the wasm's exports (`src/web.rs`, the `Solver` class the worker makes) and the host's imports (`career/clock.rs`: `performance.now()`, the worker's progress hook), through its generated glue; `console_error_panic_hook` (pinned exactly; MIT or Apache-2.0): a panic's message in the console before the trap. Both wasm-only | `wasm` |
@@ -329,8 +328,8 @@ budget: an overrun is reported, never a failure.
 |---|---|---|---|
 | `edit` | every edit | 10 s | the page's two `tsc` passes and the node tests of the changed files (`vitest related`); clippy and `cargo test --lib` (checks profile); ruff on the changed Python |
 | hook | every commit | 30 s | formatting and types of the staged languages (*Pre-commit hook*) |
-| `handback` (default) | a piece of work handed back | 5 min | `edit`'s, then every linter of each changed area; the Rust tests and `valq` (checks profile) when the solver, its tests, data or `val/` changed; `research` when its inputs changed (each section recomputes on its own inputs); the browser suite's fast tier when the page or the solver changed |
-| `merge` | before a merge to main | 10 min | every area, changed or not: `lint`'s linters, `native`, full `val`, the full browser suite, and `mono` after a change under `src/career/` |
+| `handback` (default) | a piece of work handed back | 5 min | `edit`'s, then every linter of each changed area (clippy for the native targets only); the Rust tests and `valq` (checks profile) when the solver, its tests, data or `val/` changed; the browser suite's fast tier when the page changed. No research run and no wasm compile: both are `merge`'s |
+| `merge` | before a merge to main | 10 min | every area, changed or not: `lint`'s linters with clippy for the wasm target, `native`, full `val`, `research` when its inputs changed (each section recomputes on its own inputs), the full browser suite, and `mono` after a change under `src/career/` |
 | `full` | by hand | none | `merge`'s, then `mono` and `research --force` whatever changed |
 
 A test that stops running fails loudly: the integration tests' crate (`tests/it/main.rs`) fails on a file there that
@@ -343,7 +342,7 @@ their inputs (`cache/passed/NAME-KEY`: the SHA-256 of the files they read, track
 shared by every worktree, and on the same key say so and return; a page-only change never runs them. `lint` runs
 Rust's linters only when a Rust input differs from main's. The wasm and the checks' binary are kept the same way
 (`cache/wasm/KEY`, `cache/bin/KEY`): a worktree whose solver inputs were built before copies them instead of
-compiling, so one that changed no Rust runs no cargo for val, valq or mono. `./build.sh setup` brings a new worktree
+compiling, so one that changed no Rust runs no cargo for val, valq, mono or research. `./build.sh setup` brings a new worktree
 to ready from these caches (the shared `cache/`, `npm ci` only when `webapp/package-lock.json` differs from the
 installed one, the wasm and the binary when built before) and compiles nothing; the steps call the same pieces
 themselves, so it is a head start, and running it again does nothing.
@@ -354,11 +353,11 @@ count less two, so the slowest job (`p16_t10`) starts at the beginning; the comp
 
 **Profiles.** Every test, `val`, `valq`, `mono` and lint's generated-types and section-8 tests build in
 `[profile.checks]`, with `debug-assertions` and `overflow-checks` on (release hides both from the tests); the wasm and
-`pb`'s and research's binary in `[profile.release]`; clippy checks without code generation. valq is byte-identical
+`pb`'s binary in `[profile.release]` (research runs the checks' binary); clippy checks without code generation. valq is byte-identical
 with the assertions on (2026-11-01), which cost the solver 8-12% more instructions. The unit tests stay in the checks
 profile: the dev profile (`opt-level` 1, dependencies 3) rebuilt them no faster after a one-line edit (31 s against
 34) and ran them slower (31 s against 25), and a second profile compiles the crate twice. Neither meets the edit
-tier's 10 s: one unit test, `deck::tests::chain_marginals_dense_matches_ref`, is most of their run.
+tier's 10 s.
 
 **Type-only changes.** A change the type checker fully explains (a rename, a type in place of a bare number, moved
 code; no change to arithmetic, control flow or data) runs the unit tests and clippy per commit and one `valq` at the
@@ -368,7 +367,7 @@ merge, not a `valq` per commit. A change to arithmetic, control flow or data fol
   clippy. The checks' profile (`[profile.checks]` in `pkg/loopopt/Cargo.toml`) is release's opt-level 3 without fat
   LTO and one codegen unit, which had made every test binary a minute or two of single-threaded linking; val, valq,
   mono and lint run its binary, `target/checks/loopopt`, too. Its outputs are byte-identical to the release binary's on
-  every val job (full val and valq, 2026-11-01); the wasm, `pb` and `research` keep `[profile.release]`.
+  every val job (full val and valq, 2026-11-01); the wasm and `pb` keep `[profile.release]`.
   The integration tests are one crate, `pkg/loopopt/tests/it/` (a module per file, `main.rs` lists them: the
   crate links once and libtest runs all of them in parallel; its own test fails on a file there that is not one of
   its modules), and run the solver binary through one harness, `tests/it/common.rs`,

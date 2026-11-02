@@ -107,6 +107,18 @@ pub fn val_job(path: &str) -> Value {
     serde_json::from_str(&std::fs::read_to_string(&full).expect("a val job")).expect("a JSON job")
 }
 
+/// A small pool cut from the val/ job at `path`: its veterans at `legacies` (numbered in that order), its job targets at
+/// `targets`, and only the umas `owned` owned (`skills.owned`: the trainees, and the umas the plan's look-ahead may
+/// train). The planner's and simulator's tests run on the smallest cut that shows their behaviour.
+pub fn val_cut(path: &str, legacies: &[usize], targets: &[usize], owned: &[u32]) -> Value {
+    let mut job = val_job(path);
+    let pick = |all: &Value, at: &[usize]| Value::Array(at.iter().map(|&i| all[i].clone()).collect());
+    job["job"]["career"]["legacies"] = pick(&job["job"]["career"]["legacies"], legacies);
+    job["job"]["skills"]["targets"] = pick(&job["job"]["skills"]["targets"], targets);
+    job["job"]["skills"]["owned"] = serde_json::json!(owned);
+    job
+}
+
 /// A plan job's roll: answered from the plan the worker keeps (`kind` "roll"), else the plan's own (`next.roll`).
 pub fn roll_of(output: &Value) -> &Value {
     if output["kind"] == "roll" { &output["roll"] } else { &output["next"]["roll"] }

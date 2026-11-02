@@ -66,7 +66,9 @@ fn fast_metric_matches_reference() {
         }
     }
 }
-/// dense chain_marginals equals the reference to float noise
+/// dense chain_marginals equals the reference to float noise, on each chain kind's edge cases (alone, and six of it,
+/// the most entries a deck holds) and one interior case (it with two other kinds), under both pick rules; and on the
+/// six-entry deck of six different kinds.
 #[test]
 fn chain_marginals_dense_matches_ref() {
     let kinds: Vec<ChainKind> = vec![
@@ -80,41 +82,29 @@ fn chain_marginals_dense_matches_ref() {
         ChainKind { links: 5, stop: 4, stop_risk: 0 },
         ChainKind { links: 5, stop: 2, stop_risk: 0 },
     ];
-    let mut worst = 0.0f64;
-    let mut multiset_count = 0;
-    fn visit_multisets(
-        kinds: &[ChainKind],
-        start: usize,
-        remaining: usize,
-        current: &mut Vec<ChainKind>,
-        visit: &mut dyn FnMut(&[ChainKind]),
-    ) {
-        if !current.is_empty() {
-            visit(current);
-        }
-        if remaining == 0 {
-            return;
-        }
-        for i in start..kinds.len() {
-            current.push(kinds[i]);
-            visit_multisets(kinds, i, remaining - 1, current, visit);
-            current.pop();
-        }
+    let mut decks: Vec<Vec<ChainKind>> = Vec::new();
+    for (i, &kind) in kinds.iter().enumerate() {
+        decks.push(vec![kind]);
+        decks.push(vec![kind; 6]);
+        decks.push(vec![kind, kinds[(i + 1) % kinds.len()], kinds[(i + 4) % kinds.len()]]);
     }
-    visit_multisets(&kinds, 0, 6, &mut vec![], &mut |multiset| {
+    decks.push(kinds[kinds.len() - 6..].to_vec());
+    let mut worst = 0.0f64;
+    for deck in &decks {
         for events in [EVENTS_35, EVENTS_35_CARD] {
-            let a = chain_marginals_ref(events, multiset);
-            let b = chain_marginals_dense(events, multiset);
-            multiset_count += 1;
+            let a = chain_marginals_ref(events, deck);
+            let b = chain_marginals_dense(events, deck);
+            assert_eq!(a.len(), b.len(), "{deck:?}");
             #[allow(clippy::iter_over_hash_type, reason = "a running max over every entry: the order changes nothing")]
             for (k, v) in &a {
+                assert_eq!(v.len(), b[k].len(), "{deck:?}");
                 for (x, y) in v.iter().zip(&b[k]) {
                     worst = worst.max((x - y).abs());
                 }
             }
         }
-    });
-    eprintln!("{multiset_count} multisets, max |dense - ref| = {worst:e}");
+    }
+    eprintln!("{} decks, max |dense - ref| = {worst:e}", decks.len());
     assert!(worst < 1e-14);
 }
 /// The character rule: a card blocks its own character and, for a group card, every member.

@@ -15,16 +15,13 @@ crate-type = ["rlib", "cdylib"]
 serde = { version = "1", features = ["derive", "rc"] }
 # the game's integer codes as enums written as their integers (src/codes.rs; always with ts-rs's `repr(enum)`)
 serde_repr = "=0.1.21"
-# float_roundtrip: a float the solver printed parses back to the same bits (the page sends `next.fit` back)
+# float_roundtrip: a float the solver printed parses back to the same bits (the page sends `next.fit` back, and the
+# worker's kept state, src/career/state.rs)
 serde_json = { version = "1", features = ["float_roundtrip"] }
 # the page's TypeScript types of every report and job, generated from these structs (`./build.sh types`, docs/BUILD.md)
 # (no-serde-warnings: ts-rs notes every serde attribute it does not read; here only `deserialize_with` checks, which
 # keep the shape)
 ts-rs = { version = "=12.0.1", features = ["no-serde-warnings"] }
-# the worker's kept state as the page stores it (src/career/state.rs): postcard's binary serde, every f64 its 8 bytes
-# (infinite step costs included), in base64 text, a string the page keeps without reading
-postcard = { version = "1", default-features = false, features = ["alloc"] }
-base64 = "0.22"
 
 # the native command line's arguments (src/cli.rs); not in the wasm
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -38,14 +35,17 @@ clap = { version = "=4.6.7", features = ["derive"] }
 wasm-bindgen = "=0.2.130"
 console_error_panic_hook = "=0.1.7"
 
-# the page's solver fixtures (tests/it/fixtures.rs): each flow's replies as a plain JSON file beside its jobs, in
-# webapp/test/fixtures/solver (insta's binary snapshots; INSTA_UPDATE=always rewrites them: ./build.sh fixtures)
-[dev-dependencies]
-insta = { version = "=1.48.0", default-features = false }
-
 # build.rs reads the training-hint constants and the career planner's low-basis cost from research/results.json
 [build-dependencies]
 serde_json = "1"
+
+# the planner's property test (tests/plan_monotone.rs): random small pools, shrunk to a minimal one on a failure; no
+# default features (no forking, timeouts or regex strategies: the test uses none)
+[dev-dependencies]
+proptest = { version = "=1.12.0", default-features = false, features = ["std"] }
+# the browser flows' canned solver replies (web.rs `fixtures`): each scenario's replies as a plain JSON file beside its
+# jobs, in webapp/test/fixtures/solver (insta's binary snapshots; INSTA_UPDATE=always rewrites them: ./build.sh fixtures)
+insta = { version = "=1.48.0", default-features = false }
 
 [profile.release]
 opt-level = 3
@@ -62,7 +62,9 @@ codegen-units = 1
 # keep [profile.release].
 [profile.checks]
 inherits = "release"
-lto = false
+# "off", not false: Cargo's false still runs thin LTO across the crate's own codegen units, 12 of a 44 s rebuild after
+# a one-line edit; off makes that rebuild 7.7 s (opt-level 3 kept: opt-level 1 rebuilt no faster and ran tests slower)
+lto = "off"
 codegen-units = 16
 incremental = true
 debug-assertions = true

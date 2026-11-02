@@ -9,8 +9,7 @@ use crate::career::search::{CareerSearchResult, Ref};
 use crate::career::{CareerSetup, ClassFlags};
 use crate::deck::space::SelectedDeck;
 use crate::refusal::Refusal;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
+use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -106,39 +105,42 @@ pub(crate) const SEEN_KEEP: usize = 256;
 // ---------- the worker's kept work across page loads ----------
 // What a worker keeps between jobs (the kept plans, `KeptState::bests`; the proofs, `KeptState::seen`; its main
 // searches, roll states and step caps) leaves as `state_out` and comes back as `state_in`, so the first plan after a page
-// reload reuses the work of the last session. It leaves as one string the page stores and sends back unread:
-// STATE_VERSION, then the kept types themselves (their serde derives) in postcard, in base64 text. Postcard writes each
-// f64 as its 8 bytes and each key as its u64, so what comes back is what left, bit for bit, an infinite step cost
-// included (the kept bounds and proofs prune later searches by it); JSON could not carry those (it has no infinity, and
-// the page's JavaScript reads no 64-bit integer). The page keys what it stores by the solver's and data's fingerprints
-// (engine.ts `stateKey`), so a release starts afresh (the keys inside, `career::keys` and `bests_key`, hash with std's
-// DefaultHasher, fixed within a build). A string of another version, or one that does not decode to its end, is refused
+// reload reuses the work of the last session. It leaves as one string the page stores and sends back unread: the JSON
+// text of [STATE_VERSION, the kept types themselves (their serde derives)]. serde_json writes each f64 as its shortest
+// text and reads it back to the same bits (`float_roundtrip`), and each key as its u64 integer, exact past 2^53 (the
+// page's JavaScript never parses the string), so what comes back is what left, bit for bit. Every kept float is finite:
+// a step that never ends is `StepCareers::Never`, not an infinite f64, and `encode` asserts it (JSON has no infinity,
+// and serde_json writes one as null). The page keys what it stores by the solver's and data's fingerprints (engine.ts
+// `stateKey`), so a release starts afresh (the keys inside, `career::keys` and `bests_key`, hash with std's
+// DefaultHasher, fixed within a build). A string of another version, or one that does not parse to its end, is refused
 // whole (the page then drops it and plans cold); nothing else in it is checked, as it is only ever this build's own
 // `state_out`. What a store says of a setup (deck entries, chances per target, trainees and veterans) is checked where it
 // meets one (`CareerSetup::seen_fits`, `solved_fits`).
-// (13: the kept types in postcard, in place of JSON records with each float and key in hex; every earlier store is
-// refused)
-pub(crate) const STATE_VERSION: u64 = 13;
+// (14: JSON, the step that never ends typed, in place of postcard in base64; every earlier store is refused)
+pub(crate) const STATE_VERSION: u64 = 14;
 
-/// The kept work as `state_out` gives it: `version`, then the kept state, in postcard, as base64 text.
+/// The kept work as `state_out` gives it: the JSON text of `version` and the kept state.
 pub(super) fn encode(version: u64, kept: &KeptState) -> String {
-    let bytes = postcard::to_allocvec(&(version, kept)).expect("the kept types serialize to postcard");
-    BASE64.encode(bytes)
+    let text = serde_json::to_string(&(version, kept)).expect("the kept types serialize to JSON");
+    // (serde_json writes a non-finite f64 as null, which no f64 field reads back: a kept float that is not finite
+    // fails here, before a store that cannot come back as it left reaches the page)
+    debug_assert!(
+        serde_json::from_str::<(u64, KeptState)>(&text).is_ok(),
+        "a kept float is not finite: the store would not come back as it left"
+    );
+    text
 }
 
-/// The kept state of an `encode`d string; the refusal's reason for one of another version or that does not decode to
+/// The kept state of an `encode`d string; the refusal's reason for one of another version or that does not parse to
 /// its end.
 fn decode(state: &str) -> Result<KeptState, &'static str> {
     const UNREADABLE: &str = "state: does not parse";
-    let bytes = BASE64.decode(state).map_err(|_| UNREADABLE)?;
-    let (version, rest) = postcard::take_from_bytes::<u64>(&bytes).map_err(|_| UNREADABLE)?;
+    // (the version first, the rest read past: a store of another version need not hold this build's kept types)
+    let (version, IgnoredAny) = serde_json::from_str::<(u64, IgnoredAny)>(state).map_err(|_| UNREADABLE)?;
     if version != STATE_VERSION {
         return Err("state: another version");
     }
-    match postcard::take_from_bytes::<KeptState>(rest) {
-        Ok((kept, [])) => Ok(kept),
-        _ => Err(UNREADABLE),
-    }
+    serde_json::from_str::<(u64, KeptState)>(state).map(|(_, kept)| kept).map_err(|_| UNREADABLE)
 }
 
 pub(crate) fn state_out(kept: &KeptState) -> StateOut {
@@ -146,7 +148,7 @@ pub(crate) fn state_out(kept: &KeptState) -> StateOut {
 }
 
 /// replaces the kept plans, proofs, main searches, plans' roll states and step caps with the page's stored ones and unions its
-/// class flags into the worker's (all or nothing: a store of another version, or that does not decode, is refused)
+/// class flags into the worker's (all or nothing: a store of another version, or that does not parse, is refused)
 pub(crate) fn state_in(kept: &mut KeptState, state: &str) -> CareerReply {
     let mut stored = match decode(state) {
         Ok(stored) => stored,
@@ -235,8 +237,12 @@ pub(crate) struct StateCounts {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::career::CertifiedCap;
+    use crate::career::plan::caps::{CapCurve, KeptCap, StepCaps};
+    use crate::career::plan::cont::{Cont, OddsScales, ScoreBase, ScoringKnobs, StepCareers};
+    use crate::career::plan::roll::KeptBase;
+    use crate::career::plan::score::kernel::Scored;
     use crate::career::search::{Assumes, Unproven, UnprovenReason};
+    use crate::career::{CertifiedCap, Lineage};
     use crate::uma::{UmaIndex, UmaTable};
 
     /// The refusal's reason for a store `state_in` refuses (None: it was taken).
@@ -247,9 +253,39 @@ mod tests {
         }
     }
 
-    /// What `state_out` gives, `state_in` puts back bit for bit: any f64 (-0.0, an infinity, a subnormal, 0.1 + 0.2), a
-    /// key past 2^53, the reasons and assumptions as sets, a certificate of none; the same string out again. A store of
-    /// another version, not base64, cut short or with a byte past its end is refused, nothing installed.
+    /// A roll state whose base holds a finite step and one that never ends, and a step cap whose plan now never ends
+    /// (her odds now 0).
+    fn roll_with_a_step_that_never_ends(deck: SelectedDeck) -> RollKeep {
+        let continuations = [Cont::new(0.5, 0.5, 0.01, 0.001), Cont::default()];
+        let cap = KeptCap { curve: CapCurve::of(&continuations[0]), odds: 0.001 };
+        let step_caps = [StepCaps::default(), StepCaps::new(vec![cap], 0.0)];
+        let base = ScoreBase {
+            candidates: &[UmaIndex(0), UmaIndex(1)],
+            step_costs: &[StepCareers::finite(0.1 + 0.2), StepCareers::Never],
+            current_value: 7.5,
+            current_odds: &[0.001, 0.0],
+            continuations: &continuations,
+            step_caps: &step_caps,
+            trios: &[],
+            trio_sides: &[],
+            finisher_umas: &[],
+            knobs: ScoringKnobs::default(),
+            odds_scales: OddsScales::ONE,
+        };
+        RollKeep {
+            key: 5,
+            scored: Scored::default(),
+            later: vec![],
+            base: KeptBase::of(&base),
+            lineage: Lineage { trainee: UmaIndex(0), first_parent: 0, second_parent: 1 },
+            deck,
+        }
+    }
+
+    /// What `state_out` gives, `state_in` puts back bit for bit: any finite f64 (-0.0, a subnormal, 0.1 + 0.2, the
+    /// largest), a step that never ends (`StepCareers::Never`, a step and a step cap's plan), a key past 2^53, the reasons
+    /// and assumptions as sets, a certificate of none; the same string out again. A store of another version, not JSON,
+    /// cut short or with text past its end is refused, nothing installed.
     #[test]
     fn a_store_comes_back_as_it_left_and_another_version_is_refused() {
         let deck = SelectedDeck {
@@ -259,7 +295,7 @@ mod tests {
             white_hint_chances: vec![-0.0],
             gold_hint_chances: vec![f64::MIN_POSITIVE / 2.0],
         };
-        let reference = Ref { inheritance_chances: vec![0.1 + 0.2, 1.0], value: 0.3, deck };
+        let reference = Ref { inheritance_chances: vec![0.1 + 0.2, 1.0], value: 0.3, deck: deck.clone() };
         let solved = CareerSearchResult {
             found: vec![],
             refs: UmaTable(vec![vec![], vec![reference.clone()]]),
@@ -276,7 +312,7 @@ mod tests {
             proven: false,
             certified_cap: CertifiedCap::default(),
         };
-        let proof = ProductProof { inheritance_chances: vec![0.5], product_bound: f64::INFINITY };
+        let proof = ProductProof { inheritance_chances: vec![0.5], product_bound: f64::MAX };
         let kept = KeptState {
             seen: vec![KeptSeen { key: u64::MAX - 1, refs: UmaTable(vec![vec![reference]]) }],
             searches: vec![KeptSolve {
@@ -286,6 +322,7 @@ mod tests {
                 class_flags: UmaTable(vec![ClassFlags::default(); 2]),
                 classes: vec![UmaIndex(1)],
             }],
+            rolls: vec![roll_with_a_step_that_never_ends(deck)],
             ..KeptState::default()
         };
         let stored = state_out(&kept).state;
@@ -300,18 +337,23 @@ mod tests {
         assert_eq!(bits(&reference.deck.gold_hint_chances), bits(&[f64::MIN_POSITIVE / 2.0]));
         let search = &restored.searches[0];
         assert_eq!(search.key, 1 << 60);
-        assert_eq!(search.ruled[UmaIndex(0)][0].product_bound, f64::INFINITY);
+        assert_eq!(search.ruled[UmaIndex(0)][0].product_bound.to_bits(), f64::MAX.to_bits());
         assert_eq!(search.solved.unproven, Unproven::from([UnprovenReason::WorkCap, UnprovenReason::CapBreach]));
         assert_eq!(search.solved.certified_cap, CertifiedCap::default());
+        let base = restored.rolls[0].base.base();
+        assert!(
+            matches!(base.step_costs, [StepCareers::Finite(step), StepCareers::Never] if step.to_bits() == (0.1f64 + 0.2).to_bits()),
+            "the steps came back as {:?}",
+            base.step_costs
+        );
+        let cap_now = base.step_caps[1].now.expect("her cap");
+        assert_eq!(cap_now.now.expected_careers, StepCareers::Never, "the cap's plan at no odds");
 
         let other_version = encode(STATE_VERSION - 1, &KeptState::default());
         assert_eq!(refusal(&mut restored, &other_version).as_deref(), Some("state: another version"));
-        let bytes = BASE64.decode(&stored).expect("base64");
-        let unreadable = [
-            "not base64!".to_owned(),
-            BASE64.encode(&bytes[..bytes.len() - 1]),
-            BASE64.encode([bytes.as_slice(), &[0]].concat()),
-        ];
+        let mut cut_short = stored.clone();
+        cut_short.pop();
+        let unreadable = ["not JSON!".to_owned(), cut_short, format!("{stored} 0")];
         for state in &unreadable {
             assert_eq!(refusal(&mut restored, state).as_deref(), Some("state: does not parse"));
         }

@@ -2,8 +2,8 @@
 use crate::career::Lineage;
 use crate::career::imagined::ImaginedVeteran;
 use crate::career::plan::cont::{
-    Cont, ContShape, FITTED_SHAPE, ScoreBase, ScoringKnobs, SideStep, Trio, TrioSideVeteran, TrioSlot, anchored_cost,
-    trio_value,
+    Cont, ContShape, FITTED_SHAPE, ScoreBase, ScoringKnobs, SideStep, StepCareers, Trio, TrioSideVeteran, TrioSlot,
+    anchored_cost, trio_value,
 };
 use crate::career::plan::rows::{PlanRow, RowOrigin};
 use crate::career::plan::search::{FullLoop, alternative_careers, legal_pair, loop_ceiling, val};
@@ -42,7 +42,7 @@ pub(crate) struct PlanFit {
     /// What each candidate's continuation was fitted from (`continuation_evidence`; the robustness check refits it).
     pub(crate) evidence: Vec<Option<ContEvidence>>,
     /// Each candidate's step: the expected careers to a fresh full veteran of hers under her continuation.
-    pub(crate) step_costs: Vec<f64>,
+    pub(crate) step_costs: Vec<StepCareers>,
     pub(crate) trios: Vec<Trio>,
     /// Per candidate, the trios' sides (`ScoreBase::trio_sides`).
     pub(crate) sides: Vec<Vec<TrioSideVeteran>>,
@@ -388,7 +388,7 @@ pub(crate) fn plan_sides(
     context: &PlanContext,
     full_veterans: &[Vec<usize>],
     continuations: &[Cont],
-    step_costs: &[f64],
+    step_costs: &[StepCareers],
     searches: &mut PlanSearches,
     buf: &mut Vec<f64>,
 ) -> Vec<Vec<TrioSideVeteran>> {
@@ -408,7 +408,7 @@ pub(crate) fn plan_sides(
                 .collect();
             let trainee = candidates.trainees[candidate];
             let Some(career) = candidates.careers[candidate].as_ref() else { return sides };
-            if !step_costs[candidate].is_finite() {
+            if step_costs[candidate] == StepCareers::Never {
                 return sides;
             }
             let lineage = found_lineage(trainee, career);
@@ -439,9 +439,9 @@ pub(crate) fn plan_sides(
                 // her least held cap curve there where cheaper; building or not, since a scored career's veteran lifts it on its
                 // own lineage, `score::routes`, so a builder of it is credited with the build it is priced on)
                 let plan = candidates.step_caps[candidate].capped_at(continuations[candidate].plan(odds), odds);
-                if plan.expected_careers.is_finite() {
+                if let StepCareers::Finite(careers) = plan.expected_careers {
                     sides.push(TrioSideVeteran {
-                        step: SideStep::Alternative(plan.expected_careers),
+                        step: SideStep::Alternative(careers),
                         fresh: Some(fresh_veteran(
                             simulator,
                             context,

@@ -22,9 +22,9 @@ OUT: str = os.path.join(DATA, "out")  # intermediate outputs of the scripts (job
 RUNS: str = os.path.join(DATA, "runs.jsonl")
 GD: str = os.path.join(ROOT, "pkg", "loopopt", "data", "global")
 MDB: str = os.path.join(ROOT, "game", "global", "master.mdb")
-# the release build (./build.sh research builds it); LOOPOPT_SOLVER names another build of the same source (lint
-# runs section 8's test on the checks' build, whose outputs are the same to the byte)
-SOLVER: str = os.environ.get("LOOPOPT_SOLVER") or os.path.join(ROOT, "pkg", "loopopt", "target", "release", "loopopt")
+# the checks' build (./build.sh research builds it, or takes it from cache/bin; its outputs equal the release build's
+# to the byte on val); LOOPOPT_SOLVER names another build of the same source
+SOLVER: str = os.environ.get("LOOPOPT_SOLVER") or os.path.join(ROOT, "pkg", "loopopt", "target", "checks", "loopopt")
 
 SCEN: dict[int, str] = {1: "URA Finale", 2: "Unity Cup", 3: "Grand Concert", 4: "Trackblazer"}
 DEFAULT: list[int] = [
@@ -1847,7 +1847,7 @@ def run_rows(
             q, nc, p, scen_g, plegs = 0.0, 0, 0.0, False, []
         else:
             buy = t["buy"]
-            q, nc, p, scen_g = t["q"], t["carriers"], t["p"], bool(buy.get("scenario"))
+            q, nc, p, scen_g = t["q"], t["carriers"], t["p"], buy["kind"] == "scenario"
             k = order.index(g)
             # per legacy carrying the spark: 3% per star, raised by its affinity, per roll
             plegs = [min(1.0, 0.03 * s["stars"][k] * (1 + s["aff"] / 100)) for s in slots if s["stars"][k] > 0]

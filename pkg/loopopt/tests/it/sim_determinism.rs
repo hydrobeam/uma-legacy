@@ -1,14 +1,15 @@
 //! The policy simulator's `index` runs depend on the job and the run index alone (docs/SOLVER.md *Policy simulator*):
-//! on the val/sim pool4 pool, run 1 of a two-run job (`runs` 2, `first` 0) and the same run alone (`runs` 1, `first` 1),
-//! each in its own process, under goal `looped`, give the same record, wall clocks aside. Each run starts from an empty
-//! kept state (`kept_swap`), so the first run's plans cannot reach the second's.
+//! on a cut of the val/sim pool4 pool (its four veterans, two targets, their four umas owned), run 1 of a two-run job
+//! (`runs` 2, `first` 0) and the same run alone (`runs` 1, `first` 1), each in its own process (the two at once), under
+//! goal `looped`, give the same record, wall clocks aside. Each run starts from an empty kept state (`kept_swap`), so
+//! the first run's plans cannot reach the second's.
 use crate::common;
-use common::{run_job, val_job};
+use common::{run_job, val_cut};
 use serde_json::{Value, json};
 
-/// The simulation's output for pool4 with this `simulate` block.
+/// The simulation's output for the pool4 cut with this `simulate` block.
 fn simulate(block: &Value, tag: &str) -> Value {
-    let mut job = val_job("sim/pools/pool4.json");
+    let mut job = val_cut("sim/pools/pool4.json", &[0, 1, 2, 3], &[0, 1], &[1001, 1007, 1022, 1068]);
     job["job"]["career"]["simulate"] = block.clone();
     run_job(&format!("sim-determinism-{tag}"), &job)
 }
@@ -27,8 +28,11 @@ fn without_clocks(run: &Value) -> Value {
 #[test]
 fn sim_runs_depend_on_job_and_index() {
     let block = |runs: usize, first: usize| json!({"policy": "index", "goal": "looped", "seed": 1, "runs": runs, "first": first, "max_careers": 2});
-    let both = simulate(&block(2, 0), "both");
-    let alone = simulate(&block(1, 1), "alone");
+    let (both, alone) = std::thread::scope(|scope| {
+        let both = scope.spawn(|| simulate(&block(2, 0), "both"));
+        let alone = simulate(&block(1, 1), "alone");
+        (both.join().expect("the two-run job"), alone)
+    });
     let second_of_both = &both["runs"][1];
     assert_eq!(second_of_both["run"], 1, "{both}");
     assert_eq!(alone["runs"][0]["run"], 1, "{alone}");

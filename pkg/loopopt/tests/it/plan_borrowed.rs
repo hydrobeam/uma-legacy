@@ -1,16 +1,19 @@
-//! `borrowed_parent` on the val/plan p16 pool with veteran #14 marked borrowed.
+//! `borrowed_parent` on a small cut of the val/plan p16 pool: three veterans (p16's #5, #6 and #15), the first target,
+//! Fine Motion and Curren Chan owned, with the second veteran (Agnes Digital) marked borrowed: the smallest cut found
+//! where the best careers and the pair search's best pair take her, and "never" plans another V.
 //! "later": no career the job offers has a borrowed parent (the search's results, the plan's rows and its pick), while
 //! the plan's look-ahead is the one with borrowing (V and Cont's fit are the "allow" job's, to the bit on this pool);
 //! the page's run as two jobs, after an "allow" run in the same worker, plans as the combined job does (each setting's
 //! main search is kept under its own key). "never" answers as the pool without the borrowed veteran.
 use crate::common;
-use common::{check_of, run_jobs, val_job, without_work};
+use common::{check_of, run_jobs, val_cut, without_work};
 use serde_json::{Value, json};
 
-const BOR: usize = 14;
+/// The borrowed veteran's place in the cut.
+const BOR: usize = 1;
 
 fn job(bp: Option<&str>) -> Value {
-    let mut j = val_job("plan/p16.json");
+    let mut j = val_cut("plan/p16.json", &[5, 6, 15], &[0], &[1022, 1038]);
     j["job"]["career"]["legacies"][BOR]["borrowed"] = json!(true);
     if let Some(b) = bp {
         j["job"]["career"]["borrowed_parent"] = json!(b);
@@ -126,15 +129,12 @@ fn later_picks_without_a_borrowed_parent_and_plans_with_one() {
 
 /// "later" on the page's path: the plan job, then its check one job at a time from the worker's kept state
 /// (`next.robust: "next"` with the pair search), as `checkPhase` sends them. The check answers before the job builds
-/// its pools, so it must read the pick's pool there too. On p16 the pair search's best pairs all take veteran #15, so
-/// it is the one marked borrowed here: "allow" pairs with her (the premise), "later" never may.
+/// its pools, so it must read the pick's pool there too. On this pool the pair search's best pair takes the borrowed
+/// veteran under "allow" (the premise); under "later" it never may.
 #[test]
 fn later_checks_from_the_kept_plan_without_a_borrowed_parent() {
-    const PAIRED: u64 = 15;
     let checked = |bp: Option<&str>| {
         let mut plan = job(bp);
-        plan["job"]["career"]["legacies"][BOR]["borrowed"] = json!(false);
-        plan["job"]["career"]["legacies"][PAIRED as usize]["borrowed"] = json!(true);
         plan["job"]["career"]["no_reports"] = json!(true);
         let mut check = plan.clone();
         check["job"]["career"]["next"] = json!({"robust": "next", "pair_search": true});
@@ -147,9 +147,10 @@ fn later_checks_from_the_kept_plan_without_a_borrowed_parent() {
             .rev()
             .find_map(|output| check_of(output)["pairs"].as_object().cloned())
             .expect("no check answered with its pair search");
-        let paired = |parents: &[Value]| parents.iter().any(|p| p.as_u64() == Some(PAIRED));
-        let any_pair =
-            pairs["trainees"].as_array().unwrap().iter().any(|found| paired(found["best_parents"].as_array().unwrap()));
+        let paired = |parents: &[Value]| parents.iter().any(|p| p.as_u64() == Some(BOR as u64));
+        let searched = pairs["trainees"].as_array().unwrap();
+        assert!(!searched.is_empty(), "the pair search searched no trainee");
+        let any_pair = searched.iter().any(|found| paired(found["best_parents"].as_array().unwrap()));
         let recommended = pairs["recommendation"]["career"].as_str().unwrap().to_string();
         let rec_parents: Vec<Value> =
             recommended.split(':').nth(1).unwrap().split(',').map(|p| json!(p.parse::<u64>().unwrap())).collect();

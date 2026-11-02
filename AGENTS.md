@@ -22,8 +22,9 @@ evidence), `docs/RESEARCH.md` (the maths), `research/README.md` (the scripts beh
   are in `pkg/loopopt/data/event_shares.json` and `pkg/loopopt/data/*/manual.json`, exported by `./build.sh events`.
 - **Results are pinned.** A change to the solver (`pkg/loopopt/src`, its data or `research/results.json`) runs
   `./build.sh valq TAG` while iterating and on each commit (about 2.5 CPU-min), and `./build.sh val TAG` before a
-  change that can move results lands (about 7 CPU-min; `docs/BUILD.md`, *Tests*); a career-planner change also runs
-  `./build.sh mono` (10-20 CPU-min, in the background). A change the type checker fully explains (a rename, a type in
+  change that can move results lands (about 7 CPU-min; `docs/BUILD.md`, *Tests*). mono's invariant (a veteran added to a
+  pool never raises V) runs as the property test `tests/it/plan_monotone.rs` in every `cargo test`; the full
+  `./build.sh mono` (10-20 CPU-min, in the background) runs once at the merge of a career-planner change. A change the type checker fully explains (a rename, a type in
   place of a bare number, moved code; no change to arithmetic, control flow or data) runs the unit tests and clippy per
   commit and one `./build.sh valq TAG` at the merge; a change to arithmetic, control flow or data follows the procedure
   above. A tie the solver breaks another way fails both until its reference is re-taken. When results move on purpose:

@@ -1,14 +1,13 @@
 //! The career planner's memos (per Cont, by the bits of p) return what the functions compute, through a refit of Cont
-//! as well: the val/plan p11_noagnes pool (p11 itself no longer refits since the stage candidates are ranked by the
-//! main search and the full-loop ceiling) with its pass-1 builders left to their proxies (`next.proxy_eff` -1: none searched
-//! there), so the pass-2 searches change a candidate's best builders and index_rule fits Cont again (new Conts, new
-//! memos). With `PLAN_MEMO_CHECK` every hit is computed
-//! again and compared bit for bit (the plan panics on a stale value; a memo carried across the refit fails here, while
-//! the output alone need not show it), with the cap lifted (`PLAN_MEMO_CAP`) so clearing cannot hide stale entries.
-//! The output with the memos on must equal the output with them off (`PLAN_MEMO_OFF`) but for timings.
+//! as well: a small cut of the val/plan p11_noagnes pool (three veterans, three targets, Curren Chan, King Halo and
+//! Yamanin Zephyr owned) where the pass-2 searches change a candidate's best builders and index_rule fits Cont again
+//! (new Conts, new memos), and the refitted Conts look up odds the old ones had memoised. With `PLAN_MEMO_CHECK` every
+//! hit is computed again and compared bit for bit (the plan panics on a stale value; a memo carried across the refit
+//! fails here, while the output alone need not show it), with the cap lifted (`PLAN_MEMO_CAP`) so clearing cannot hide
+//! stale entries. The output with the memos on must equal the output with them off (`PLAN_MEMO_OFF`) but for timings.
 use crate::common;
-use common::{State, loopopt, run_with, val_job, without_clocks};
-use serde_json::{Value, json};
+use common::{State, loopopt, run_with, val_cut, without_clocks};
+use serde_json::Value;
 
 /// `job`'s output and stderr, with the plan's memos on (`PLAN_MEMO`) and checked (`PLAN_MEMO_CHECK`) or `off`
 fn run(job: &Value, off: bool) -> (Value, String) {
@@ -32,10 +31,7 @@ fn stat(err: &str, key: &str) -> u64 {
 
 #[test]
 fn memos_exact_through_a_refit() {
-    let mut job = val_job("plan/p11_noagnes.json");
-    // (`builder_careers` 1: with the default 3 the alternative rows' lifts already give Cont its exact builders, and no
-    // refit follows the pass-2 searches)
-    job["job"]["career"]["next"] = json!({"proxy_eff": -1.0, "builder_careers": 1});
+    let job = val_cut("plan/p11_noagnes.json", &[0, 6, 10], &[5, 6, 7], &[1038, 1061, 1078]);
     let (on, err_on) = run(&job, false);
     let (off, err_off) = run(&job, true);
     // the refit path ran, with the memos looked up (and hit) in one run and not at all in the other

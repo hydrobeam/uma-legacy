@@ -491,7 +491,7 @@ struct PlanCandidates {
     /// Whether a full veteran of hers exists (a free side of the trios).
     has_full_veteran: Vec<bool>,
     /// Ones: pass 1's placeholder step costs, so that every candidate's lifts are gathered.
-    placeholder_step_costs: Vec<f64>,
+    placeholder_step_costs: Vec<crate::career::plan::cont::StepCareers>,
     /// Builders' careers come from their deck class's winning decks first (`sur` 0, neither `exact_all` nor
     /// `proxy_check`).
     proxies_enabled: bool,

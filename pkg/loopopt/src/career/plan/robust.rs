@@ -7,7 +7,8 @@ use crate::career::clock::{PROF, now_ms};
 use crate::career::plan::combine::{ContEvidence, ContModel, PlanFit, fit_continuation};
 use crate::career::plan::combine::{PairCareer, TrioSides, exact_pair_career, rechoose_finishers};
 use crate::career::plan::cont::{
-    Cont, ContShape, FITTED_SHAPE, OddsScales, ScoreBase, ScoringKnobs, SideStep, Trio, TrioSideVeteran, Want, trio_v,
+    Cont, ContShape, FITTED_SHAPE, OddsScales, ScoreBase, ScoringKnobs, SideStep, StepCareers, Trio, TrioSideVeteran,
+    Want, trio_v,
 };
 use crate::career::plan::kept::career_id;
 use crate::career::plan::pair_bound::{PAIR_SEARCH_PAIRS, trainee_bounded_pairs};
@@ -213,7 +214,7 @@ struct CheckWork {
 /// continuations; per-candidate vectors in candidate order
 struct VariantFit {
     continuations: Vec<Cont>,
-    step_costs: Vec<f64>,
+    step_costs: Vec<StepCareers>,
     sides: Vec<Vec<TrioSideVeteran>>,
     trios: Vec<Trio>,
     current_value: f64,
@@ -236,7 +237,7 @@ impl VariantFit {
                 evidence.as_ref().map_or_else(Cont::default, |evidence| fit_continuation(evidence, model).0)
             })
             .collect();
-        let step_costs: Vec<f64> = continuations
+        let step_costs: Vec<StepCareers> = continuations
             .iter()
             .zip(&candidates.current_odds)
             .enumerate()
@@ -254,8 +255,9 @@ impl VariantFit {
                     .map(|side| match side.step {
                         // (at the variant's continuation and her odds so scaled, building or not, as `plan_sides` admits
                         // them: the variant's scorings lift it on its own lineage at the same scale, `ScoreBase::step_plan`)
-                        SideStep::Alternative(_) => side
-                            .at_step(SideStep::Alternative(continuation.plan(side.odds * odds_scale).expected_careers)),
+                        SideStep::Alternative(_) => side.at_step(SideStep::Alternative(
+                            continuation.plan(side.odds * odds_scale).expected_careers.as_f64(),
+                        )),
                         step @ (SideStep::Existing(_) | SideStep::Current) => side.at_step(step),
                     })
                     .collect()
