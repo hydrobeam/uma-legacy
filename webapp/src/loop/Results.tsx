@@ -30,7 +30,7 @@ import type { Member } from './members.ts';
 import { draw, loopDrawn } from './state.ts';
 import type * as Report from './types.ts';
 import type { DeepReadonly } from '../state/store.ts';
-import { Button } from '../ui/Button.tsx';
+import { Button, PortraitButton } from '../ui/Button.tsx';
 import { GameBar } from '../ui/GameBar.tsx';
 import { chip } from '../results/deckChip.ts';
 import { cx, tv } from 'tailwind-variants/lite';
@@ -264,17 +264,9 @@ function FaceButton({ member, size, shape }: { member: Member; size: number; sha
     name = member.name + (one ? ` ${one.label}` : '');
   const opener = usePopOpener(false, () => memberSubject(member));
   return (
-    <button
-      type="button"
-      class="group/face focus-visible:outline-accent cursor-pointer rounded-md leading-0 focus-visible:outline-2 focus-visible:outline-offset-2"
-      data-uma={member.id}
-      title={name}
-      aria-label={name}
-      aria-haspopup="dialog"
-      {...opener}
-    >
+    <PortraitButton data-uma={member.id} title={name} aria-label={name} aria-haspopup="dialog" {...opener}>
       <UmaAv key={`${member.id}:${one?.id}`} uma={member.id} outfit={one?.id ?? null} size={size} shape={shape} />
-    </button>
+    </PortraitButton>
   );
 }
 // the deck(s) of a result: one deck for all, or the deck most members share and the swaps from it

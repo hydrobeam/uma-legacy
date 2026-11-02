@@ -4,7 +4,9 @@
 // `nine-*` utility from the theme's --nine-* tokens (styles/theme.css), whose faces dark mode swaps. `size` is the type
 // size (the theme's scale). A caller's `class` places the button (margins, alignment, width), never restyles it
 // (Biome's noTailwindRestyledComponents).
-// `EnhButton`: the game's Enhance menu button, art over a frame (the Umas, Support cards and Veteran Umamusume buttons).
+// `FileButton`: a file input as a plain button. `PortraitButton`: a portrait that is a button. `EnhButton`: the game's
+// Enhance menu button, art over a frame (the Umas, Support cards and Veteran Umamusume buttons).
+// Every other <button> of src/ is one component's own part, its look that component's: each says why where it is.
 import type { ButtonHTMLAttributes, ComponentChildren, InputHTMLAttributes } from 'preact';
 import { cx, tv } from 'tailwind-variants/lite';
 import type { VariantProps } from 'tailwind-variants/lite';
@@ -34,6 +36,19 @@ type ButtonProps = Look & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'class' 
 /** a game button (type="button" unless given) */
 export function Button({ variant, size, class: place, type = 'button', ...rest }: ButtonProps) {
   return <button type={type} class={buttonClass({ variant, size, class: place })} {...rest} />;
+}
+
+/** a portrait as a button (a result's member, a node's face): the picture is its face, brighter under the pointer, its
+ *  focus ring the page's thinner one; type="button" unless given */
+const portrait = tv({
+  base: 'focus-visible:outline-accent cursor-pointer rounded-md leading-0 hover:brightness-106 focus-visible:outline-2 focus-visible:outline-offset-2',
+});
+type PortraitProps = { class?: string | undefined } & Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  'class' | 'className'
+>;
+export function PortraitButton({ class: place, type = 'button', ...rest }: PortraitProps) {
+  return <button type={type} class={portrait({ class: place })} {...rest} />;
 }
 
 type FileInput = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'role' | 'class' | 'className' | 'title'>;
