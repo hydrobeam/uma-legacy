@@ -222,10 +222,8 @@ export default async function careerrun(b) {
           rq.onsuccess = () => {
             try {
               const g = rq.result.transaction('state').objectStore('state').getAll();
-              // (any format version: the solver's STATE_VERSION, career/state.rs, moves with its fields; the reload below
-              // shows the solver took this one in)
-              g.onsuccess = () =>
-                res(g.result.some((s) => Number.isInteger(s.v) && s.solve?.length > 0 && s.rolls?.length > 0));
+              // (the solver's own string, which the page never reads: the reload below shows what it held)
+              g.onsuccess = () => res(g.result.some((s) => typeof s === 'string' && s.length > 0));
               g.onerror = () => res(false);
             } catch {
               res(false);
@@ -267,7 +265,7 @@ export default async function careerrun(b) {
   const storedTaken = 'career: after a reload the stored main search is taken: the search job searches no deck';
   check(
     storedTaken,
-    saved && re.restored?.solve > 0 && re.search?.work?.nodes === 0,
+    saved && re.restored?.solve > 0 && re.restored?.rolls > 0 && re.search?.work?.nodes === 0,
     `stored ${saved} | state_in ${JSON.stringify(re.restored)} | nodes ${re.search?.work?.nodes} | before: ${before} | after: ${await note()}`,
   );
   await expect.soft(pg.locator('#run-note'), `${storedTaken}: planned`).toHaveText(/Planned in/);

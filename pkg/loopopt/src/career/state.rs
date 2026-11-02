@@ -1,20 +1,22 @@
-//! The worker's saved searches and their validation.
+//! The worker's saved searches: kept between jobs, and out to the page and back as one opaque string.
 
 use crate::career::decks::DeckSearchCache;
 use crate::career::plan::kept::Bests;
 use crate::career::plan::roll::RollKeep;
 use crate::career::pool::Pool;
 use crate::career::reply::CareerReply;
-use crate::career::search::{Assumes, CareerSearchResult, Found, Ref, Unproven};
+use crate::career::search::{CareerSearchResult, Ref};
 use crate::career::{CareerSetup, ClassFlags};
-use crate::deck::space::{MAX_DECK, SelectedDeck};
-use crate::hex::{Bits, Key, bits};
+use crate::deck::space::SelectedDeck;
 use crate::refusal::Refusal;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// Work retained between jobs. The worker owns it; career and planner operations borrow it explicitly.
-#[derive(Default)]
+/// Work retained between jobs. The worker owns it; career and planner operations borrow it explicitly. All but the
+/// process-local memos leave with `state_out` and come back with `state_in`.
+#[derive(Default, Serialize, Deserialize)]
 pub(crate) struct KeptState {
     /// Best careers and proofs per plan, oldest first.
     pub(crate) bests: Vec<Bests>,
@@ -36,9 +38,11 @@ pub(crate) struct KeptState {
     pub(crate) rolls: Vec<RollKeep>,
     /// Recent plans' step caps (`plan::caps`), oldest first: what a later plan of a pool holding theirs reads.
     pub(crate) step_caps: Vec<crate::career::plan::caps::KeptCaps>,
-    /// Recent plans' check states (`next.robust`), oldest first; not serialized.
+    /// Recent plans' check states (`next.robust`), oldest first; not stored.
+    #[serde(skip)]
     pub(crate) checks: Vec<crate::career::plan::CheckKeep>,
-    /// Deck outcomes and corner tables per setup and trainee order; not serialized.
+    /// Deck outcomes and corner tables per setup and trainee order; not stored.
+    #[serde(skip)]
     pub(crate) decks: Vec<(u64, DeckSearchCache)>,
 }
 
@@ -56,6 +60,7 @@ pub(crate) fn hash_text(text: &str) -> u64 {
 }
 
 /// One key's kept fully checked decks (`KeptState::seen`).
+#[derive(Serialize, Deserialize)]
 pub(crate) struct KeptSeen {
     /// `CareerBuild::seen_fingerprint` of the jobs that made them.
     pub(crate) key: u64,
@@ -64,6 +69,7 @@ pub(crate) struct KeptSeen {
 }
 
 /// One kept main search (`KeptState::searches`).
+#[derive(Serialize, Deserialize)]
 pub(crate) struct KeptSolve {
     /// The job's key (`CareerRun::search_key`).
     pub(crate) key: u64,
@@ -73,8 +79,7 @@ pub(crate) struct KeptSolve {
     /// Per deck class, its flags as the search left them (`SearchState::class_flags`): unioned into a job that reuses
     /// the search.
     pub(crate) class_flags: crate::uma::UmaTable<ClassFlags>,
-    /// The deck classes of its trainees, ascending: the classes its answer rests on (a stored search that says it is
-    /// `proven` with one of them breached is refused, `state_in`).
+    /// The deck classes of its trainees, ascending: the classes its answer rests on.
     pub(crate) classes: Vec<crate::uma::UmaIndex>,
 }
 
@@ -83,7 +88,7 @@ pub(crate) type Ruled = crate::uma::UmaTable<Vec<ProductProof>>;
 
 /// What one product search proved (`best_deck` pass 1): every legal deck's product value at chances q (fixed factor
 /// included, before the spark scale) is at most S.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct ProductProof {
     /// q: the inheritance chances the search ran at, per job target.
     pub(crate) inheritance_chances: Vec<f64>,
@@ -101,409 +106,71 @@ pub(crate) const SEEN_KEEP: usize = 256;
 // ---------- the worker's kept work across page loads ----------
 // What a worker keeps between jobs (the kept plans, `KeptState::bests`; the proofs, `KeptState::seen`; its main
 // searches, roll states and step caps) leaves as `state_out` and comes back as `state_in`, so the first plan after a page
-// reload reuses the work of the last session. It is plain serde (`StoredState`), each float as its bits and each key in
-// hex (`crate::hex`): the state passes through the page's JavaScript, whose JSON writes an infinite float (a search's
-// `next_bound` or `cert`) as null and whose numbers cannot hold a 64-bit key, and what comes back is what left, bit for
-// bit, as the kept bounds and proofs prune later searches by it. The page keys what it stores by the solver and data
-// fingerprints, so a release starts afresh (the keys inside, `career::keys` and `bests_key`, hash with std's DefaultHasher,
-// fixed within a build). A store of another version, or one that does not parse, is refused whole (the page then
-// drops it and plans cold).
-// (12: keys are the jobs' typed content, `crate::key`, no longer their JSON text; every earlier store is refused)
-pub(crate) const STATE_VERSION: u64 = 12;
+// reload reuses the work of the last session. It leaves as one string the page stores and sends back unread:
+// STATE_VERSION, then the kept types themselves (their serde derives) in postcard, in base64 text. Postcard writes each
+// f64 as its 8 bytes and each key as its u64, so what comes back is what left, bit for bit, an infinite step cost
+// included (the kept bounds and proofs prune later searches by it); JSON could not carry those (it has no infinity, and
+// the page's JavaScript reads no 64-bit integer). The page keys what it stores by the solver's and data's fingerprints
+// (engine.ts `stateKey`), so a release starts afresh (the keys inside, `career::keys` and `bests_key`, hash with std's
+// DefaultHasher, fixed within a build). A string of another version, or one that does not decode to its end, is refused
+// whole (the page then drops it and plans cold); nothing else in it is checked, as it is only ever this build's own
+// `state_out`. What a store says of a setup (deck entries, chances per target, trainees and veterans) is checked where it
+// meets one (`CareerSetup::seen_fits`, `solved_fits`).
+// (13: the kept types in postcard, in place of JSON records with each float and key in hex; every earlier store is
+// refused)
+pub(crate) const STATE_VERSION: u64 = 13;
 
-/// What a stored state may hold, checked as it is decoded (`state_in`, before anything is installed): a stored count (the
-/// umas or deck classes a list covers) at most STATE_MAX_N, so nothing is allocated
-/// from a count past it; every index within the list it indexes; no float NaN (the bounds compare them); chances,
-/// odds, deck hint chances and a fully checked deck's value within [0, 1], a product proof's bound finite and not
-/// negative (it may be a seed above 1: the bar over a small spark scale), as anything else is corrupt and the bounds
-/// would prune with it; a deck at most `MAX_DECK` cards. What a store says of a setup (deck
-/// entries, chances per target) is checked where it meets that setup (`CareerSetup::seen_fits`, `solve_kept`).
-pub(crate) const STATE_MAX_N: usize = 1 << 10;
-
-/// The worker's kept work as the page stores it (`state_out`; back with `state_in`).
-#[derive(Serialize, Deserialize, TS)]
-pub(crate) struct StoredState {
-    /// `STATE_VERSION`: a store of another is refused
-    pub(crate) v: u64,
-    pub(crate) bests: Vec<crate::career::plan::kept::StoredBests>,
-    pub(crate) seen: Vec<StoredSeen>,
-    pub(crate) solve: Vec<StoredSolve>,
-    /// class flags by class content key (`ClassFlags::bits`), keys ascending
-    pub(crate) flags: Vec<(Key, u8)>,
-    pub(crate) rolls: Vec<crate::career::plan::roll::StoredRoll>,
-    pub(crate) caps: Vec<crate::career::plan::caps::StoredCaps>,
+/// The kept work as `state_out` gives it: `version`, then the kept state, in postcard, as base64 text.
+pub(super) fn encode(version: u64, kept: &KeptState) -> String {
+    let bytes = postcard::to_allocvec(&(version, kept)).expect("the kept types serialize to postcard");
+    BASE64.encode(bytes)
 }
 
-/// A stored float, any but NaN (the bounds compare them).
-pub(crate) const fn number(value: Bits) -> Option<f64> {
-    if value.0.is_nan() { None } else { Some(value.0) }
-}
-
-/// Stored floats (`number`).
-pub(crate) fn numbers(values: &[Bits]) -> Option<Vec<f64>> {
-    values.iter().map(|&value| number(value)).collect()
-}
-
-/// A stored chance: in [0, 1].
-pub(crate) fn chance(value: Bits) -> Option<f64> {
-    Some(value.0).filter(|chance| (0.0..=1.0).contains(chance))
-}
-
-/// Stored chances (`chance`).
-pub(crate) fn chances(values: &[Bits]) -> Option<Vec<f64>> {
-    values.iter().map(|&value| chance(value)).collect()
-}
-
-/// A stored count: at most `STATE_MAX_N`.
-pub(crate) const fn count(stored: usize) -> Option<usize> {
-    if stored <= STATE_MAX_N { Some(stored) } else { None }
-}
-
-/// A deck as stored: its entries, plain pals and filler cards, and its hint chances per uncertain target.
-#[derive(Serialize, Deserialize, TS)]
-pub(crate) struct StoredDeck {
-    pub(crate) entries: Vec<usize>,
-    pub(crate) plain: usize,
-    pub(crate) filler: usize,
-    pub(crate) white: Vec<Bits>,
-    pub(crate) gold: Vec<Bits>,
-}
-
-pub(crate) fn sel_out(deck: &SelectedDeck) -> StoredDeck {
-    StoredDeck {
-        entries: deck.entries.clone(),
-        plain: deck.plain_pals,
-        filler: deck.filler_cards,
-        white: bits(&deck.white_hint_chances),
-        gold: bits(&deck.gold_hint_chances),
+/// The kept state of an `encode`d string; the refusal's reason for one of another version or that does not decode to
+/// its end.
+fn decode(state: &str) -> Result<KeptState, &'static str> {
+    const UNREADABLE: &str = "state: does not parse";
+    let bytes = BASE64.decode(state).map_err(|_| UNREADABLE)?;
+    let (version, rest) = postcard::take_from_bytes::<u64>(&bytes).map_err(|_| UNREADABLE)?;
+    if version != STATE_VERSION {
+        return Err("state: another version");
     }
-}
-
-pub(crate) fn sel_in(stored: &StoredDeck) -> Option<SelectedDeck> {
-    let (white_hint_chances, gold_hint_chances) = (chances(&stored.white)?, chances(&stored.gold)?);
-    // (a deck: at most MAX_DECK cards, a white and a gold chance per target)
-    let cards = stored.entries.len().checked_add(stored.plain)?.checked_add(stored.filler)?;
-    (cards <= MAX_DECK && white_hint_chances.len() == gold_hint_chances.len()).then(|| SelectedDeck {
-        entries: stored.entries.clone(),
-        plain_pals: stored.plain,
-        filler_cards: stored.filler,
-        white_hint_chances,
-        gold_hint_chances,
-    })
-}
-
-/// A fully checked deck as stored: the inheritance chances it was checked at, its value and the deck.
-#[derive(Serialize, Deserialize, TS)]
-pub(crate) struct StoredRef {
-    pub(crate) q: Vec<Bits>,
-    pub(crate) value: Bits,
-    pub(crate) deck: StoredDeck,
-}
-
-fn ref_out(reference: &Ref) -> StoredRef {
-    StoredRef { q: bits(&reference.inheritance_chances), value: Bits(reference.value), deck: sel_out(&reference.deck) }
-}
-
-fn ref_in(stored: &StoredRef) -> Option<Ref> {
-    Some(Ref {
-        inheritance_chances: chances(&stored.q)?,
-        // (a P(all) before the spark scale: a chance)
-        value: chance(stored.value)?,
-        deck: sel_in(&stored.deck)?,
-    })
-}
-
-/// A career as stored: the trainee (uma index), her parents (legacy indices), its value, ceiling and deck.
-#[derive(Serialize, Deserialize, TS)]
-pub(crate) struct StoredFound {
-    pub(crate) trainee: usize,
-    pub(crate) parents: [usize; 2],
-    pub(crate) value: Bits,
-    pub(crate) ceiling: Bits,
-    pub(crate) deck: StoredDeck,
-}
-
-pub(crate) fn found_out(found: &Found) -> StoredFound {
-    StoredFound {
-        trainee: found.trainee.0,
-        parents: [found.first_parent, found.second_parent],
-        value: Bits(found.value),
-        ceiling: Bits(found.ceiling),
-        deck: sel_out(&found.deck),
+    match postcard::take_from_bytes::<KeptState>(rest) {
+        Ok((kept, [])) => Ok(kept),
+        _ => Err(UNREADABLE),
     }
-}
-
-pub(crate) fn found_in(stored: &StoredFound) -> Option<Found> {
-    Some(Found {
-        trainee: crate::uma::UmaIndex(stored.trainee),
-        first_parent: stored.parents[0],
-        second_parent: stored.parents[1],
-        value: number(stored.value)?,
-        ceiling: number(stored.ceiling)?,
-        deck: sel_in(&stored.deck)?,
-    })
-}
-
-/// Per-uma (or per-class) lists as stored: their count, and each non-empty one by its index.
-#[derive(Serialize, Deserialize, TS)]
-pub(crate) struct StoredLists<Item> {
-    pub(crate) count: usize,
-    pub(crate) lists: Vec<(usize, Vec<Item>)>,
-}
-
-fn lists_out<Item, Stored>(
-    lists: &crate::uma::UmaTable<Vec<Item>>,
-    write_item: impl Fn(&Item) -> Stored,
-) -> StoredLists<Stored> {
-    StoredLists {
-        count: lists.len(),
-        lists: lists
-            .iter()
-            .enumerate()
-            .filter(|(_, items)| !items.is_empty())
-            .map(|(i, items)| (i, items.iter().map(&write_item).collect()))
-            .collect(),
-    }
-}
-
-/// The lists, each index within the count (`STATE_MAX_N` at most), each item read (`read_item`).
-fn lists_in<Item: Clone, Stored>(
-    stored: &StoredLists<Stored>,
-    read_item: impl Fn(&Stored) -> Option<Item>,
-) -> Option<crate::uma::UmaTable<Vec<Item>>> {
-    let list_count = count(stored.count)?;
-    let mut lists = crate::uma::UmaTable(vec![vec![]; list_count]);
-    for (i, items) in &stored.lists {
-        if *i >= list_count {
-            return None;
-        }
-        lists[crate::uma::UmaIndex(*i)] = items.iter().map(&read_item).collect::<Option<_>>()?;
-    }
-    Some(lists)
-}
-
-/// One key's kept fully checked decks as stored (`KeptSeen`).
-#[derive(Serialize, Deserialize, TS)]
-pub(crate) struct StoredSeen {
-    pub(crate) key: Key,
-    /// per deck class, its fully checked decks
-    pub(crate) refs: StoredLists<StoredRef>,
-}
-
-fn seen_out(kept: &KeptState) -> Vec<StoredSeen> {
-    kept.seen.iter().map(|seen| StoredSeen { key: Key(seen.key), refs: lists_out(&seen.refs, ref_out) }).collect()
-}
-
-fn seen_in(stored: &[StoredSeen]) -> Option<Vec<KeptSeen>> {
-    stored.iter().map(|seen| Some(KeptSeen { key: seen.key.0, refs: lists_in(&seen.refs, ref_in)? })).collect()
-}
-
-/// Class flags as stored: the class count, and the breached classes and those assuming each named assumption.
-#[derive(Serialize, Deserialize, TS)]
-pub(crate) struct StoredClassFlags {
-    pub(crate) count: usize,
-    pub(crate) breached: Vec<usize>,
-    pub(crate) two_feeder: Vec<usize>,
-    pub(crate) multi_feeder: Vec<usize>,
-}
-
-fn flags_out(flags: &crate::uma::UmaTable<ClassFlags>) -> StoredClassFlags {
-    let with = |set: fn(ClassFlags) -> bool| {
-        flags.indices().filter(|&class| set(flags[class])).map(|class| class.0).collect::<Vec<_>>()
-    };
-    StoredClassFlags {
-        count: flags.len(),
-        breached: with(|f| f.breached),
-        two_feeder: with(|f| f.assumes.two_feeder),
-        multi_feeder: with(|f| f.assumes.multi_feeder),
-    }
-}
-
-/// Class flags from their stored form (`flags_out`): every class within the count
-fn flags_in(stored: &StoredClassFlags) -> Option<crate::uma::UmaTable<ClassFlags>> {
-    let mut flags = crate::uma::UmaTable(vec![ClassFlags::default(); count(stored.count)?]);
-    for &class in &stored.breached {
-        flags.0.get_mut(class)?.breached = true;
-    }
-    for &class in &stored.two_feeder {
-        flags.0.get_mut(class)?.assumes.two_feeder = true;
-    }
-    for &class in &stored.multi_feeder {
-        flags.0.get_mut(class)?.assumes.multi_feeder = true;
-    }
-    Some(flags)
-}
-
-/// Class flags by content key as stored ([key, bits], `ClassFlags::bits`), keys ascending
-pub(crate) fn keyed_flags_out<'flags>(
-    flags: impl Iterator<Item = (&'flags u64, &'flags ClassFlags)>,
-) -> Vec<(Key, u8)> {
-    flags.map(|(&key, flags)| (Key(key), flags.bits())).collect()
-}
-
-/// Class flags by content key from `keyed_flags_out`'s form (a repeated key unioned); None for an unknown bit
-pub(crate) fn keyed_flags_in(stored: &[(Key, u8)]) -> Option<std::collections::BTreeMap<u64, ClassFlags>> {
-    let mut flags = std::collections::BTreeMap::new();
-    for &(key, bits) in stored {
-        let kept = ClassFlags::from_bits(bits)?;
-        let slot: &mut ClassFlags = flags.entry(key.0).or_default();
-        *slot = slot.union(kept);
-    }
-    Some(flags)
-}
-
-/// A kept main search as stored (`KeptSolve`): every field of `CareerSearchResult`, its product proofs, class flags and
-/// trainees' classes.
-#[derive(Serialize, Deserialize, TS)]
-pub(crate) struct StoredSolve {
-    pub(crate) key: Key,
-    pub(crate) found: Vec<StoredFound>,
-    pub(crate) refs: StoredLists<StoredRef>,
-    pub(crate) work: usize,
-    pub(crate) candidates: usize,
-    pub(crate) solved: usize,
-    pub(crate) bounded: usize,
-    pub(crate) scored: usize,
-    pub(crate) skipped: usize,
-    pub(crate) next_bound: Bits,
-    pub(crate) complete: bool,
-    pub(crate) unproven: Unproven,
-    pub(crate) assumes: Assumes,
-    pub(crate) proven: bool,
-    pub(crate) cert: Bits,
-    /// per deck class, its product proofs: [the chances searched at, the bound]
-    pub(crate) ruled: StoredLists<(Vec<Bits>, Bits)>,
-    pub(crate) class_flags: StoredClassFlags,
-    pub(crate) classes: Vec<usize>,
-}
-
-fn solve_out(kept: &KeptState) -> Vec<StoredSolve> {
-    kept.searches
-        .iter()
-        .map(|KeptSolve { key, solved, ruled, class_flags, classes }| StoredSolve {
-            key: Key(*key),
-            found: solved.found.iter().map(found_out).collect(),
-            refs: lists_out(&solved.refs, ref_out),
-            work: solved.work,
-            candidates: solved.candidates,
-            solved: solved.solved,
-            bounded: solved.bounded,
-            scored: solved.scored,
-            skipped: solved.skipped,
-            next_bound: Bits(solved.next_bound),
-            complete: solved.complete,
-            unproven: solved.unproven,
-            assumes: solved.assumes,
-            proven: solved.proven,
-            cert: Bits(solved.certified_cap),
-            ruled: lists_out(ruled, |proof| (bits(&proof.inheritance_chances), Bits(proof.product_bound))),
-            class_flags: flags_out(class_flags),
-            classes: classes.iter().map(|class| class.0).collect(),
-        })
-        .collect()
-}
-
-fn solve_in(stored: &[StoredSolve]) -> Option<Vec<KeptSolve>> {
-    stored
-        .iter()
-        .map(|stored| {
-            let solved = CareerSearchResult {
-                found: stored.found.iter().map(found_in).collect::<Option<_>>()?,
-                refs: lists_in(&stored.refs, ref_in)?,
-                work: stored.work,
-                candidates: stored.candidates,
-                solved: stored.solved,
-                bounded: stored.bounded,
-                scored: stored.scored,
-                skipped: stored.skipped,
-                next_bound: number(stored.next_bound)?,
-                complete: stored.complete,
-                unproven: stored.unproven,
-                assumes: stored.assumes,
-                proven: stored.proven,
-                certified_cap: number(stored.cert)?,
-            };
-            // (complete exactly when no reason is listed; proven only when complete)
-            if solved.complete == solved.unproven.any() || (solved.proven && !solved.complete) {
-                return None;
-            }
-            let ruled = lists_in(&stored.ruled, |(inheritance_chances, bound)| {
-                Some(ProductProof {
-                    inheritance_chances: chances(inheritance_chances)?,
-                    // (a product value, or the seed a search found nothing above: finite and not negative)
-                    product_bound: Some(bound.0).filter(|bound| bound.is_finite() && *bound >= 0.0)?,
-                })
-            })?;
-            let class_flags = flags_in(&stored.class_flags)?;
-            let classes: Vec<crate::uma::UmaIndex> = stored
-                .classes
-                .iter()
-                .map(|&class| (class < class_flags.len()).then_some(crate::uma::UmaIndex(class)))
-                .collect::<Option<_>>()?;
-            // (proven with a class of its trainees breached: inconsistent, `CareerSearchResult::qualify`)
-            if solved.proven && classes.iter().any(|&class| !class_flags[class].proves()) {
-                return None;
-            }
-            Some(KeptSolve { key: stored.key.0, solved, ruled, class_flags, classes })
-        })
-        .collect()
 }
 
 pub(crate) fn state_out(kept: &KeptState) -> StateOut {
-    StateOut {
-        state: StoredState {
-            v: STATE_VERSION,
-            bests: crate::career::plan::kept::bests_out(&kept.bests),
-            seen: seen_out(kept),
-            solve: solve_out(kept),
-            flags: keyed_flags_out(kept.flags.iter()),
-            rolls: crate::career::plan::roll::rolls_out(&kept.rolls),
-            caps: crate::career::plan::caps::caps_out(&kept.step_caps),
-        },
-    }
+    StateOut { state: encode(STATE_VERSION, kept) }
 }
 
 /// replaces the kept plans, proofs, main searches, plans' roll states and step caps with the page's stored ones and unions its
-/// class flags into the worker's (all or nothing: a store of another version, or that does not parse, is refused)
-pub(crate) fn state_in(kept: &mut KeptState, stored: &StoredState) -> CareerReply {
-    if stored.v != STATE_VERSION {
-        return CareerReply::Refusal(Refusal::new("state: another version"));
-    }
-    // Decode every store before replacing any live state.
-    let (Some(bests), Some(seen), Some(searches), Some(flags), Some(rolls), Some(step_caps)) = (
-        crate::career::plan::kept::bests_in(&stored.bests),
-        seen_in(&stored.seen),
-        solve_in(&stored.solve),
-        keyed_flags_in(&stored.flags),
-        crate::career::plan::roll::rolls_in(&stored.rolls),
-        crate::career::plan::caps::caps_in(&stored.caps),
-    ) else {
-        return CareerReply::Refusal(Refusal::new("state: does not parse"));
+/// class flags into the worker's (all or nothing: a store of another version, or that does not decode, is refused)
+pub(crate) fn state_in(kept: &mut KeptState, state: &str) -> CareerReply {
+    let mut stored = match decode(state) {
+        Ok(stored) => stored,
+        Err(reason) => return CareerReply::Refusal(Refusal::new(reason)),
     };
+    // (a roll state's scorings without the tables `derive` builds from what is stored)
+    for roll in &mut stored.rolls {
+        roll.derive();
+    }
     let counts = StateCounts {
-        bests: bests.len(),
-        seen: seen.len(),
-        solve: searches.len(),
-        rolls: rolls.len(),
-        caps: step_caps.len(),
+        bests: stored.bests.len(),
+        seen: stored.seen.len(),
+        solve: stored.searches.len(),
+        rolls: stored.rolls.len(),
+        caps: stored.step_caps.len(),
     };
     // (the stored flags unioned into the worker's: a store never clears a flag)
-    let mut flags = flags;
     for (key, live) in std::mem::take(&mut kept.flags) {
-        let slot = flags.entry(key).or_default();
-        *slot = slot.union(live);
+        stored.flags.entry(key).or_default().union_with(&live);
     }
-    // Deck memos are process-local and were never part of the stored format; retain them on import.
-    *kept = KeptState {
-        bests,
-        seen,
-        searches,
-        rolls,
-        step_caps,
-        flags,
-        checks: std::mem::take(&mut kept.checks),
-        decks: std::mem::take(&mut kept.decks),
-    };
+    // Deck memos and check states are process-local and never stored; retain them on import.
+    stored.checks = std::mem::take(&mut kept.checks);
+    stored.decks = std::mem::take(&mut kept.decks);
+    *kept = stored;
     CareerReply::StateIn(counts)
 }
 
@@ -550,7 +217,8 @@ impl CareerSetup<'_> {
 /// `state_out`'s answer: the kept work to store.
 #[derive(Serialize, TS)]
 pub(crate) struct StateOut {
-    pub(crate) state: StoredState,
+    /// the kept work as one opaque string (`encode`), which the page stores and sends back to `state_in` unread
+    pub(crate) state: String,
 }
 
 /// What a store restored (`state_in`; a store it refuses is a refusal, which the page drops): the kept plans, proofs'
@@ -562,4 +230,91 @@ pub(crate) struct StateCounts {
     pub(crate) solve: usize,
     pub(crate) rolls: usize,
     pub(crate) caps: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::career::CertifiedCap;
+    use crate::career::search::{Assumes, Unproven, UnprovenReason};
+    use crate::uma::{UmaIndex, UmaTable};
+
+    /// The refusal's reason for a store `state_in` refuses (None: it was taken).
+    fn refusal(kept: &mut KeptState, state: &str) -> Option<String> {
+        match state_in(kept, state) {
+            CareerReply::Refusal(refusal) => Some(refusal.error),
+            _ => None,
+        }
+    }
+
+    /// What `state_out` gives, `state_in` puts back bit for bit: any f64 (-0.0, an infinity, a subnormal, 0.1 + 0.2), a
+    /// key past 2^53, the reasons and assumptions as sets, a certificate of none; the same string out again. A store of
+    /// another version, not base64, cut short or with a byte past its end is refused, nothing installed.
+    #[test]
+    fn a_store_comes_back_as_it_left_and_another_version_is_refused() {
+        let deck = SelectedDeck {
+            entries: vec![2],
+            plain_pals: 1,
+            filler_cards: 2,
+            white_hint_chances: vec![-0.0],
+            gold_hint_chances: vec![f64::MIN_POSITIVE / 2.0],
+        };
+        let reference = Ref { inheritance_chances: vec![0.1 + 0.2, 1.0], value: 0.3, deck };
+        let solved = CareerSearchResult {
+            found: vec![],
+            refs: UmaTable(vec![vec![], vec![reference.clone()]]),
+            work: 7,
+            candidates: 9,
+            solved: 1,
+            bounded: 2,
+            scored: 3,
+            skipped: 4,
+            next_bound: 0.0,
+            complete: false,
+            unproven: Unproven::from([UnprovenReason::WorkCap, UnprovenReason::CapBreach]),
+            assumes: Assumes::new(),
+            proven: false,
+            certified_cap: CertifiedCap::default(),
+        };
+        let proof = ProductProof { inheritance_chances: vec![0.5], product_bound: f64::INFINITY };
+        let kept = KeptState {
+            seen: vec![KeptSeen { key: u64::MAX - 1, refs: UmaTable(vec![vec![reference]]) }],
+            searches: vec![KeptSolve {
+                key: 1 << 60,
+                solved,
+                ruled: UmaTable(vec![vec![proof], vec![]]),
+                class_flags: UmaTable(vec![ClassFlags::default(); 2]),
+                classes: vec![UmaIndex(1)],
+            }],
+            ..KeptState::default()
+        };
+        let stored = state_out(&kept).state;
+        let mut restored = KeptState::default();
+        assert_eq!(refusal(&mut restored, &stored), None);
+        assert_eq!(state_out(&restored).state, stored, "the same store out again");
+        let bits = |values: &[f64]| values.iter().map(|value| value.to_bits()).collect::<Vec<_>>();
+        let reference = &restored.seen[0].refs[UmaIndex(0)][0];
+        assert_eq!(restored.seen[0].key, u64::MAX - 1);
+        assert_eq!(bits(&reference.inheritance_chances), bits(&[0.1 + 0.2, 1.0]));
+        assert_eq!(bits(&reference.deck.white_hint_chances), bits(&[-0.0]));
+        assert_eq!(bits(&reference.deck.gold_hint_chances), bits(&[f64::MIN_POSITIVE / 2.0]));
+        let search = &restored.searches[0];
+        assert_eq!(search.key, 1 << 60);
+        assert_eq!(search.ruled[UmaIndex(0)][0].product_bound, f64::INFINITY);
+        assert_eq!(search.solved.unproven, Unproven::from([UnprovenReason::WorkCap, UnprovenReason::CapBreach]));
+        assert_eq!(search.solved.certified_cap, CertifiedCap::default());
+
+        let other_version = encode(STATE_VERSION - 1, &KeptState::default());
+        assert_eq!(refusal(&mut restored, &other_version).as_deref(), Some("state: another version"));
+        let bytes = BASE64.decode(&stored).expect("base64");
+        let unreadable = [
+            "not base64!".to_owned(),
+            BASE64.encode(&bytes[..bytes.len() - 1]),
+            BASE64.encode([bytes.as_slice(), &[0]].concat()),
+        ];
+        for state in &unreadable {
+            assert_eq!(refusal(&mut restored, state).as_deref(), Some("state: does not parse"));
+        }
+        assert_eq!(state_out(&restored).state, stored, "a refused store installed something");
+    }
 }

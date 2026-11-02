@@ -65,7 +65,7 @@ pub(crate) struct CareerSearch {
     pub(crate) bounded: usize,
     pub(crate) scored: usize,
     pub(crate) skipped: usize,
-    /// the ceiling of every career left unsolved (null: none left, or one career given)
+    /// the ceiling of every career left unsolved (0 when none is left; null where one career was given)
     pub(crate) next_bound: Option<f64>,
     /// false: a search of the job was cut short, or certified at a lower deck cap only
     pub(crate) complete: bool,

@@ -5,7 +5,7 @@ use crate::career::decks::CfStats;
 use crate::career::plan::report::{PlanReply, RollReply};
 use crate::career::pool::Pool;
 use crate::career::reply::{CapRerun, CareerSearch, CarriedRoll, JobCertificates, SearchWork};
-use crate::career::search::{Assumes, CareerSearchResult, SearchRequest, Unproven, solve_kept};
+use crate::career::search::{CareerSearchResult, SearchRequest, Unproven, UnprovenReason, solve_kept};
 use crate::career::state::{KeptSeen, KeptState, SEEN_KEEP};
 use crate::career::{
     CareerJob, CareerSetup, ClassFlags, DeckSearchAudit, Env, JobInputs, SearchState, answer_job, run_career_in,
@@ -59,8 +59,7 @@ pub(super) fn keep_seen(kept: &mut KeptState, state: &SearchState, seen_fingerpr
 /// the job started from the kept ones (`career_setup`), so its own are their union with what it flagged.
 pub(super) fn keep_flags(kept: &mut KeptState, setup: &CareerSetup, state: &SearchState) {
     for (key, flags) in setup.keyed_flags(state) {
-        let slot = kept.flags.entry(key).or_default();
-        *slot = slot.union(flags);
+        kept.flags.entry(key).or_default().union_with(&flags);
     }
 }
 
@@ -153,18 +152,18 @@ pub(super) fn search_output(
         next_bound: Some(search.next_bound),
         // a deck band over EXACT_CAP decks (in the main search or any later one of this job) was certified at a lower
         // cap only: `cap` says which, `complete` is false
-        complete: search.complete && !(search.certified_cap < rho_top),
+        complete: search.complete && !search.certified_cap.below(rho_top),
         proven_top: search.proven,
-        cap: rho_top.min(search.certified_cap),
+        cap: search.certified_cap.under(rho_top),
         class_caps: env.setup.space.caps(),
         work,
         given: None,
         // why the main search is not complete (`Unproven`: "work_cap", "band_overflow", "cap_breach"); `job_unproven`
         // (`note_job_certificates`) has every search of the job's
-        unproven: search.unproven.any().then_some(search.unproven),
+        unproven: (!search.unproven.is_empty()).then(|| search.unproven.clone()),
         // the named assumptions its proof rests on beyond the derived bounds and the measured class caps (`Assumes`:
         // "two_feeder_cap", "multi_feeder_cap"; docs/SOLVER.md, *What "proven" rests on*)
-        assumes: (search.assumes != Assumes::default()).then_some(search.assumes),
+        assumes: (!search.assumes.is_empty()).then(|| search.assumes.clone()),
         compare: career_job.compare.then_some(true),
         next: None,
         certificates: JobCertificates::default(),
@@ -210,17 +209,16 @@ pub(super) fn plan_next<'data>(
 /// The main search's output (`search_output`) qualified by its trainees' class flags `flags` as they stand at the end
 /// of the job (`CareerSearchResult::qualify`): a class a later search flagged (the plan's, or one of an earlier job on
 /// the deck space) unproves it (`unproven`, `complete` and `proven_top` false), and an assuming one adds to `assumes`.
-fn qualify_output(out: &mut CareerSearch, flags: ClassFlags) {
-    let mut unproven = out.unproven.unwrap_or_default();
-    unproven.cap_breach |= flags.breached;
-    if unproven.any() {
-        out.unproven = Some(unproven);
+fn qualify_output(out: &mut CareerSearch, flags: &ClassFlags) {
+    if flags.breached {
+        out.unproven.get_or_insert_default().insert(UnprovenReason::CapBreach);
+    }
+    if out.unproven.is_some() {
         out.complete = false;
         out.proven_top = false;
     }
-    let assumes = out.assumes.unwrap_or_default().union(flags.assumes);
-    if assumes != Assumes::default() {
-        out.assumes = Some(assumes);
+    if !flags.assumes.is_empty() {
+        out.assumes.get_or_insert_default().extend(&flags.assumes);
     }
 }
 
@@ -239,14 +237,14 @@ pub(super) fn note_job_certificates(
     rho_top: f64,
     trainees: &[UmaIndex],
 ) {
-    qualify_output(out, setup.trainee_flags(state, trainees));
+    qualify_output(out, &setup.trainee_flags(state, trainees));
     // (the classes the job answers for: the main search's trainees', and with a plan every uma it may pick)
     let answered = if out.next.is_some() { setup.owned.as_slice() } else { trainees };
     let job_flags = setup.trainee_flags(state, answered);
     let certificates = &mut out.certificates;
     if audit.overflows > 0 {
         out.complete = false;
-        out.cap = rho_top.min(audit.certified_cap);
+        out.cap = audit.certified_cap.under(rho_top);
         certificates.band_overflows = Some(audit.overflows);
     }
     // a scored deck past its class's assumed cap (in any search of the job): per class [class, ratio, cap]
@@ -297,25 +295,31 @@ pub(super) fn note_job_certificates(
     // (a `cap_free` job's cap-free search that proved nothing ran out of its work; elsewhere it is a rerun's)
     // (and the main search's own reasons but its work cap, a kept search's included: it ran in an earlier job)
     let cap_free_job = setup.space.deck_job.cap_free;
-    let main_unproven = out.unproven.unwrap_or_default();
-    let job_unproven = Unproven {
-        work_cap: cap_free_job && cap_free.open > 0,
-        band_overflow: audit.overflows > 0 || main_unproven.band_overflow,
-        cap_breach: audit.capped_breaches > 0
-            || job_flags.breached
-            || main_unproven.cap_breach
-            || (!cap_free_job && cap_free.open > 0)
-            || cap_free.unhandled > 0,
-    };
+    let main_unproven = out.unproven.clone().unwrap_or_default();
+    let mut job_unproven = Unproven::new();
+    if cap_free_job && cap_free.open > 0 {
+        job_unproven.insert(UnprovenReason::WorkCap);
+    }
+    if audit.overflows > 0 || main_unproven.contains(&UnprovenReason::BandOverflow) {
+        job_unproven.insert(UnprovenReason::BandOverflow);
+    }
+    if audit.capped_breaches > 0
+        || job_flags.breached
+        || main_unproven.contains(&UnprovenReason::CapBreach)
+        || (!cap_free_job && cap_free.open > 0)
+        || cap_free.unhandled > 0
+    {
+        job_unproven.insert(UnprovenReason::CapBreach);
+    }
     // (every search of the job and every class it answers for: what `assumes` says of the main search, which a kept
     // search carries without running)
-    let job_assumes = Assumes { two_feeder: audit.assumed_searches > 0, multi_feeder: audit.multi_searches > 0 }
-        .union(job_flags.assumes)
-        .union(out.assumes.unwrap_or_default());
-    if job_assumes != Assumes::default() {
+    let mut job_assumes = audit.assumes_since(0, 0);
+    job_assumes.extend(&job_flags.assumes);
+    job_assumes.extend(out.assumes.iter().flatten());
+    if !job_assumes.is_empty() {
         out.certificates.job_assumes = Some(job_assumes);
     }
-    if job_unproven.any() {
+    if !job_unproven.is_empty() {
         out.certificates.job_unproven = Some(job_unproven);
         out.complete = false;
     }

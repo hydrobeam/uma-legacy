@@ -6,19 +6,17 @@
 //! while its pool holds that pool's veterans; a removed veteran voids them.
 use crate::career::Legacy;
 use crate::career::plan::cont::{BuildPlan, Cont};
-use crate::career::state::{KeptState, STATE_MAX_N};
-use crate::hex::{Bits, Key};
+use crate::career::state::KeptState;
 use crate::key::content_key;
 use crate::uma::UmaIndex;
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 /// Kept plans' caps held (the most recent last): a few numbers each.
 const CAPS_KEEP: usize = 8;
 
 /// A kept fit's continuation for one candidate: what `Cont::with_decay` takes, so the cap is that Cont's cost at any
 /// odds (the same construction, so the same f64s as the kept plan priced her with).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) struct CapCurve {
     lam: f64,
     phi: f64,
@@ -62,14 +60,14 @@ impl CapCurve {
 }
 
 /// A candidate's kept cap: her kept fit's curve and her odds in the kept plan.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) struct KeptCap {
     pub(crate) curve: CapCurve,
     pub(crate) odds: f64,
 }
 
 /// A candidate's step cap in a plan: her kept cap and its curve's plan at her odds now.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub(crate) struct StepCap {
     pub(crate) kept: KeptCap,
     /// The curve's plan at her odds now (`CapCurve::plan`).
@@ -102,7 +100,7 @@ pub(crate) fn capped(plan: BuildPlan, cap: Option<StepCap>) -> BuildPlan {
 /// (`capped_at`): one envelope for the candidate, read at whatever odds a side of hers is priced at (her best career's,
 /// an Alternative's own, a lifted one's), so the plan's steps stay a function of candidate and odds. At her odds now it
 /// is `now`'s (the same first least curve), so her best career's step is what one cap gave.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub(crate) struct StepCaps {
     pub(crate) curves: Vec<KeptCap>,
     pub(crate) now: Option<StepCap>,
@@ -135,7 +133,7 @@ impl StepCaps {
 /// veteran by her record's key (`content_key`), ascending (a multiset: two identical records are two veterans). The fixed
 /// parents are named by their veterans, not their positions: the pool's order is not part of the key, so a position
 /// would name another veteran once the legacies are reordered
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct CapPool {
     scope: u64,
     veterans: Vec<u64>,
@@ -167,6 +165,7 @@ impl CapPool {
 }
 
 /// A plan's caps kept for later plans: per candidate uma (`Data::umas`) her kept cap.
+#[derive(Serialize, Deserialize)]
 pub(crate) struct KeptCaps {
     pool: CapPool,
     caps: Vec<(UmaIndex, KeptCap)>,
@@ -232,70 +231,6 @@ pub(crate) fn keep_caps(kept: &mut KeptState, pool: CapPool, caps: Vec<(UmaIndex
     }
 }
 
-/// A cap as stored: [lam, phi, pinf, p0, lam decay, odds], every float as its bits.
-pub(crate) type StoredCap = [Bits; 6];
-
-pub(crate) const fn cap_out(cap: &KeptCap) -> StoredCap {
-    let CapCurve { lam, phi, pinf, anchor_odds, lam_decay } = cap.curve;
-    [Bits(lam), Bits(phi), Bits(pinf), Bits(anchor_odds), Bits(lam_decay), Bits(cap.odds)]
-}
-
-/// A stored cap (`cap_out`): every field finite, lam, pinf and p0 not negative, phi in [0, 1], the decay positive and
-/// her odds in (0, 1]
-pub(crate) fn cap_in(stored: &StoredCap) -> Option<KeptCap> {
-    let field = |index: usize| Some(stored[index].0).filter(|value| value.is_finite());
-    let curve =
-        CapCurve { lam: field(0)?, phi: field(1)?, pinf: field(2)?, anchor_odds: field(3)?, lam_decay: field(4)? };
-    let odds = field(5)?;
-    let valid = curve.lam >= 0.0
-        && (0.0..=1.0).contains(&curve.phi)
-        && curve.pinf >= 0.0
-        && curve.anchor_odds >= 0.0
-        && curve.lam_decay > 0.0
-        && odds > 0.0
-        && odds <= 1.0;
-    valid.then_some(KeptCap { curve, odds })
-}
-
-/// A plan's kept caps as stored (`KeptCaps`): its pool's scope and veterans (hashes), and per uma (index) her cap.
-#[derive(Serialize, Deserialize, TS)]
-pub(crate) struct StoredCaps {
-    pub(crate) scope: Key,
-    pub(crate) veterans: Vec<Key>,
-    pub(crate) caps: Vec<(usize, StoredCap)>,
-}
-
-/// The kept caps for the page to store (`state_out`).
-pub(crate) fn caps_out(kept: &[KeptCaps]) -> Vec<StoredCaps> {
-    kept.iter()
-        .map(|entry| StoredCaps {
-            scope: Key(entry.pool.scope),
-            veterans: entry.pool.veterans.iter().map(|&veteran| Key(veteran)).collect(),
-            caps: entry.caps.iter().map(|(uma, cap)| (uma.0, cap_out(cap))).collect(),
-        })
-        .collect()
-}
-
-/// Kept caps from the page's store (`state_in`); None refuses the store whole.
-pub(crate) fn caps_in(stored: &[StoredCaps]) -> Option<Vec<KeptCaps>> {
-    stored
-        .iter()
-        .map(|entry| {
-            if entry.veterans.len() > STATE_MAX_N {
-                return None;
-            }
-            let mut veterans: Vec<u64> = entry.veterans.iter().map(|veteran| veteran.0).collect();
-            veterans.sort_unstable();
-            let caps = entry
-                .caps
-                .iter()
-                .map(|(uma, cap)| Some(((*uma < STATE_MAX_N).then_some(UmaIndex(*uma))?, cap_in(cap)?)))
-                .collect::<Option<Vec<_>>>()?;
-            Some(KeptCaps { pool: CapPool { scope: entry.scope.0, veterans }, caps })
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -358,17 +293,6 @@ mod tests {
         let more = pool(json!({"legacies": [first, second, third, record(9)], "trainees": []}));
         assert_eq!(careers(&kept, &more), Some(fast_careers), "the least cap");
         assert_eq!(careers(&kept, &kept_pool), Some(slow_careers), "the larger pool's cap");
-        // stored and read back, bit for bit
-        let stored = caps_out(&kept.step_caps);
-        let restored = caps_in(&stored).unwrap();
-        assert_eq!(serde_json::to_value(caps_out(&restored)).unwrap(), serde_json::to_value(&stored).unwrap());
-        let bad_phi = StoredCaps {
-            scope: Key(1),
-            veterans: vec![],
-            caps: vec![(4, [0.1, 1.5, 0.01, 0.001, 1.5, 0.001].map(Bits))],
-        };
-        assert!(caps_in(&[bad_phi]).is_none());
-        assert!(caps_in(&[]).unwrap().is_empty());
     }
 
     /// A fixed parent is her veteran, not her position (Astra's p10 case, 2026-10-26: legacies 1 and 6 swapped with

@@ -2,7 +2,6 @@
 //! its parts as nested records (`SkillJob`, `DeckJob`, `CareerJob`); the native command line's job files (`JobFile`:
 //! the job and the data files it names). Every job record refuses a field it does not know.
 use crate::career::CareerJob;
-use crate::career::state::StoredState;
 use crate::deck::DeckJob;
 use crate::skills::SkillJob;
 use serde::Deserialize;
@@ -25,7 +24,7 @@ pub(crate) enum Request {
             not(any(target_arch = "wasm32", test)),
             expect(dead_code, reason = "the wasm's dispatch (web.rs) reads it")
         )]
-        state: Box<StoredState>,
+        state: String,
     },
 }
 

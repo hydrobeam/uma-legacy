@@ -174,7 +174,7 @@ pub(super) struct LegalTables {
 }
 /// A deck a search selected: its relevant entries, how many plain pals and filler cards fill it, and its hint chances
 /// per uncertain target.
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SelectedDeck {
     /// Indices into this DeckSpace's parallel entry arrays, sorted before returning a search result.
     pub(crate) entries: Vec<usize>,

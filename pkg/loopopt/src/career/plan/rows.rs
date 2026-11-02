@@ -652,7 +652,7 @@ pub(crate) fn score_and_promote_rows(
         max_ratio: env.audit.max_ratio.iter().copied().fold(0.0f64, f64::max),
         class_max_ratio: env.audit.max_ratio,
         class_max_deck: env.setup.max_decks(&env.audit),
-        cap: env.setup.space.rho_top().min(env.audit.certified_cap),
+        cap: env.audit.certified_cap.under(env.setup.space.rho_top()),
         class_caps: env.setup.space.caps(),
         // (the plan's counters, added as it ends: `assemble_plan_output`)
         prof: std::collections::BTreeMap::new(),

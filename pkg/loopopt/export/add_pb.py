@@ -1,6 +1,6 @@
 """usage: add_pb.py LOOPOPT_BIN data.json...
 Adds (or replaces) the "pb" field of each data.json: the exact pairwise affinity ceilings PB(a, b) for every pair of
-umas, computed by `loopopt pbtable` (f64 bit patterns plus a fingerprint of the inputs). The solver uses the table
+umas, computed by `loopopt pbtable` (rows of floats plus a fingerprint of the inputs). The solver uses the table
 only while the fingerprint matches the file's umas, goals and streak penalties; otherwise it computes the ceilings
 itself, so a stale table costs time, never correctness. Run after export_rs.py (./build.sh pb)."""
 

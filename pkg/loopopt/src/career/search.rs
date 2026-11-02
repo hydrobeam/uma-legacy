@@ -7,6 +7,7 @@ use crate::career::{CareerSetup, ClassFlags, Env, Lineage, SearchState};
 use crate::deck::space::SelectedDeck;
 use crate::uma::{UmaIndex, UmaTable};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use ts_rs::TS;
 /// How a bound proves a career out (`CareerSetup::ceiling_out`, `refs_out`, `ruled_out`): `Below(threshold)`, `solve`'s
 /// prune, the bound below the bar with its slack s, b (1 + s) < threshold (a computed bound a hair under the true one
@@ -85,7 +86,7 @@ impl Iterator for Ranked {
 }
 
 /// A candidate the search solved: trainee, parents (legacy indices), value C x E, its ceiling, its best deck.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct Found {
     /// The trainee (uma index).
     pub(crate) trainee: UmaIndex,
@@ -111,7 +112,7 @@ impl Found {
 /// A trainee's fully checked deck: the chances it was found at (job-target order), its exact value there before the
 /// spark scale (the best of every legal deck, under the EXACT_RHO certificate, or cap-free after a rerun), the deck. Its
 /// value bounds every deck at other chances through `rise`.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct Ref {
     pub(crate) inheritance_chances: Vec<f64>,
     pub(crate) value: f64,
@@ -125,134 +126,44 @@ pub(crate) enum DeckRes {
     Done(f64, SelectedDeck, bool),
 }
 
-/// Why a career search is not complete (`CareerSearchResult::complete` false), each reason that occurred; written as
-/// the list of their names (`UnprovenReason`).
-#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, TS)]
-#[ts(as = "Vec<UnprovenReason>")]
-pub(crate) struct Unproven {
+/// Why a career search is not complete (`CareerSearchResult::complete` false): each reason that occurred.
+pub(crate) type Unproven = BTreeSet<UnprovenReason>;
+
+/// The named assumptions a proof rests on beyond the derived bounds and the measured class caps (docs/SOLVER.md, *What
+/// "proven" rests on*): each that occurred.
+pub(crate) type Assumes = BTreeSet<Assumption>;
+
+/// Why a search is not complete.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum UnprovenReason {
     /// The work ran out: a deck search passed the work budget (it scored only some of its band), or the hard work cap
     /// stopped taking candidates.
-    pub(crate) work_cap: bool,
+    WorkCap,
     /// A deck band of over EXACT_CAP decks was certified at a lower cap only (`DeckSearchAudit::certified_cap`).
-    pub(crate) band_overflow: bool,
+    BandOverflow,
     /// A capped deck search scored a deck past its class's cap (`DeckSearchAudit::capped_breaches`): the cap is wrong for
     /// that deck space, so what the search pruned through it (other deck searches of the class, its product proofs,
     /// ceilings that take EXACT_RHO) may have hidden a better career, whatever the cap-free rerun of that one deck search
     /// proved; or a rerun proved nothing, or none ran (`CAP_RERUN=0`).
-    pub(crate) cap_breach: bool,
-}
-
-/// The named assumptions a proof rests on beyond the derived bounds and the measured class caps (docs/SOLVER.md, *What
-/// "proven" rests on*), each that occurred; written as the list of their names (`Assumption`).
-#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, TS)]
-#[ts(as = "Vec<Assumption>")]
-pub(crate) struct Assumes {
-    /// The class cap for decks of a pair of chain-varying targets fed by two or more chain cards
-    /// (`DeckSearchAudit::assumed_searches`): two cards each feeding one target, a nested pair with another feeder.
-    pub(crate) two_feeder: bool,
-    /// The nested-chain bound for a nested chain beside other chain feeders or an uncertified group, their dependence
-    /// left out (`DeckSearchAudit::multi_searches`, `caps::multi_feeder`).
-    pub(crate) multi_feeder: bool,
-}
-
-impl Assumes {
-    /// Both, each set where either has it.
-    pub(crate) const fn union(self, other: Self) -> Self {
-        Self { two_feeder: self.two_feeder || other.two_feeder, multi_feeder: self.multi_feeder || other.multi_feeder }
-    }
-    /// The assumptions, as the output lists them (`assumes`, `job_assumes`).
-    pub(crate) fn names(self) -> Vec<Assumption> {
-        [(self.two_feeder, Assumption::TwoFeederCap), (self.multi_feeder, Assumption::MultiFeederCap)]
-            .into_iter()
-            .filter_map(|(holds, name)| holds.then_some(name))
-            .collect()
-    }
-}
-
-impl Unproven {
-    /// Whether any reason occurred.
-    pub(crate) const fn any(self) -> bool {
-        self.work_cap || self.band_overflow || self.cap_breach
-    }
-    /// The reasons, as the output lists them (`unproven`).
-    pub(crate) fn names(self) -> Vec<UnprovenReason> {
-        [
-            (self.work_cap, UnprovenReason::WorkCap),
-            (self.band_overflow, UnprovenReason::BandOverflow),
-            (self.cap_breach, UnprovenReason::CapBreach),
-        ]
-        .into_iter()
-        .filter_map(|(occurred, name)| occurred.then_some(name))
-        .collect()
-    }
-}
-
-impl Serialize for Unproven {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.names().serialize(serializer)
-    }
-}
-
-impl Serialize for Assumes {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.names().serialize(serializer)
-    }
-}
-
-/// The reasons from their names (a kept search, `state_in`); an unknown name does not parse.
-impl<'de> Deserialize<'de> for Unproven {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let mut unproven = Self::default();
-        for reason in Vec::<UnprovenReason>::deserialize(deserializer)? {
-            match reason {
-                UnprovenReason::WorkCap => unproven.work_cap = true,
-                UnprovenReason::BandOverflow => unproven.band_overflow = true,
-                UnprovenReason::CapBreach => unproven.cap_breach = true,
-            }
-        }
-        Ok(unproven)
-    }
-}
-
-/// The assumptions from their names (a kept search, `state_in`); an unknown name does not parse.
-impl<'de> Deserialize<'de> for Assumes {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let mut assumes = Self::default();
-        for assumption in Vec::<Assumption>::deserialize(deserializer)? {
-            match assumption {
-                Assumption::TwoFeederCap => assumes.two_feeder = true,
-                Assumption::MultiFeederCap => assumes.multi_feeder = true,
-            }
-        }
-        Ok(assumes)
-    }
-}
-
-/// Why a search is not complete.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum UnprovenReason {
-    /// the work ran out (a deck search passed its budget, or the hard work cap stopped taking candidates)
-    WorkCap,
-    /// a deck band too large to check in full was certified at a lower cap only
-    BandOverflow,
-    /// a capped deck search scored a deck past its class's cap
     CapBreach,
 }
 
 /// A named assumption a proof rests on.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Assumption {
-    /// the class cap for decks of two chain-varying targets fed by two or more chain cards
+    /// The class cap for decks of a pair of chain-varying targets fed by two or more chain cards
+    /// (`DeckSearchAudit::assumed_searches`): two cards each feeding one target, a nested pair with another feeder.
     TwoFeederCap,
-    /// the nested-chain bound beside other chain feeders, their dependence left out
+    /// The nested-chain bound for a nested chain beside other chain feeders or an uncertified group, their dependence
+    /// left out (`DeckSearchAudit::multi_searches`, `caps::multi_feeder`).
     MultiFeederCap,
 }
 
-#[derive(Clone)]
-/// (`certified_cap`: the lowest cap a deck search of it was certified under, INFINITY when none was lowered; see
-/// `DeckSearchAudit::certified_cap`; `complete`: no reason in `unproven`)
+#[derive(Clone, Serialize, Deserialize)]
+/// (`certified_cap`: the lowest cap a deck search of it was certified under, `DeckSearchAudit::certified_cap`;
+/// `complete`: no reason in `unproven`)
 pub(crate) struct CareerSearchResult {
     pub(crate) found: Vec<Found>,
     pub(crate) refs: UmaTable<Vec<Ref>>,
@@ -269,7 +180,7 @@ pub(crate) struct CareerSearchResult {
     /// under them.
     pub(crate) assumes: Assumes,
     pub(crate) proven: bool,
-    pub(crate) certified_cap: f64,
+    pub(crate) certified_cap: crate::career::CertifiedCap,
 }
 
 impl CareerSetup<'_> {
@@ -710,7 +621,7 @@ impl Env<'_> {
         let SearchRequest { pool, fixed_parents, trainees, per_trainee, top } = request;
         let data = self.setup.data;
         self.state.work = 0; // each search has its own work budget
-        let previous_certificate = std::mem::replace(&mut self.audit.certified_cap, f64::INFINITY);
+        let previous_certificate = std::mem::take(&mut self.audit.certified_cap);
         // (`trainee_position`: the trainee's position in `trainees`; generated in (trainee_position, a, b) order)
         // (packed as u16, not a `Lineage`: a pool of 400 veterans has millions of candidates)
         struct Candidate {
@@ -795,7 +706,7 @@ impl Env<'_> {
         let top = top.max(1);
         let mut unproven = Unproven::default();
         // a capped deck search that breached its cap, answered by a cap-free rerun or not (`CAP_RERUN=0`): see
-        // `Unproven::cap_breach`. A rerun that proves nothing also returns a deck search that is not full (below)
+        // `UnprovenReason::CapBreach`. A rerun that proves nothing also returns a deck search that is not full (below)
         let (capped_breaches_before, assumed_before, multi_before) =
             (self.audit.capped_breaches, self.audit.assumed_searches, self.audit.multi_searches);
         let mut done: Vec<(f64, usize, SelectedDeck)> = vec![];
@@ -842,7 +753,7 @@ impl Env<'_> {
             && candidates[next].ceiling * (1.0 + 1e-9) >= kth(&done)
         {
             if self.state.hard_work_cap > 0 && self.state.work > self.state.hard_work_cap {
-                unproven.work_cap = true;
+                unproven.insert(UnprovenReason::WorkCap);
                 break;
             }
             let candidate_index = next;
@@ -969,13 +880,13 @@ impl Env<'_> {
             }
             if !full {
                 // (why: a band overflow, a cap-free rerun that proved nothing, else the work budget)
-                if self.audit.overflows > overflows_before {
-                    unproven.band_overflow = true;
+                unproven.insert(if self.audit.overflows > overflows_before {
+                    UnprovenReason::BandOverflow
                 } else if self.audit.cap_free_stats.open > open_before && !self.setup.space.deck_job.cap_free {
-                    unproven.cap_breach = true;
+                    UnprovenReason::CapBreach
                 } else {
-                    unproven.work_cap = true;
-                }
+                    UnprovenReason::WorkCap
+                });
             } else if !repeated && !self.state.class_flags[deck_class].breached {
                 // (a Twin repeat's Ref is the first candidate's, already here: the same chances, value and deck; a breached
                 // class keeps none, its searches proving nothing beyond their own answers)
@@ -1009,16 +920,16 @@ impl Env<'_> {
             0.0
         };
         if self.audit.capped_breaches > capped_breaches_before {
-            unproven.cap_breach = true;
+            unproven.insert(UnprovenReason::CapBreach);
         }
-        let complete = !unproven.any();
+        let complete = unproven.is_empty();
         let proven = complete
             && !done.is_empty()
             && (done.len() >= top.min(candidates.len()) || next >= candidates.len())
             && next_bound < done[0].0;
         let candidate_count = candidates.len();
         let certified_cap = self.audit.certified_cap;
-        self.audit.certified_cap = previous_certificate.min(certified_cap);
+        self.audit.certified_cap = previous_certificate.lowest(certified_cap);
         let mut result = CareerSearchResult {
             found: done
                 .into_iter()
@@ -1041,15 +952,12 @@ impl Env<'_> {
             next_bound,
             complete,
             unproven,
-            assumes: Assumes {
-                two_feeder: self.audit.assumed_searches > assumed_before,
-                multi_feeder: self.audit.multi_searches > multi_before,
-            },
+            assumes: self.audit.assumes_since(assumed_before, multi_before),
             proven,
             work: self.state.work,
             certified_cap,
         };
-        result.qualify(self.setup.trainee_flags(&self.state, trainees));
+        result.qualify(&self.setup.trainee_flags(&self.state, trainees));
         result
     }
 }
@@ -1057,9 +965,11 @@ impl Env<'_> {
 impl CareerSetup<'_> {
     /// The flags of the deck classes of `trainees` together (`ClassFlags::union`): what a search over them rests on.
     pub(crate) fn trainee_flags(&self, state: &SearchState, trainees: &[UmaIndex]) -> ClassFlags {
-        trainees
-            .iter()
-            .fold(ClassFlags::default(), |flags, &trainee| flags.union(state.class_flags[self.deck_class[trainee]]))
+        let mut flags = ClassFlags::default();
+        for &trainee in trainees {
+            flags.union_with(&state.class_flags[self.deck_class[trainee]]);
+        }
+        flags
     }
     /// The job's class flags by class content (`class_key`), those with any flag set: what the worker and a kept plan
     /// keep (`KeptState::flags`, `Bests::flags`), keys ascending.
@@ -1068,21 +978,24 @@ impl CareerSetup<'_> {
             .deck_class
             .indices()
             .filter(|&uma| self.deck_class[uma] == uma && state.class_flags[uma] != ClassFlags::default())
-            .map(|class| (self.class_key[class], state.class_flags[class]))
+            .map(|class| (self.class_key[class], state.class_flags[class].clone()))
             .collect();
         flags.sort_unstable_by_key(|&(key, _)| key);
         flags
     }
     /// Kept flags by class content unioned into the job's classes of the same content (never replacing a flag).
-    pub(crate) fn union_keyed(&self, state: &mut SearchState, flags: impl IntoIterator<Item = (u64, ClassFlags)>) {
+    pub(crate) fn union_keyed<'flags>(
+        &self,
+        state: &mut SearchState,
+        flags: impl IntoIterator<Item = (u64, &'flags ClassFlags)>,
+    ) {
         let mut by_key: crate::FxMap<u64, ClassFlags> = crate::FxMap::default();
         for (key, kept) in flags {
-            let entry = by_key.entry(key).or_default();
-            *entry = entry.union(kept);
+            by_key.entry(key).or_default().union_with(kept);
         }
         for class in self.deck_class.indices().filter(|&uma| self.deck_class[uma] == uma) {
-            if let Some(&kept) = by_key.get(&self.class_key[class]) {
-                state.class_flags[class] = state.class_flags[class].union(kept);
+            if let Some(kept) = by_key.get(&self.class_key[class]) {
+                state.class_flags[class].union_with(kept);
             }
         }
     }
@@ -1101,10 +1014,12 @@ impl CareerSearchResult {
     /// makes it unproven (`cap_breach`; then not `complete`, not `proven`), an assuming one makes what it proves rest
     /// on those assumptions (`assumes`). Flags are only ever set, so this applies again unchanged to a kept search
     /// reused after a later search flagged one of its classes.
-    pub(crate) const fn qualify(&mut self, flags: ClassFlags) {
-        self.unproven.cap_breach |= flags.breached;
-        self.assumes = self.assumes.union(flags.assumes);
-        self.complete = !self.unproven.any();
+    pub(crate) fn qualify(&mut self, flags: &ClassFlags) {
+        if flags.breached {
+            self.unproven.insert(UnprovenReason::CapBreach);
+        }
+        self.assumes.extend(&flags.assumes);
+        self.complete = self.unproven.is_empty();
         self.proven &= self.complete;
     }
 }
@@ -1280,7 +1195,7 @@ pub(crate) fn solve_kept(
                 }
             }
             env.setup.drop_breached(&env.state, &mut solved.refs);
-            solved.qualify(env.setup.trainee_flags(&env.state, request.trainees));
+            solved.qualify(&env.setup.trainee_flags(&env.state, request.trainees));
             solved
         }
         _ => {

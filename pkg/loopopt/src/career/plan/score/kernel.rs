@@ -148,7 +148,10 @@ thread_local! { pub(super) static FOLD_SCRATCH: std::cell::RefCell<FoldScratch> 
 /// read of them (`derive`); the tables kept (`prepare_scoring`) and each one's setup; the collapsed targets; one slot
 /// per setup and per slot the odds now; her landed sets' chances; the routes; the goal, the star mix. A setup is one
 /// place her veteran may be: a parent of a stage candidate beside one partner (a partner slot, the candidate's odds
-/// there), or in a route's C's lineage (a finisher slot, C's odds there: `score::routes`).
+/// there), or in a route's C's lineage (a finisher slot, C's odds there: `score::routes`). In the kept state
+/// (`RollKeep`) without the fields `derive` rebuilds and those a restored roll state holds empty (`finisher_umas`,
+/// `shadows`, `prior_least`, `retain_least`).
+#[derive(serde::Serialize, serde::Deserialize)]
 pub(crate) struct Scored {
     /// nu: the job's uncertain targets.
     pub(crate) uncertain_target_count: usize,
@@ -194,21 +197,28 @@ pub(crate) struct Scored {
     /// The routes through her veteran (`score::routes`); none for a scoring of the stats alone.
     pub(crate) routes: Vec<Route>,
     /// Per finisher slot (a route's `finisher_slot`), its C's uma: the scale her odds are priced at
-    /// (`OddsScales::of`). Empty (a stored roll state's): every C at the base's common scale.
+    /// (`OddsScales::of`). Empty (a restored roll state's): every C at the base's common scale.
+    #[serde(skip)]
     pub(crate) finisher_umas: Vec<crate::uma::UmaIndex>,
     /// Derived (`derive`): per setup, uncertain target and star level, x = x0 xm.
+    #[serde(skip)]
     pub(crate) present_factors: Vec<Vec<[f64; 4]>>,
     /// Derived (`derive`): 1 - x of `present_factors`.
+    #[serde(skip)]
     pub(crate) absent_factors: Vec<Vec<[f64; 4]>>,
     /// Derived (`derive`): per landed set m and setup, the spark scale (m-major: m * setup count + setup).
+    #[serde(skip)]
     pub(crate) spark_scales: Vec<f64>,
     /// The routes the memory budget left out (`score::routes`), each checked at every outcome where y is computed
-    /// (`ShadowRoute`); none in a stored roll state (a roll reads the kept routes only).
+    /// (`ShadowRoute`); none in a restored roll state (a roll reads the kept routes only).
+    #[serde(skip)]
     pub(crate) shadows: Vec<ShadowRoute>,
     /// An earlier batch's V after her per outcome and its route (`ScoringEvaluation::outcome_least`): this batch's
     /// routes are taken beside it (V after her the least of both). Empty: none (a single batch).
+    #[serde(skip)]
     pub(crate) prior_least: BatchLeast,
     /// Keep V after her per outcome where y is computed (`ScoringEvaluation::outcome_least`), for a later batch.
+    #[serde(skip)]
     pub(crate) retain_least: bool,
 }
 
