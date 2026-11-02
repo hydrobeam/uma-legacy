@@ -3,7 +3,7 @@
 //! worker keeps with what its product searches proved, so its plan does the work of one combined job and gives its
 //! output; after a reload the stored main search is taken as it is (no search nodes) and both jobs answer as before.
 use crate::common;
-use common::{Ran, State, TempFile, check_of, loopopt, run_with, val_job, without_work};
+use common::{Ran, State, TempFile, check_of, loopopt, run_with, val_cut, val_job, without_work};
 use serde_json::{Value, json};
 
 /// one process running `jobs` in turn (one output line each), with `state`'s files
@@ -85,10 +85,11 @@ fn a_plan_on_another_trainee_filter_reuses_none_of_its_careers() {
 /// The pair search asked only after a check's variants finished without it (astra-review-V5 #5): the plan, its check
 /// with `robust: "all"` and no `pair_search`, then `robust: "next"` with it: the working state went with the last
 /// variant, so `next` says why it has no pairs (`pairs_error`); `"all"` with it then runs the plan and its check again
-/// and brings the pairs
+/// and brings the pairs. On a small cut of the val/plan p16 pool (three veterans, two targets, four umas owned): the
+/// job sequence decides this, not the pool.
 #[test]
 fn a_pair_search_asked_after_its_check_finished_says_why_or_runs_again() {
-    let job = val_job("plan/p16.json");
+    let job = val_cut("plan/p16.json", &[6, 13, 15], &[3, 7], &[1014, 1021, 1029, 1034]);
     let with_next = |next: Value| {
         let mut follow_up = job.clone();
         follow_up["job"]["career"]["next"] = next;

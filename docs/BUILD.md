@@ -358,7 +358,7 @@ count less two, so the slowest job (`p16_t10`) starts at the beginning; the comp
 with the assertions on (2026-11-01), which cost the solver 8-12% more instructions. The unit tests stay in the checks
 profile: the dev profile (`opt-level` 1, dependencies 3) rebuilt them no faster after a one-line edit (31 s against
 34) and ran them slower (31 s against 25), and a second profile compiles the crate twice. Neither meets the edit
-tier's 10 s: one unit test, `deck::tests::chain_marginals_dense_matches_ref`, is most of their run.
+tier's 10 s.
 
 **Type-only changes.** A change the type checker fully explains (a rename, a type in place of a bare number, moved
 code; no change to arithmetic, control flow or data) runs the unit tests and clippy per commit and one `valq` at the
