@@ -1,7 +1,7 @@
-// Storage is written only by storage.ts's `update`, which hands its change what is stored now: a `.setItem()` or
+// Storage is written only by state/storage.ts's `update`, which hands its change what is stored now: a `.setItem()` or
 // `.removeItem()` anywhere else (on localStorage, or on a storage a module was handed) could write a copy read earlier
-// over what another tab or call stored meanwhile (biome.json's plugins, src/ but storage.ts; noRestrictedGlobals bans
-// the localStorage global itself there)
+// over what another tab or call stored meanwhile (biome.json's plugins, src/ but state/storage.ts; noRestrictedGlobals
+// bans the localStorage global itself there)
 language js
 
 or {
@@ -10,7 +10,7 @@ or {
 } as $call where {
   register_diagnostic(
     span = $call,
-    message = "A storage write: write with storage.ts's update(key, (stored) => next), which reads what is stored now",
+    message = "A storage write: write with state/storage.ts's update(key, (stored) => next), which reads what is stored now",
     severity = "error"
   )
 }

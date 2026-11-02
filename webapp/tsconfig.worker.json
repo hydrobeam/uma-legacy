@@ -1,10 +1,10 @@
 {
-  // The solver's worker (src/worker.ts) and what it imports (the protocol types, must), with a worker's globals (lib
-  // webworker, which conflicts with the page's dom in one project): strict as tsconfig.json.
+  // The solver's worker (src/solver/worker.ts) and what it imports (the protocol types, must), with a worker's globals
+  // (lib webworker, which conflicts with the page's dom in one project): strict as tsconfig.json.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "lib": ["es2023", "webworker"]
   },
-  "include": ["src/worker.ts"],
+  "include": ["src/solver/worker.ts"],
   "exclude": []
 }

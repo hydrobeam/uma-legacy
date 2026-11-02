@@ -1,12 +1,12 @@
-// A pink spark of an aptitude the solver doesn't know never reaches a job: the game's export (umadump.ts `parseExport`)
-// leaves it out of her record and counts it, a stored or pasted veteran's pink map keeps only the solver's aptitudes
-// with 1 to 3 stars (veterans/records.ts `knownPinks`, read by veterans/store.ts `asVeteran`), and a job carries her
-// pink as the solver's record (`jobLegacy`). A stored veteran's grades saved as a list read as the solver's `Grades`.
-// npx vitest run (in webapp)
+// A pink spark of an aptitude the solver doesn't know never reaches a job: the game's export (io/umadump.ts
+// `parseExport`) leaves it out of her record and counts it, a stored or pasted veteran's pink map keeps only the
+// solver's aptitudes with 1 to 3 stars (veterans/records.ts `knownPinks`, read by veterans/store.ts `asVeteran`), and a
+// job carries her pink as the solver's record (`jobLegacy`). A stored veteran's grades saved as a list read as the
+// solver's `Grades`. npx vitest run (in webapp)
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
-import { loadData } from '../../src/data.ts';
-import { parseExport } from '../../src/umadump.ts';
+import { loadData } from '../../src/model/data.ts';
+import { parseExport } from '../../src/io/umadump.ts';
 import { jobLegacy, knownPinks, unknownPinksIn } from '../../src/veterans/records.ts';
 import { asVeteran, type Veteran } from '../../src/veterans/store.ts';
 import { Aptitude } from '../../src/gen/solver.ts';

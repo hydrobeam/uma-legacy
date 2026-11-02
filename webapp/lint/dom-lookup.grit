@@ -1,8 +1,8 @@
 // No element looked up in the document: each planner page is one Preact root (career/Layout.tsx, loop/Layout.tsx), and a
 // component reaches its DOM by refs (a query from its own ref or an event's target is fine). A lookup by id or selector
 // reads or writes another component's DOM behind its back, and fails silently when a page lacks the element.
-// (biome.json's plugins, src/ but: the two entries, which find their root; errorlog.ts, which writes the status line
-// when the entry could not start, before any component draws)
+// (biome.json's plugins, src/ but: the two entries, which find their root; dom/errorlog.ts, which writes the status
+// line when the entry could not start, before any component draws)
 language js
 
 or {

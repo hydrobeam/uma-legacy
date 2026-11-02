@@ -1,12 +1,12 @@
 // ---------- what a veteran lacks before the solver takes her ----------
 // The game gives every veteran exactly one pink spark, and shows her two parents (her Legacy Origin), each a veteran
 // with her own. So a veteran is complete when she has one pink and each of her parent places holds her parent (an uma
-// and one pink), or is absent: the record she came from lacks that parent (a game export's, umadump.ts), which the
+// and one pink), or is absent: the record she came from lacks that parent (a game export's, io/umadump.ts), which the
 // solver reads as no one. One that lacks any of it is incomplete: the page shows her so and leaves her out of the
 // solver's jobs (veterans/store.ts `readyVets`, career/job.ts `buildJob`) until her editors finish her. A parent place
 // with no uma is one not entered: what a veteran entered by hand holds until her parent is entered (entry.ts), and what
 // earlier pages made up for a hand-entered veteran's parents (no uma, her own sparks copied).
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import { pinkRecord } from './records.ts';
 import type { LineageNode, ParentNode, ParentPlace } from './store.ts';
 

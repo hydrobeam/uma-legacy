@@ -1,14 +1,14 @@
 // @vitest-environment happy-dom
 // Where a veteran came from, as her popup and her card say it: one from an uma.moe tree is "From uma.moe", one added
 // from Try a run "Entered here", and her card in the veterans dialog names neither. One veteran left, the page asks
-// for parents (job.ts). A G1 win removed by a click and added back at the Senior turn of her race (ui/Agenda.tsx).
+// for parents (job.ts). A G1 win removed by a click and added back at the Senior turn of her race (results/Agenda.tsx).
 // npx vitest run (in webapp)
 import { render, screen } from '@testing-library/preact';
-import { WinsEditor } from '../../src/ui/Agenda.tsx';
+import { WinsEditor } from '../../src/results/Agenda.tsx';
 import { expect, test, vi } from 'vitest';
-import { loadData } from '../../src/data.ts';
+import { loadData } from '../../src/model/data.ts';
 import { Blocked, buildJob } from '../../src/career/job.ts';
-import { initStore, settings } from '../../src/settings.ts';
+import { initStore, settings } from '../../src/state/settings.ts';
 import { NodeDialog } from '../../src/career/view/NodeDialog.tsx';
 import { openNode } from '../../src/career/view/dialogs.ts';
 import { PoolBody } from '../../src/career/view/Pool.tsx';

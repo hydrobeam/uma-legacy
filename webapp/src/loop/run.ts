@@ -9,11 +9,11 @@
 // job shows that again instead of running). Everything outside, the engine, the clock, the timers, storage, the
 // settings, the store's transitions and what draws a result, comes in `deps`, made once by main.tsx: a model module, it
 // reads no store itself (.dependency-cruiser.mjs checks it).
-import { ERA } from '../saved.ts';
-import { readJson, update } from '../storage.ts';
-import type { Backing } from '../storage.ts';
-import type { SettingsView } from '../settings.ts';
-import type { SolverAnswer, SolverRefusal } from '../solver.ts';
+import { ERA } from '../state/saved.ts';
+import { readJson, update } from '../state/storage.ts';
+import type { Backing } from '../state/storage.ts';
+import type { SettingsView } from '../state/settings.ts';
+import type { SolverAnswer, SolverRefusal } from '../solver/solver.ts';
 import { blockedStatus, buildJob, doneText, jobKey } from './job.ts';
 import type { Built, DeckJob, JobTarget } from './job.ts';
 import type * as LoopState from './state.ts';
@@ -26,11 +26,11 @@ export const PAUSE_MS = 550;
 export type Timer = number;
 export type DeckAnswer = SolverAnswer<LoopReport>;
 export interface LoopDeps {
-  /** the engine (engine.ts `run`): the job's answer; `interim` gets its fast first pass. A job killed while it runs never
+  /** the engine (solver/engine.ts `run`): the job's answer; `interim` gets its fast first pass. A job killed while it runs never
    *  answers; one killed while it waits for the worker to start rejects (`superseded`), so a caught error may be stale */
   run: (job: DeckJob, interim: (answer: DeckAnswer) => void) => Promise<DeckAnswer>;
   /** kill the worker (the job it runs never answers; one waiting for its start rejects) and start a fresh one
-   *  (engine.ts `restartEngine`) */
+   *  (solver/engine.ts `restartEngine`) */
   restart: () => void;
   /** the clock (ms) */
   now: () => number;
@@ -46,7 +46,7 @@ export interface LoopDeps {
   settings: () => SettingsView;
   /** draws a result (Results.tsx `drawResult`) */
   render: (r: DrawnReport, targets: JobTarget[]) => void;
-  /** the "no targets" status's button (presets.ts `loadExample`) */
+  /** the "no targets" status's button (state/presets.ts `loadExample`) */
   loadExample: () => void;
   /** the precomputed example and the settings it is the result of (the defaults); none in the Grand Masters era */
   example: { r: LoopReport; settings: SettingsView } | null;

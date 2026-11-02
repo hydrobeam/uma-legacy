@@ -6,12 +6,12 @@
 // phone's floating button's text). Two parts, both in the layout from the first paint: `RunNote` draws the text in the
 // live region #run-note, `RunAct` the button in #r-act.
 import { must } from '../must.ts';
-import { ownAllUmas } from '../roster.ts';
+import { ownAllUmas } from '../state/roster.ts';
 import { Runner } from '../ui/Images.tsx';
 import { loopDrawn, loopRun, loopView } from './state.ts';
 import type { RunState } from './state.ts';
 import type { Status } from './types.ts';
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import { Button } from '../ui/Button.tsx';
 
 const seconds = (run: DeepReadonly<RunState>) => Math.floor((run.now - run.startedAt) / 1000);
@@ -42,7 +42,7 @@ export function RunNote() {
     </>
   );
 }
-// the buttons an act names by id (loop/job.ts `blockedStatus`), by what they do: `#r-all` (ui/Roster.tsx), Mark all
+// the buttons an act names by id (loop/job.ts `blockedStatus`), by what they do: `#r-all` (setup/Roster.tsx), Mark all
 // umas owned
 const PRESSES: Partial<Record<string, () => void>> = { 'r-all': ownAllUmas };
 /** the button beside the status line (#r-act): Stop while a search runs, else the one the status offers

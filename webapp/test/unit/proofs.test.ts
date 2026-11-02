@@ -1,9 +1,10 @@
-// The status line's caveats on a search and a plan (proofs.ts `searchCaveat`, `planCaveat`) on constructed reports: a
-// cap breach is named whether or not the cap-free rerun finished, no cause is asserted that no field establishes, a
-// proof's named assumptions are stated as a proof, and the plan's are said once. npx vitest run (in webapp)
+// The status line's caveats on a search and a plan (model/proofs.ts `searchCaveat`, `planCaveat`) on constructed
+// reports: a cap breach is named whether or not the cap-free rerun finished, no cause is asserted that no field
+// establishes, a proof's named assumptions are stated as a proof, and the plan's are said once. npx vitest run (in
+// webapp)
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { planCaveat, searchCaveat } from '../../src/proofs.ts';
+import { planCaveat, searchCaveat } from '../../src/model/proofs.ts';
 
 test('the unproven caveat names a cap breach even when its cap-free rerun finished, says when that rerun did not, never claims the work budget without a field for it, and flags a breach on a proven search', () => {
   const rerunDone = searchCaveat({

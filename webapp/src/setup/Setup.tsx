@@ -1,0 +1,116 @@
+// ---------- the setup both planner pages share: its editors, the Umas and Support cards dialogs, the era switch ----------
+// `setupViews` gives each editor behind its render guard, for the page's layout to draw in its place (the scenario
+// picker, the lineage rank, the target skills), and the Umas and Support cards dialogs, each with its panel inside
+// (Done, Escape or a click on the backdrop closes one). The layout's Umas and Support cards buttons open them
+// (`openSetupDialog`), each with its count (`setupBadges`). `pickEra` is the era switch's press on both pages.
+import { signal } from '@preact/signals';
+import type { ComponentChildren } from 'preact';
+import { ERA } from '../state/saved.ts';
+import { settings, switchEra } from '../state/settings.ts';
+import { rosterCounts } from '../state/roster.ts';
+import { cardsOwned } from '../state/cards.ts';
+import { eraScenario } from '../state/scenario.ts';
+import { Dialog, DialogHead, DialogPanel } from '../ui/Dialog.tsx';
+import { RenderGuard } from '../ui/RenderGuard.tsx';
+import { RosterPanel } from './Roster.tsx';
+import { CardsPanel } from './Cards.tsx';
+import { TargetSkills } from './Targets.tsx';
+import { RankControl, ScenarioPicker } from './Scenario.tsx';
+import type { Page } from './Shell.tsx';
+import type { Badge } from '../ui/Button.tsx';
+import type { Era } from '../model/eras.ts';
+
+type Which = 'umas' | 'cards';
+const openOne = signal<Which | null>(null);
+/** the Umas or the Support cards dialog opens (its button's click) */
+export const openSetupDialog = (which: Which) => {
+  openOne.value = which;
+};
+const closeSetupDialog = () => {
+  openOne.value = null;
+};
+/** one of the two dialogs: its heading and Done, its panel (a section the panel draws into, behind its own guard: a
+ *  column whose list takes the height the rows above it leave) */
+function SetupDialog({
+  id,
+  which,
+  label,
+  heading,
+  panel,
+  children,
+}: {
+  id: string;
+  which: Which;
+  label: string;
+  heading: string;
+  panel: { id: string; labelledBy: string; what: string };
+  children: ComponentChildren;
+}) {
+  return (
+    <Dialog size="xl" id={id} label={label} open={openOne.value === which} onClose={closeSetupDialog}>
+      <DialogPanel fit="full">
+        <DialogHead title={heading} close="Done" onClose={closeSetupDialog} />
+        <section class="flex min-h-0 min-w-0 flex-auto flex-col gap-3" id={panel.id} aria-labelledby={panel.labelledBy}>
+          <RenderGuard input={settings} what={panel.what}>
+            {children}
+          </RenderGuard>
+        </section>
+      </DialogPanel>
+    </Dialog>
+  );
+}
+/** an editor behind its guard, drawn again once the settings it failed on are replaced */
+const guarded = (what: string, view: ComponentChildren) => (
+  <RenderGuard input={settings} what={what}>
+    {view}
+  </RenderGuard>
+);
+/** The setup's editors and its two dialogs, for `page`'s layout (the loop page's scenario button is its column's width
+ *  and shorter, its rank switch smaller); `fadeMore`: the roster's and the card list's bottom edge fades while there
+ *  is more below (the loop page). */
+export const setupViews = ({ page, fadeMore = false }: { page: Page; fadeMore?: boolean }) => ({
+  scenario: guarded('The scenario picker', <ScenarioPicker page={page} />),
+  rank: guarded('The lineage rank', <RankControl page={page} />),
+  targets: guarded('The target skills', <TargetSkills />),
+  umasDialog: guarded(
+    'The Umas dialog',
+    <SetupDialog
+      id="set-umas"
+      which="umas"
+      label="Umas"
+      heading="Umas you own"
+      panel={{ id: 'umas-panel', labelledBy: 'h-roster', what: 'The Umas panel' }}
+    >
+      <RosterPanel fadeMore={fadeMore} />
+    </SetupDialog>,
+  ),
+  cardsDialog: guarded(
+    'The Support cards dialog',
+    <SetupDialog
+      id="set-cards"
+      which="cards"
+      label="Support cards"
+      heading="Support cards you own"
+      panel={{ id: 'cards-panel', labelledBy: 'h-deck', what: 'The Support cards panel' }}
+    >
+      <CardsPanel fadeMore={fadeMore} />
+    </SetupDialog>,
+  ),
+});
+/** the counts on the Umas and Support cards buttons: everything counts as owned until you say otherwise */
+export function setupBadges(): { umas: Badge; cards: Badge } {
+  const u = rosterCounts.value,
+    c = cardsOwned.value;
+  return {
+    umas: { title: `${u.outfitsOwned} of ${u.outfits} outfits owned` },
+    cards: { title: `${c.owned} of ${c.all} support cards owned` },
+  };
+}
+/** the era switch pressed: the page reloads into `era` with this tab's settings (and the scenario it opens on), after
+ *  `keep` saves what else the page holds (the career page's veterans) */
+export function pickEra(era: Era, keep: () => void = () => undefined) {
+  if (era === ERA) return;
+  switchEra(era, eraScenario(era));
+  keep();
+  location.reload();
+}

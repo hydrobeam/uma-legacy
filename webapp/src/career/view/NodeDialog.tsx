@@ -5,9 +5,9 @@
 import { batch } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { settings } from '../../settings.ts';
-import { isOwned } from '../../job.ts';
-import { fitSparks } from '../../details.ts';
+import { settings } from '../../state/settings.ts';
+import { isOwned } from '../../model/job.ts';
+import { fitSparks } from '../../results/details.ts';
 import {
   vets,
   places,
@@ -25,8 +25,8 @@ import { openWins, winsText, changeUma, openUmaPicker } from '../../veterans/pic
 import type { NodeRecord, NodeRef, ParentPlace, VetRecord } from '../../veterans/store.ts';
 import { Dialog, DialogBody, DialogClose, DialogFoot, DialogTitle, anyDialogOpen } from '../../ui/Dialog.tsx';
 import { UmaAv } from '../../ui/Images.tsx';
-import { AffTable } from '../../ui/AffTable.tsx';
-import { InspView } from '../../ui/InspView.tsx';
+import { AffTable } from '../../results/AffTable.tsx';
+import { InspView } from '../../veterans/InspView.tsx';
 import { listed } from '../job.ts';
 import { idxOf, shown, parentAt } from '../current.ts';
 import type { ShownCareer as CareerReport } from './Sections.tsx';
@@ -34,7 +34,7 @@ import { nodeOpen, nodeClosed, openParentPicker, closeNode } from './dialogs.ts'
 import { focusChosen, sayVets } from './poolState.ts';
 import type { NodeSpec } from './dialogs.ts';
 import { Guard } from './Guard.tsx';
-import { Button } from '../../ui/Button.tsx';
+import { Button, PortraitButton } from '../../ui/Button.tsx';
 import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
 
 // her affinity, legacy by legacy, from the report's six slots (career/inherit.rs `slots`)
@@ -79,9 +79,6 @@ interface FaceProps {
   label: string;
   change: boolean;
 }
-// a face that is a button (data-face: the checks count them), brighter under the pointer
-const FACE =
-  'focus-visible:outline-accent cursor-pointer rounded-md leading-0 hover:brightness-106 focus-visible:outline-2 focus-visible:outline-offset-2';
 // who a node is: her face, name and the rest in a wrapping row
 const WHO = 'flex flex-wrap items-center gap-x-3 gap-y-2';
 // her name in the popup (in the pool's pane, plain)
@@ -91,16 +88,10 @@ function Face({ nd, at, size, label, change }: FaceProps) {
   if (!change) return face;
   const title = `${label}: ${umaName(nd.chara)}. Change who she is`;
   return (
-    <button
-      type="button"
-      class={FACE}
-      data-face=""
-      title={title}
-      aria-label={title}
-      onClick={fromNode(() => changeUma(at, label))}
-    >
+    // (data-face: the checks count the faces that are buttons)
+    <PortraitButton data-face="" title={title} aria-label={title} onClick={fromNode(() => changeUma(at, label))}>
       {face}
-    </button>
+    </PortraitButton>
   );
 }
 /** her G1 wins: the button that opens their window (veterans/pickers.ts openWins), or (a listed veteran) their count */
@@ -376,16 +367,14 @@ function parentNode(k: number, r: CareerReport | null): NodeShown {
     body: (
       <>
         <div class={WHO}>
-          <button
-            type="button"
-            class={FACE}
+          <PortraitButton
             data-face=""
             title="Choose another parent"
             aria-label={`Parent ${k + 1}: ${umaName(v.chara)}. Choose another parent`}
             onClick={fromNode(() => openParentPicker(k))}
           >
             <UmaAv key={`${v.chara}:${v.outfit}`} uma={v.chara} outfit={v.outfit} size={64} />
-          </button>
+          </PortraitButton>
           <div>
             <NameCover v={v} look="text-title leading-tight font-black" />
             <div class="text-ui text-gm-ink2">
@@ -454,8 +443,8 @@ export function NodeDialog() {
     body = useRef<HTMLDivElement>(null);
   // (closed, it draws nothing: an edit elsewhere redraws no closed popup)
   const on = spec && nodeShown(spec, shown());
-  // a node that is gone closes the popup; on show, her spark names shrink to fit (details.ts fitSparks: this runs after
-  // its Dialog's layout effect has opened it)
+  // a node that is gone closes the popup; on show, her spark names shrink to fit (results/details.ts fitSparks: this
+  // runs after its Dialog's layout effect has opened it)
   useLayoutEffect(() => {
     if (spec && !on) closeNode();
     if (on && body.current) fitSparks(body.current);

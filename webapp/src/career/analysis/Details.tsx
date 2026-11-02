@@ -9,21 +9,21 @@
 // unchanged. Her sparks are edited through the store (`draftRef`).
 import type { ComponentChildren, RefObject } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
-import { gameData } from '../../data.ts';
-import { settings } from '../../settings.ts';
+import { gameData } from '../../model/data.ts';
+import { settings } from '../../state/settings.ts';
 import { umaName } from '../../veterans/names.ts';
-import { borrowedLast, deckCards, fitSparks } from '../../details.ts';
-import type { DeckSlot } from '../../details.ts';
+import { borrowedLast, deckCards, fitSparks } from '../../results/details.ts';
+import type { DeckSlot } from '../../results/details.ts';
 import { openSkill } from '../view/SkillDetails.tsx';
-import { InspView } from '../../ui/InspView.tsx';
-import { usePopOpener } from '../../ui/CardPop.tsx';
-import { chip, FRIENDS_TAG } from '../../ui/deckChip.ts';
-import { skillTile } from '../../ui/skillTile.ts';
+import { InspView } from '../../veterans/InspView.tsx';
+import { usePopOpener } from '../../results/CardPop.tsx';
+import { chip, FRIENDS_TAG } from '../../results/deckChip.ts';
+import { skillTile } from '../view/skillTile.ts';
 import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
-import { gradeOf } from '../../grades.ts';
+import { gradeOf } from '../../model/grades.ts';
 import { Aptitude, Grade } from '../../gen/solver.ts';
 import { CardAv, GradeBadge, SkillIcon, UmaAv } from '../../ui/Images.tsx';
-import type { DeepReadonly } from '../../store.ts';
+import type { DeepReadonly } from '../../state/store.ts';
 import type { CareerReport } from '../job.ts';
 import { draftRef, parentsPlaced } from '../../veterans/store.ts';
 import type { Draft, VetRecord } from '../../veterans/store.ts';
@@ -185,7 +185,7 @@ const DEFS = [
   { key: 'info', label: 'Career Info' },
 ] as const;
 // the tabs and their panes (on the game's grey pane), all three built up front as in the game; once a switch is drawn,
-// the spark names now on show in her `card` shrink to fit (details.ts fitSparks)
+// the spark names now on show in her `card` shrink to fit (results/details.ts fitSparks)
 function DetailTabs({
   spec,
   winsButton,
@@ -274,6 +274,7 @@ function SkillsPane({ spec: { d, r } }: { spec: DetailsSpec }) {
     const name = goldShown && skill.gd ? skill.gd : skill.w;
     if (got) acquired++;
     return [
+      // its own <button>: a skill's cell, a skill tile, its look career/view/skillTile.ts `skillTile`
       <button
         key={t.group}
         type="button"
@@ -301,8 +302,8 @@ function SkillsPane({ spec: { d, r } }: { spec: DetailsSpec }) {
 }
 
 /** one support card of her deck, the decks' chip (its art alone; a borrowed one's in the friend frame, or without art
- *  ringed in pink with a Friends tag): a click opens its panel (ui/CardPop.tsx `usePopOpener`; endAt, its chain-end
- *  advice). data-tag: borrowed; data-off: greyed, marked not owned */
+ *  ringed in pink with a Friends tag): a click opens its panel (results/CardPop.tsx `usePopOpener`; endAt, its
+ *  chain-end advice). data-tag: borrowed; data-off: greyed, marked not owned */
 function DeckCell({ slot }: { slot: DeckSlot }) {
   const { base, borrowed: bor, card: c, endAt } = slot,
     off = !!c && !bor && settings.value.cardsOff[c.id] === false,
@@ -315,6 +316,7 @@ function DeckCell({ slot }: { slot: DeckSlot }) {
       end: endAt || 0,
     }));
   return (
+    // its own <button>: a deck card's chip, its look results/deckChip.ts `chip`, its data marks this list's
     <button
       type="button"
       class={chip({ tag: bor ? 'borrowed' : 'plain', friends: bor })}
@@ -350,6 +352,7 @@ function Legacy({ v, label, open, j }: DetailsSpec['legacies'][number] & { j: nu
     >
       <span class="bg-legacy-blue text-ui absolute top-0 left-0 rounded-tl-sm rounded-br-lg pt-px pr-3 pb-0.5 pl-2 font-black text-white">{`Legacy ${j + 1}`}</span>
       <div class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-4.5">
+        {/* its own <button>: a legacy's portrait and name, opening her sparks */}
         <button
           type="button"
           class="focus-visible:outline-accent grid cursor-pointer justify-items-center gap-0.5 rounded-lg p-0.5 text-center focus-visible:outline-3 focus-visible:outline-offset-2"
@@ -447,7 +450,7 @@ function InfoPane({
             <span class="text-note text-gm-ink2">{x.turn == null ? 'Entered here' : when(x.turn)}</span>
             <span class="bg-gm-g1 text-caption rounded-sm px-1.5 py-px font-black text-white">G1</span>
             <span class="wrap-anywhere">{x.name}</span>
-            {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (details.ts infoPane): the label reads the result; a role for it is recorded, not changed here */}
+            {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: today's markup (results/details.ts infoPane): the label reads the result; a role for it is recorded, not changed here */}
             <span class={x.won ? RESULT.won : RESULT.lost} aria-label={x.won ? 'won' : 'not won'}>
               {x.won ? '1st' : '–'}
             </span>

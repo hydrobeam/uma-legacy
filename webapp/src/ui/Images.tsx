@@ -1,33 +1,33 @@
-// ---------- portraits, card art, skill icons, the runner (their files: images.ts) ----------
+// ---------- portraits, card art, skill icons, the runner (their files: model/images.ts) ----------
 // Portraits, card art and skill icons are lazy unless marked eager: the browser fetches one only when it scrolls near
 // the view. One that keeps state (an image that fails) is keyed by its subject at the call site, so a reused one never
 // shows the last subject's state. Each carries a data-* mark (data-av, data-card, data-icon, data-grade, data-spinner,
 // data-scen-logo) by which the checks find it.
 import { useState } from 'preact/hooks';
-import { gameData } from '../data.ts';
-import type { Card } from '../data.ts';
+import { gameData } from '../model/data.ts';
+import type { Card } from '../model/data.ts';
 import { Grade } from '../gen/solver.ts';
-import { KIND_ABBR, RARITY_CLASS, RUN_CYCLE_MS, initials, runnerSrc, skillIconSrc, srcFor } from '../images.ts';
+import { KIND_ABBR, RARITY_CLASS, RUN_CYCLE_MS, initials, runnerSrc, skillIconSrc, srcFor } from '../model/images.ts';
 import { cx, tv } from 'tailwind-variants/lite';
 import type { VariantProps } from 'tailwind-variants/lite';
 
 // An uma's portrait: a circle (`round`, --s across, set inline), the roster's square tile (`tile`, its box's width), or
-// a result's face button (ui's `face/` group: loop/Results.tsx), brighter under the pointer: `card`, its corners
-// rounded (a deck's title), `swap`, rounder and 52 px on a phone (a swap row's); `trainee`, a circle 72 px on a phone
-// (the career tree's trainee); `vet`, a circle a veteran tile's portrait across (its --p: ui/VetCell.tsx);
-// `insp`, a circle 48 px on a narrow phone (the Inspiration view's: ui/InspView.tsx); her initials on her hue (--h, set
-// inline) in the mono face while there is no picture, a faint edge just outside it; `ring`, a loop member's white ring
-// (`member`), a tree node's white and cream one (`node`) or the Inspiration view's, without its shadow (`insp`); `dim`,
-// greyed out: `always`, `faint` (fainter: a legacy without the skill, in Skill Details), or `unowned` while her roster
-// tile is marked not owned (the theme's `unowned:`)
+// a result's face (in a ui/Button.tsx PortraitButton: loop/Results.tsx): `card`, its corners rounded (a deck's title),
+// `swap`, rounder and 52 px on a phone (a swap row's); `trainee`, a circle 72 px on a phone
+// (the career tree's trainee); `vet`, a circle a veteran tile's portrait across (its --p: veterans/VetCell.tsx);
+// `insp`, a circle 48 px on a narrow phone (the Inspiration view's: veterans/InspView.tsx); her initials on her hue
+// (--h, set inline) in the mono face while there is no picture, a faint edge just outside it; `ring`, a loop member's
+// white ring (`member`), a tree node's white and cream one (`node`) or the Inspiration view's, without its shadow
+// (`insp`); `dim`, greyed out: `always`, `faint` (fainter: a legacy without the skill, in Skill Details), or `unowned`
+// while her roster tile is marked not owned (the theme's `unowned:`)
 const avLook = tv({
   base: 'bg-av font-data text-ink outline-img-edge inline-grid shrink-0 place-items-center overflow-hidden align-middle leading-none font-semibold outline',
   variants: {
     shape: {
       round: 'size-(--s) rounded-full text-(length:--fs)',
       tile: 'text-display aspect-square h-auto w-full rounded-xl',
-      card: 'size-(--s) rounded-md text-(length:--fs) group-hover/face:brightness-106',
-      swap: 'size-(--s) rounded-xl text-(length:--fs) group-hover/face:brightness-106 max-md:size-13',
+      card: 'size-(--s) rounded-md text-(length:--fs)',
+      swap: 'size-(--s) rounded-xl text-(length:--fs) max-md:size-13',
       trainee: 'size-(--s) rounded-full text-(length:--fs) max-md:size-18',
       vet: 'size-(--p) rounded-full text-(length:--fs)',
       insp: 'size-(--s) rounded-full text-(length:--fs) max-sm:size-12',

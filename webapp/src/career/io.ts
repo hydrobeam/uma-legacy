@@ -1,12 +1,12 @@
 // Export and Import of the veterans: the page's own export, an uma.moe tree, the game's export. The Export and Paste
 // popups that show them are view/Io.tsx's; an import's outcome is said in the veterans dialog (poolState.ts `sayVets`).
-import { ERA_NAMES } from '../eras.ts';
-import type { Era } from '../eras.ts';
-import { ERA } from '../saved.ts';
+import { ERA_NAMES } from '../model/eras.ts';
+import type { Era } from '../model/eras.ts';
+import { ERA } from '../state/saved.ts';
 import { vets, places, importVets, isVeteran, asVeteran, addVets } from '../veterans/store.ts';
 import { umaName } from '../veterans/names.ts';
 import { unknownPinksIn, unknownPinksSaid } from '../veterans/records.ts';
-import { parseExport, parseTree } from '../umadump.ts';
+import { parseExport, parseTree } from '../io/umadump.ts';
 import { orNull } from '../must.ts';
 import { Blocked } from './job.ts';
 import { currentJob } from './current.ts';

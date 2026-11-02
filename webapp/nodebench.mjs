@@ -7,7 +7,7 @@ import { initSync, Solver } from './src/gen/loopopt.js';
 const [wasmPath, era, ...jobs] = process.argv.slice(2);
 const REPO = new URL('../', import.meta.url); // this script lives in webapp/
 const DATA = new URL(era === 'gm' ? 'pkg/loopopt/data/jp/' : 'pkg/loopopt/data/global/', REPO);
-// the solver through its glue (src/worker.ts): no progress to show, the benchmark times the whole job
+// the solver through its glue (src/solver/worker.ts): no progress to show, the benchmark times the whole job
 globalThis.solverProgress = () => {
   // nothing to show
 };

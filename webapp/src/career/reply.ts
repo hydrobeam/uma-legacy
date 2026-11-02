@@ -2,7 +2,7 @@
 // check), each narrowed from the reply's union by its `kind` (career/job.ts `CareerReply`). Types and pure functions
 // only: it imports nothing at run time, so the run machine and its node tests read replies without the page's data.
 import type * as Gen from '../gen/solver.ts';
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import type { CareerReply, CareerSearch, PlanRefusal, PlanReport } from './job.ts';
 
 type ReplyView = DeepReadonly<CareerReply>;

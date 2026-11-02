@@ -1,11 +1,11 @@
 // The career setup's components: the Borrowed parent choice (#bp: three choices, saved with the other settings; a
 // change runs the planner again: the entry's effect on the setup), and the panel's fold with its summary.
 import { computed, signal } from '@preact/signals';
-import { ERA } from '../../saved.ts';
-import { read, update } from '../../storage.ts';
-import { settings, setBorrowPar } from '../../settings.ts';
-import { scenarioOf } from '../../scenario.ts';
-import { ERA_NAMES } from '../../eras.ts';
+import { ERA } from '../../state/saved.ts';
+import { read, update } from '../../state/storage.ts';
+import { settings, setBorrowPar } from '../../state/settings.ts';
+import { scenarioOf } from '../../state/scenario.ts';
+import { ERA_NAMES } from '../../model/eras.ts';
 import { BORROW_CHOICES, borrowChoice } from '../job.ts';
 import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
 

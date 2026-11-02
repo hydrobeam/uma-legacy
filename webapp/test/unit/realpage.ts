@@ -6,7 +6,7 @@
 // the page has one (and its fallback when one fails to load); no portrait or card art.
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Card, Uma } from '../../src/data.ts';
+import type { Card, Uma } from '../../src/model/data.ts';
 
 /** the repository's root (a path, not a URL: Vite turns `new URL(…, import.meta.url)` into an asset import) */
 export const REPO = path.resolve(import.meta.dirname, '../../..');

@@ -4,36 +4,36 @@
 // the state and the settings: RunNote.tsx the status line, Results.tsx the result cards and the 1 or 3 switch,
 // Affinity.tsx and Export.tsx their dialogs. Each is drawn in its place in the layout, inside a ui/RenderGuard.tsx (a
 // dialog's guard is inside it) that reports a throw while drawing on the status line.
-import { started } from '../errorlog.ts'; // first: it listens before any other module runs
+import { started } from '../dom/errorlog.ts'; // first: it listens before any other module runs
 import { createRef, hydrate } from 'preact';
 import { signal } from '@preact/signals';
-import { ERA } from '../saved.ts';
-import type { Era } from '../eras.ts';
-import { browserStorage } from '../storage.ts';
-import { loadData } from '../data.ts';
+import { ERA } from '../state/saved.ts';
+import type { Era } from '../model/eras.ts';
+import { browserStorage } from '../state/storage.ts';
+import { loadData } from '../model/data.ts';
 import EXAMPLE from '../../example.json'; // the default settings' result, precomputed (example.mjs)
-import { DEFAULTS, fields, jobSetup, settings, setAuto, setPerUma } from '../settings.ts';
-import { on } from '../store.ts';
+import { DEFAULTS, fields, jobSetup, settings, setAuto, setPerUma } from '../state/settings.ts';
+import { on } from '../state/store.ts';
 import { must } from '../must.ts';
 import { beginSearch, headline, interim, loopDrawn, loopRun, loopView, resultsStale, settle, tick } from './state.ts';
 import { createRun } from './run.ts';
 import { RunAct, RunNote, noteShown, noteTitle, pillText } from './RunNote.tsx';
 import { RenderGuard, sayRenderErrors } from '../ui/RenderGuard.tsx';
-import { restartEngine, run, warmEngine } from '../engine.ts';
-import { initScenario } from '../scenario.ts';
+import { restartEngine, run, warmEngine } from '../solver/engine.ts';
+import { initScenario } from '../state/scenario.ts';
 import { Results, ResultsCount, drawResult } from './Results.tsx';
 import { AffinityDialog } from './Affinity.tsx';
 import { ExportDialog, openExport } from './Export.tsx';
-import { OddsDialog } from '../ui/OddsDialog.tsx';
-import { ScheduleDialog } from '../ui/Schedule.tsx';
-import { initPopover } from '../popover.ts';
-import { CardPop } from '../ui/CardPop.tsx';
-import { loadExample } from '../presets.ts';
-import { openSetupDialog, pickEra, setupBadges, setupViews } from '../ui/Setup.tsx';
-import { useHydrated } from '../ui/Shell.tsx';
+import { OddsDialog } from './OddsDialog.tsx';
+import { ScheduleDialog } from '../results/Schedule.tsx';
+import { initPopover } from '../results/popover.ts';
+import { CardPop } from '../results/CardPop.tsx';
+import { loadExample } from '../state/presets.ts';
+import { openSetupDialog, pickEra, setupBadges, setupViews } from '../setup/Setup.tsx';
+import { useHydrated } from '../setup/Shell.tsx';
 import { LoopLayout } from './Layout.tsx';
 import type { LoopState, LoopViews } from './Layout.tsx';
-import '../gmtip.ts'; // the game-style tooltips (both planner pages)
+import '../dom/gmtip.ts'; // the game-style tooltips (both planner pages)
 
 // ---------- the search (run.ts), with what it reaches outside itself
 const loop = createRun({
@@ -183,4 +183,4 @@ function start() {
       showStatus();
     }, 0);
 }
-started(); // (the last statement: errorlog.ts)
+started(); // (the last statement: dom/errorlog.ts)

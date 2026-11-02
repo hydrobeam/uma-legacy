@@ -1,9 +1,9 @@
 // ---------- a node's colour sparks (blue, pink, unique): their kinds and their picker ----------
-// (The sparks themselves are drawn by ui/Sparks.tsx, the picker by Editors.tsx.)
+// (The sparks themselves are drawn by veterans/Sparks.tsx, the picker by Editors.tsx.)
 import { signal } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
-import { careerTables } from '../data.ts';
-import { APTITUDES, gradeOf, isAptitude } from '../grades.ts';
+import { careerTables } from '../model/data.ts';
+import { APTITUDES, gradeOf, isAptitude } from '../model/grades.ts';
 import { Grade } from '../gen/solver.ts';
 import type { Aptitude } from '../gen/solver.ts';
 import { pinkName, blueName, uniqueName } from './names.ts';

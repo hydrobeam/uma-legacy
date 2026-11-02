@@ -9,7 +9,7 @@ import { vets, places, parentsPlaced } from '../../veterans/store.ts';
 import { umaName } from '../../veterans/names.ts';
 import { isComplete } from '../../veterans/complete.ts';
 import { UmaAv } from '../../ui/Images.tsx';
-import { AffHeart } from '../../ui/AffTable.tsx';
+import { AffHeart } from '../../results/AffTable.tsx';
 import { openTryRun } from '../analysis/view.tsx';
 import { idxOf, shown, parentAt } from '../current.ts';
 import type { ShownCareer as CareerReport } from './Sections.tsx';
@@ -78,6 +78,7 @@ function Place({ spec, kind, ghost = false, k, face, name, sub, label, head, chi
       }}
     >
       {head}
+      {/* its own <button>: a tree node's tile, the node itself */}
       <button
         ref={tile}
         type="button"

@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import { initSync, Solver } from './src/gen/loopopt.js';
 const DATA = '../pkg/loopopt/data/global/';
-// the solver through its glue (src/worker.ts): no progress to show, the example is computed offline
+// the solver through its glue (src/solver/worker.ts): no progress to show, the example is computed offline
 globalThis.solverProgress = () => {
   // nothing to show
 };
@@ -22,7 +22,7 @@ const call = (job) => JSON.parse(solver.call(JSON.stringify(job)));
 // what the data holds ahead of its start (export/upcoming.py: dated after the export): left out, as the page leaves it
 // out until then. Taken as of the export rather than today, so the example changes only with the data or the solver.
 const later = (kind) => readJson('upcoming.json')[kind].map(([id]) => id);
-// the page's defaults (settings.ts PRESET and DEFAULTS, job.ts EXTRA, jobTargets, skillsPart and deckPart)
+// the page's defaults (state/settings.ts PRESET and DEFAULTS, model/job.ts EXTRA, jobTargets, skillsPart and deckPart)
 const r = call({
   cmd: 'deck',
   skills: {

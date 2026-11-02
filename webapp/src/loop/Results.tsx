@@ -1,26 +1,25 @@
 // ---------- results: one card per loop (odds, members, decks), the odds, schedule and affinity buttons ----------
 // `Results` draws state.ts's `loopDrawn` into #results: each result keyed by its loop and decks (keys.ts), so a redraw with the same
 // loops (an interim answer, then the final) keeps every element, an open (i) panel and the focus. A card or a member no
-// longer owned is greyed (`off`) from the settings as they change. Their panels are popover.ts's: each button says what
-// its panel shows and draws its aria-expanded (ui/CardPop.tsx `usePopOpener`).
+// longer owned is greyed (`off`) from the settings as they change. Their panels are results/popover.ts's: each button
+// says what its panel shows and draws its aria-expanded (results/CardPop.tsx `usePopOpener`).
 // `ResultsCount` is the Results 1 or 3 switch above them.
 import { batch, untracked } from '@preact/signals';
 import type { ComponentChildren, RefObject } from 'preact';
 import { useLayoutEffect, useState } from 'preact/hooks';
-import { fmtIn } from '../dom.ts';
-import { gameData } from '../data.ts';
-import { setRunnerFrom } from '../images.ts';
-import { cardTitle, chainEndNote } from '../cards.ts';
-import { borrowedLast, deckCards } from '../details.ts';
-import type { DeckSlot } from '../details.ts';
-import { closePop, popHasFocus } from '../popover.ts';
-import type { PopSubject } from '../popover.ts';
-import { usePopOpener } from '../ui/CardPop.tsx';
-import { outfitNote, pickOutfit, umaState } from '../roster.ts';
-import { openSched } from '../ui/Schedule.tsx';
-import { deckHint } from '../odds.ts';
-import { openOdds } from '../ui/OddsDialog.tsx';
-import { fields, setDecksTop } from '../settings.ts';
+import { gameData } from '../model/data.ts';
+import { setRunnerFrom } from '../model/images.ts';
+import { cardTitle, chainEndNote } from '../state/cards.ts';
+import { borrowedLast, deckCards } from '../results/details.ts';
+import type { DeckSlot } from '../results/details.ts';
+import { closePop, popHasFocus } from '../results/popover.ts';
+import type { PopSubject } from '../results/popover.ts';
+import { usePopOpener } from '../results/CardPop.tsx';
+import { outfitNote, pickOutfit, umaState } from '../state/roster.ts';
+import { openSched } from '../results/Schedule.tsx';
+import { deckHint, fmtIn } from '../model/odds.ts';
+import { openOdds } from './OddsDialog.tsx';
+import { fields, setDecksTop } from '../state/settings.ts';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { CardAv, SkillIcon, UmaAv } from '../ui/Images.tsx';
 import { openWhy } from './Affinity.tsx';
@@ -30,10 +29,10 @@ import { loopMembers } from './members.ts';
 import type { Member } from './members.ts';
 import { draw, loopDrawn } from './state.ts';
 import type * as Report from './types.ts';
-import type { DeepReadonly } from '../store.ts';
-import { Button } from '../ui/Button.tsx';
+import type { DeepReadonly } from '../state/store.ts';
+import { Button, PortraitButton } from '../ui/Button.tsx';
 import { GameBar } from '../ui/GameBar.tsx';
-import { chip } from '../ui/deckChip.ts';
+import { chip } from '../results/deckChip.ts';
 import { cx, tv } from 'tailwind-variants/lite';
 
 // The card's parts carry data-* marks the checks find them by: data-rank, data-odds, data-same, data-members,
@@ -206,6 +205,7 @@ function MemberCard({ m, pick }: { m: Member; pick: ReturnType<typeof pickOutfit
       data-outfit-label={outfit}
       data-outfit-note={outfitNote(pick)}
     >
+      {/* its own <button>: a member's row (her portrait and name), opening her panel as her face does */}
       <button
         type="button"
         class="group focus-visible:outline-accent flex cursor-pointer items-center gap-2 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-3 max-md:min-h-11"
@@ -265,17 +265,9 @@ function FaceButton({ member, size, shape }: { member: Member; size: number; sha
     name = member.name + (one ? ` ${one.label}` : '');
   const opener = usePopOpener(false, () => memberSubject(member));
   return (
-    <button
-      type="button"
-      class="group/face focus-visible:outline-accent cursor-pointer rounded-md leading-0 focus-visible:outline-2 focus-visible:outline-offset-2"
-      data-uma={member.id}
-      title={name}
-      aria-label={name}
-      aria-haspopup="dialog"
-      {...opener}
-    >
+    <PortraitButton data-uma={member.id} title={name} aria-label={name} aria-haspopup="dialog" {...opener}>
       <UmaAv key={`${member.id}:${one?.id}`} uma={member.id} outfit={one?.id ?? null} size={size} shape={shape} />
-    </button>
+    </PortraitButton>
   );
 }
 // the deck(s) of a result: one deck for all, or the deck most members share and the swaps from it
@@ -357,6 +349,7 @@ function CardChip({
     end: endAt || 0,
   }));
   return (
+    // its own <button>: a deck card's chip, its look results/deckChip.ts `chip`, its data marks this list's
     <button
       type="button"
       class={chip({ tag: borrowed ? 'borrowed' : pal ? 'pal' : 'plain', swap })}
@@ -391,6 +384,7 @@ const chips = (deck: ResultDeck, slots: readonly DeckSlot[], side?: 'out' | 'in'
 // the (i) button by a deck's title, showing its hint odds
 function InfoButton({ open, toggle }: { open: boolean; toggle: () => void }) {
   return (
+    // its own <button>: the deck box's "i", an accent disc filled while open
     <button
       type="button"
       class="border-accent bg-panel font-glyph text-note text-accent aria-expanded:bg-accent aria-expanded:text-panel absolute top-2.5 right-2.5 inline-grid size-5.5 shrink-0 cursor-pointer place-items-center rounded-full border leading-none font-bold italic"
@@ -515,6 +509,7 @@ function SwapDeltas({ shared, deck, who }: { shared: ResultDeck; deck: ResultDec
     );
   const hidden = changes.length - 2;
   return (
+    // its own <button>: the swap's deltas, the folded list its own toggle
     <button
       type="button"
       class="group/deltas text-note text-ink hover:border-line hover:bg-bg focus-visible:outline-accent ml-auto grid min-h-0 w-[min(17rem,100%)] cursor-pointer items-center gap-1 self-center rounded-md border border-transparent px-1.5 py-1 text-left focus-visible:outline-2 focus-visible:outline-offset-2 max-md:ml-0 max-md:basis-full"

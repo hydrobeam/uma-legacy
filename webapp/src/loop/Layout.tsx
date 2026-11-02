@@ -3,16 +3,16 @@
 // (main.tsx), which fills in `views` once the game data is in (the status line's two parts from the first status worth
 // showing) and the state of what the layout draws itself: the status row's state and tooltip, the dimmed results, the
 // switches, the phone's floating status button. Imports nothing but Preact, the shell and its class helpers
-// (ui/Shell.tsx says why). The results column: on a phone (the columns stacked) it comes first, before the setup, in
+// (setup/Shell.tsx says why). The results column: on a phone (the columns stacked) it comes first, before the setup, in
 // the reading and Tab order too (`phone`; loop.html's script after #app puts it there before the scripts run, so the
 // first paint has it); on a desktop it scrolls with the page beside the setup.
 import type { ComponentChildren, RefObject } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { cx } from 'tailwind-variants/lite';
-import { EnhButtons, EraRow, Footer, Ribbon, setRow } from '../ui/Shell.tsx';
+import { EnhButtons, EraRow, Footer, Ribbon, setRow } from '../setup/Shell.tsx';
 import { panel } from '../ui/Panel.tsx';
-import type { Badge } from '../ui/Shell.tsx';
-import type { Era } from '../eras.ts';
+import type { Badge } from '../ui/Button.tsx';
+import type { Era } from '../model/eras.ts';
 import { Button } from '../ui/Button.tsx';
 import { Switch } from '../ui/Switch.tsx';
 
@@ -194,6 +194,7 @@ export function LoopLayout({ version, note = null, act = null, views = null, sta
         {s.phone ? [results, side] : [side, results]}
         {/* phone: the status line's copy floats at the foot of the screen, a button back to the results (hidden while
             they are in view) */}
+        {/* its own <button>: the floating pill back to the results */}
         <button
           class="border-accent bg-panel text-body text-ink shadow-pop fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom,0px)+12px)] z-30 hidden min-h-11 items-center gap-2 rounded-lg border px-3.5 py-2 text-left font-semibold tabular-nums max-xl:not-in-[.rin]:flex"
           id="run-pill"

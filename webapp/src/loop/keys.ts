@@ -1,7 +1,7 @@
 // ---------- the loop page's keys for its results: what identifies a loop, a deck and a result on show ----------
 // Results.tsx keys each result card by them, so a redraw with the same loops keeps every element (an open panel, the
 // focus); a key must be unique among the results drawn together.
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import type * as Report from './types.ts';
 import { loopMembers } from './members.ts';
 

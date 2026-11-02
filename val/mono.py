@@ -5,7 +5,7 @@ without her is still there), so a rise in the planner's V is the planner's error
 - **rolled veterans:** plan the full pool, then the pool with each of N veterans of its pick added, drawn as the page's
   Compare and Reroll draw them (analysis `draftOf` / `draftJob`: the landed set from the pick's `outcome_sets`, every
   set including the all-landed one, or each target on its own odds past 12 targets; each landed spark's stars from the
-  job's rank class's star mix; each scheduled G1 won with its chance; her pink drawn as pink.ts `drawPink` draws it; her parents
+  job's rank class's star mix; each scheduled G1 won with its chance; her pink drawn as model/pink.ts `drawPink` draws it; her parents
   copied without their own parents; seeded per pool), each under the full pool's fit and refitted.
 
 The fixed fit takes the continuation's refit out (`Cont` is refitted per pool); what remains is the plan's own
@@ -47,7 +47,7 @@ import solver
 from solver import PLAN_DIR
 from dataclasses import dataclass
 
-# pink.ts: grades are aptitude codes 1..8 = G..S; each legacy pink fires at each of the two April inspirations
+# model/pink.ts: grades are aptitude codes 1..8 = G..S; each legacy pink fires at each of the two April inspirations
 GRADE_A, GRADE_S, INSPIRATIONS = 7, 8, 2
 RISE = 1e-9
 
@@ -200,7 +200,7 @@ def scheduled_races(report, race_names):
 
 
 def drawn_pink(aptitudes, kinds, rng):
-    """pink.ts drawPink: {aptitude: stars}, its draws in the same order (fires per inspiration, aptitude, stars).
+    """model/pink.ts drawPink: {aptitude: stars}, its draws in the same order (fires per inspiration, aptitude, stars).
     `kinds`: the solver's `aptitude_kinds` (where each aptitude's grade is in its grades: kind, then place)"""
     if not aptitudes:
         return {}

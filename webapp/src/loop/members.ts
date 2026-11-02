@@ -4,7 +4,7 @@
 // affinity detail by their place. The page reads them here, each as one record, and its views draw the records; the
 // report itself stays as the solver wrote it (it is what the page keeps for a reload and exports).
 import { assert, must } from '../must.ts';
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import type * as Report from './types.ts';
 
 type ResultLoop = DeepReadonly<Report.ResultLoop>;

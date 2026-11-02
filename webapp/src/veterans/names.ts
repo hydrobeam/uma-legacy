@@ -1,7 +1,7 @@
 // ---------- the names the career page shows (umas, skills, sparks), a spark's stars, the target skills' groups ----------
-import { careerTables, gameData } from '../data.ts';
-import type { SettingsView } from '../settings.ts';
-import type { DeepReadonly } from '../store.ts';
+import { careerTables, gameData } from '../model/data.ts';
+import type { SettingsView } from '../state/settings.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import type { Sparks } from './store.ts';
 
 /** a spark's stars in `sparks` (0: she has none of it) */

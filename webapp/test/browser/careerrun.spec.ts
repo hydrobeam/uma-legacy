@@ -64,7 +64,7 @@ test('the kept work is stored after a plan and restored first by the next worker
   page,
 }) => {
   await seededPlan(page);
-  // stored promptly once the worker is idle (engine.ts engineSaveState: 100 ms, behind the plan)
+  // stored promptly once the worker is idle (solver/engine.ts engineSaveState: 100 ms, behind the plan)
   await expect
     .poll(() => page.evaluate(() => window.__runs.filter((j) => j.cmd === 'state_out').length), { timeout: 1300 })
     .toBeGreaterThan(0);

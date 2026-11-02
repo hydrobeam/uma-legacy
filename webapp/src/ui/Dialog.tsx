@@ -3,16 +3,16 @@
 // close() are called from a layout effect, before the browser paints. The native close (Escape, or close() from the
 // effect) reaches `onClose`, so whoever holds `open` hears every close. A click on the backdrop (the dialog element
 // itself is the target) closes it. The browser returns the focus to the element that had it when the dialog opened.
-// A deck card's panel opened from inside it shows inside it (ui/CardPop.tsx: the page behind a modal is out of reach).
-// Two kinds, both the game's: `popup`, a popup (a green title bar, a pale body that scrolls, a footer with Close and the
-// actions: DialogTitle, DialogBody, DialogFoot, DialogClose), and `window`, a window (DialogPanel, a body that scrolls
-// under its sticky green head, DialogHead, with the title and Close at the right). `size` is its width, one of the
-// theme's five (the screen's less the browser's margin, on a phone); every dialog names its own.
+// A deck card's panel opened from inside it shows inside it (results/CardPop.tsx: the page behind a modal is out of
+// reach). Two kinds, both the game's: `popup`, a popup (a green title bar, a pale body that scrolls, a footer with
+// Close and the actions: DialogTitle, DialogBody, DialogFoot, DialogClose), and `window`, a window (DialogPanel, a body
+// that scrolls under its sticky green head, DialogHead, with the title and Close at the right). `size` is its width,
+// one of the theme's five (the screen's less the browser's margin, on a phone); every dialog names its own.
 import type { ComponentChildren, Ref } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { must } from '../must.ts';
 import { Button } from './Button.tsx';
-import { CardPop } from './CardPop.tsx';
+import { CardPop } from '../results/CardPop.tsx';
 import { tv } from 'tailwind-variants/lite';
 import type { VariantProps } from 'tailwind-variants/lite';
 

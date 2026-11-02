@@ -4,15 +4,15 @@
 // (career/state.ts), changed only through the transitions `deps.store` hands in; everything else of the page (the
 // solver, the clock, the job its settings and veterans make, the analysis, the redraws) comes in `deps` too, so the
 // node tests run the machine on fakes. It reads no store itself (a model module: .dependency-cruiser.mjs checks it).
-import type { PlanProgress } from '../solver.ts';
+import type { PlanProgress } from '../solver/solver.ts';
 import { checkIn, planIn, searchIn } from './reply.ts';
 import { must } from '../must.ts';
 import type { CareerAnswer, CareerJob, CareerReport, CareerSearch, PlanReport } from './job.ts';
-import type { DeepReadonly } from '../store.ts';
+import type { DeepReadonly } from '../state/store.ts';
 import type * as AnswerStore from './state.ts';
 import type { Answer, AnswerView, PlanDone, PlanState, Status } from './state.ts';
 import { jobKey, planKey } from './keys.ts';
-import { stateKey } from '../engine.ts';
+import { stateKey } from '../solver/engine.ts';
 import type { Comparison } from './analysis/compare.ts';
 
 /** the answer store's transitions and reads the machine uses (career/state.ts) */
@@ -42,7 +42,7 @@ export type RunStore = Pick<
 
 /** what the run machine needs of the page, built once by the entry (main.tsx) */
 export interface RunDeps {
-  /** the solver (engine.ts, through job.ts `runJob`) */
+  /** the solver (solver/engine.ts, through job.ts `runJob`) */
   engine: {
     /** a career job: its answer (rejects when the job waited on a start the engine's restart superseded) */
     run: (job: CareerJob, progress?: (p: PlanProgress) => void, background?: boolean) => Promise<CareerAnswer>;
@@ -80,7 +80,7 @@ export interface RunDeps {
     baseKey: (job: CareerJob) => string;
     /** the search's status line (main.tsx `searchStatus`): done with its caveats, or why no career lands every target */
     searched: (m: { r: CareerSearch; ms: number }, found: string) => Status;
-    /** the answer the last visit kept, and keeping this one (statestore.ts) */
+    /** the answer the last visit kept, and keeping this one (state/statestore.ts) */
     loadAnswer: () => Promise<{ key: string; value: AnswerView } | null>;
     saveAnswer: (key: string, value: AnswerView) => void;
   };
