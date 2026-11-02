@@ -401,24 +401,26 @@ merge, not a `valq` per commit. A change to arithmetic, control flow or data fol
   fails at the test that builds or reads it. One spec: `cd webapp && npx playwright test --project=chromium phone`. A
   failed test keeps its trace (`npx playwright show-trace webapp/test-results/<test>/trace.zip`); the run's report is
   `webapp/test-results/report.json`. `./build.sh testq` runs them in Chromium alone.
-- **Solver fixtures:** the browser flows never run the solver. Each starts from a committed scenario
-  (`test.use({ scenario })`: `webapp/test/fixtures/solver/<scenario>.seed.json`, the localStorage the page starts
-  with; made-up veterans and public game ids only, few on purpose: `loop-small`, three umas, two targets and
-  fourteen cards; `loop-four`, a fourth uma, three decks and a pal left out; `career-small`, four veterans, two
-  targets, two trainees and eight cards, whose game export the import flows read, `export-small.json`). The page's worker is a stand-in (`webapp/test/browser/solver.ts`) that answers
-  each job with its scenario's canned reply for that kind of job (`<scenario>.snap.json`: a deck search; a career
-  search, plan, robustness-check step, comparison and its plan, roll, per pool size, since the page checks the
-  legacies a reply names against its job's pool; the kept work out and in). A foreground job of a kind the scenario
-  lacks fails the flow; a background one (the state store, a check step) is left unanswered. The replies are computed natively through the worker's own `Solver` (`web.rs`
-  `fixtures`, an insta snapshot; wall clocks 0) from one job of each kind (`<scenario>.jobs.json`, run in order in one
-  `Solver`, so the check, comparison and roll find the plan kept). The page reads a reply against its job only through
-  the plan it names, so every edit in a flow is answered with the scenario's one plan. `./build.sh fixtures`
-  regenerates the replies (insta with updates on); a solver or data change that moves one fails `check`'s "solver
-  fixtures", with the command. The flows send the same kinds of jobs with or without the game's art (none uses the
-  sample veterans, which show only with their portraits). A tree that has not built the solver builds the page with
-  an empty one (`webapp/vite/stub.wasm`; `vite.config.mjs`), so a page-only change never runs cargo; `./build.sh
-  worker`, in `check merge`, runs the one flow on the real solver (`worker.spec.ts`): the built wasm in the page's
-  worker answers loop-small's deck job as its canned reply holds it.
+- **Solver fixtures:** the browser flows never run the solver. Each starts from a committed scenario (`test.use({
+  scenario })`: `webapp/test/fixtures/solver/<scenario>.seed.json`, the localStorage the page starts with; made-up
+  veterans and public game ids only, few on purpose: `loop-small`, three umas, three targets and fourteen cards;
+  `loop-four`, val's `pal_I` cut to the seven umas of its top three loops (Grand Concert, one deck for all, two pals
+  left out), where a four-uma loop ranks third; `career-small`, four veterans, two targets, two trainees and eight
+  cards, whose game export the import flows read, `export-small.json`). The page's worker is a stand-in
+  (`webapp/test/browser/solver.ts`) that answers each job with its scenario's canned reply for that kind of job
+  (`<scenario>.snap.json`: a deck search; a career search, plan, robustness-check step, comparison and its plan, roll,
+  per pool size, since the page checks the legacies a reply names against its job's pool; the kept work out and in). A
+  foreground job of a kind the scenario lacks fails the flow; a background one (the state store, a check step) is left
+  unanswered. The replies are computed natively through the worker's own `Solver` (`web.rs` `fixtures`, an insta
+  snapshot; wall clocks 0) from one job of each kind (`<scenario>.jobs.json`, run in order in one `Solver`, so the
+  check, comparison and roll find the plan kept). The page reads a reply against its job only through the plan it names,
+  so every edit in a flow is answered with the scenario's one plan. `./build.sh fixtures` regenerates the replies (insta
+  with updates on); a solver or data change that moves one fails `check`'s "solver fixtures", with the command. The
+  flows send the same kinds of jobs with or without the game's art (none uses the sample veterans, which show only with
+  their portraits). A tree that has not built the solver builds the page with an empty one (`webapp/vite/stub.wasm`;
+  `vite.config.mjs`), so a page-only change never runs cargo; `./build.sh worker`, in `check merge`, runs the one flow
+  on the real solver (`worker.spec.ts`): the built wasm in the page's worker answers loop-small's deck job as its canned
+  reply holds it.
 - **Test counts:** a whole run's count of tests is pinned, as the Rust tests' (`pkg/loopopt/tests/count.txt`): the
   node tests' in `webapp/test/unit/count.txt`, the browser flows' per browser in `webapp/test/browser/count-*.txt`. A
   test that stops running fails the run; `TESTS_BLESS=1` re-pins, and a commit that removes tests says why.

@@ -9,6 +9,7 @@ import type { Page } from 'playwright/test';
 import type { Card, Uma } from '../../src/data.ts';
 import { expect, test } from './fixtures.ts';
 import { SIDEWAYS, closeEditor, loopSettled, openEditor, openLoop } from './pages.ts';
+import { quiet } from './solver.ts';
 
 test.describe.configure({ timeout: 60_000 });
 // (on loop-small: three umas, two targets, fourteen cards)
@@ -161,6 +162,12 @@ phone.describe('phone @both', () => {
       });
       expect(swap33).toEqual({ fit: true, inside: true });
       if (browserName === 'chromium') {
+        // a visit with these settings, as a visitor's next one: their saved result drawn from the first frame (the
+        // seeded settings' first load has none: it draws the example, then this search's result in its place, a shift
+        // as large as the result is late)
+        await quiet(page);
+        await page.reload();
+        await loopSettled(page);
         const cls = await page.evaluate(
           () =>
             new Promise<number>((resolve) => {
@@ -300,8 +307,8 @@ phone.describe('phone @both', () => {
 });
 
 test.describe('desktop results @both', () => {
-  // three results (a rotation, then four-uma loops), and a pal not owned, so a deck borrows one: loop-small with a
-  // fourth uma, three decks shown and a pal left out
+  // three results (a rotation, then four-uma loops), two pals not owned so a deck borrows one: loop-four, val's pal_I
+  // cut to its top loops' seven umas, on Grand Concert with one deck for all (as pal_I runs)
   test.use({ scenario: 'loop-four' });
   test('four-uma loops, a borrowed card, the panel beside its card, the schedule and affinity popups, a tooltip over them', async ({
     page,
@@ -310,12 +317,11 @@ test.describe('desktop results @both', () => {
     const sizes = await page.evaluate(() =>
       [...document.querySelectorAll('#results article')].map((l) => l.querySelectorAll('[data-member]').length),
     );
-    // (a rotation of three and four-uma loops, in the solver's order)
     expect(sizes.length).toBe(3);
-    expect(sizes).toContain(3);
-    for (const n of sizes) expect([0, 3, 4]).toContain(n);
+    expect(sizes[0]).toBe(3);
+    for (const n of sizes.slice(1)) expect([0, 4]).toContain(n);
     const four = sizes.indexOf(4);
-    expect(four).toBeGreaterThanOrEqual(0);
+    expect(four).toBeGreaterThan(0);
     const loop = page.locator('#results article').nth(four);
     expect(
       await loop.evaluate(

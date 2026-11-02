@@ -41,9 +41,11 @@ test("the built wasm in the page's worker answers its first search as the native
   expect(zeroed(first.answer)).toEqual((read('loop-small.snap.json') as Record<string, unknown>)['deck@below_ss']);
 });
 
-// (runs in the page) the page's workers, recording each job one is sent and its answer
+// (runs in the page) the page's workers, recording each job one is sent and its answer; and the jobs sent as the
+// stand-in's hooks count them (`__runs`, which pages.ts loopSettled reads: without the stand-in nothing else sets it)
 function recordWorker() {
   window.__real = [];
+  window.__runs = [];
   const listened = new WeakSet<Worker>();
   const sent = new Map<number, { job: unknown; answer: { interim?: unknown; result?: unknown } }>();
   const post = Worker.prototype.postMessage;
@@ -60,6 +62,7 @@ function recordWorker() {
       const run = { job: message.job, answer: {} };
       sent.set(message.id, run);
       window.__real.push(run);
+      window.__runs.push(message.job);
     }
     Reflect.apply(post, this, [message, ...rest]);
   };
