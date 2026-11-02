@@ -196,7 +196,7 @@ impl Sim<'_, '_> {
         let current_odds = [finisher_odds];
         let base = plan::cont::ScoreBase {
             candidates: &finishers,
-            step_costs: &[1.0],
+            step_costs: &[plan::cont::StepCareers::finite(1.0)],
             current_value: 0.0,
             current_odds: &current_odds,
             continuations: &[],

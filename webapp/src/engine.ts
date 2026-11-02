@@ -210,7 +210,7 @@ async function restore() {
     stateDrop(key);
     return;
   }
-  // (the solver checks what comes back: a state of another version, or that does not decode, is refused, and dropped here)
+  // (the solver checks what comes back: a state of another version, or that does not parse, is refused, and dropped here)
   const answer = await post({ cmd: 'state_in', state: stored });
   if (!answer.r || answer.r.kind === 'refusal') stateDrop(key);
 }

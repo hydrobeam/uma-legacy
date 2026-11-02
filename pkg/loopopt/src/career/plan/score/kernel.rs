@@ -152,6 +152,7 @@ thread_local! { pub(super) static FOLD_SCRATCH: std::cell::RefCell<FoldScratch> 
 /// (`RollKeep`) without the fields `derive` rebuilds and those a restored roll state holds empty (`finisher_umas`,
 /// `shadows`, `prior_least`, `retain_least`).
 #[derive(serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(Default))]
 pub(crate) struct Scored {
     /// nu: the job's uncertain targets.
     pub(crate) uncertain_target_count: usize,

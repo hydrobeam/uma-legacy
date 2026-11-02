@@ -174,14 +174,12 @@ fn inheritance_copies_match_lineage() {
     }));
 }
 /// The worker's kept work leaves (`state_out`) and comes back (`state_in`) bit for bit after a plan (the same string out
-/// again), and a roll after the round trip answers as before it. A store of another version, one that does not decode
-/// to its end (not base64, cut short, a byte past its end) or one of the earlier encoding (JSON records) is refused
+/// again), and a roll after the round trip answers as before it. A store of another version, one that does not parse
+/// to its end (not JSON, cut short, text past its end) or one of an earlier encoding (JSON records) is refused
 /// whole with an error, nothing installed; one whose decks or careers do not fit the setup it meets
 /// (`CareerSetup::seen_fits`, `solved_fits`) is not used there.
 #[test]
 fn state_round_trips_and_refuses_another_version() {
-    use base64::Engine;
-    use base64::engine::general_purpose::STANDARD as BASE64;
     let (worker, v) = p16();
     let run = |job: &Value| worker.call(job);
     let state_out = || run(&json!({"cmd": "state_out"}));
@@ -233,11 +231,12 @@ fn state_round_trips_and_refuses_another_version() {
     };
     let other_version = json!(state::encode(STATE_VERSION - 1, &worker.kept.borrow()));
     refused("another version", &other_version, "state: another version");
-    refused("not base64", &json!("not base64!"), "state: does not parse");
-    let bytes = BASE64.decode(st.as_str().unwrap()).unwrap();
-    refused("cut short", &json!(BASE64.encode(&bytes[..bytes.len() - 1])), "state: does not parse");
-    let longer = [bytes.as_slice(), &[0]].concat();
-    refused("a byte past its end", &json!(BASE64.encode(longer)), "state: does not parse");
+    refused("not JSON", &json!("not JSON!"), "state: does not parse");
+    let text = st.as_str().unwrap();
+    let mut cut_short = text.to_owned();
+    cut_short.pop();
+    refused("cut short", &json!(cut_short), "state: does not parse");
+    refused("text past its end", &json!(format!("{text} 0")), "state: does not parse");
     let old = json!({"v": 12, "bests": [], "seen": [], "solve": [], "flags": [], "rolls": [], "caps": []});
     refused("the earlier encoding", &old, "bad request");
 

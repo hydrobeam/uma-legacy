@@ -1433,7 +1433,7 @@ searched?: boolean,
  */
 assumes?: Array<Assumption>, 
 /**
- * her stage step's careers (null: not a stage candidate)
+ * her stage step's careers (null: not a stage candidate, or a step that never ends: no odds now)
  */
 stage_cost: number | null, 
 /**
